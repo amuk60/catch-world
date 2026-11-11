@@ -17,3 +17,7 @@ test('characters 팩 URL', () => {
 test('알 수 없는 팩은 오류', () => {
   assert.throws(() => modelUrl('scifi', 'x'), /scifi/);
 });
+test('furniture 팩 URL', () => {
+  assert.equal(modelUrl('furniture', 'bench'),
+    'assets/models/kenney_furniture-kit/Models/GLTF%20format/bench.glb');
+});

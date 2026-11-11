@@ -16,3 +16,10 @@ test('findClip: 이름이 같은 클립을 찾고 없으면 null', () => {
 test('페이드 시간은 0.2초', () => {
   assert.equal(FADE_SECONDS, 0.2);
 });
+test('clipNameForState: walk / idle / sit', async () => {
+  const { clipNameForState } = await import('../src/logic/animation.js');
+  assert.equal(clipNameForState('walk'), 'walk');
+  assert.equal(clipNameForState('idle'), 'idle');
+  assert.equal(clipNameForState('sit'), 'sit');
+  assert.throws(() => clipNameForState('fly'), /fly/);
+});

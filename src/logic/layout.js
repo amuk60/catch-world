@@ -2,6 +2,7 @@
 // 구역(+x = 동쪽): 서쪽 숲+소각로 (x <= ZONES.forestMaxX), 가운데 완충 잔디밭, 동쪽 도시 광장 (x >= ZONES.cityMinX).
 import { YARD, FURNACE, PLAYER, SPAWN, ZONES } from '../config.js';
 import { mulberry32, rand, pick } from './rng.js';
+import { headingY } from './movement.js';
 
 const DEFAULT_PARAMS = { ringTrees: 40, bandTrees: 30, interiorTrees: 8, bushes: 6, rocks: 3 };
 
@@ -30,15 +31,24 @@ const FOREST_INNER_MAX_X = ZONES.forestMaxX - 1; // 숲 내부 장식 x 상한(-
 const SIGN_KEEP_OUT = 2.8; // 숲 내부 장식과의 최소 거리
 const SIGN_OBSTACLE_RADIUS = 0.7; // 간판 충돌 원 반경(가운데 + 양 끝 3개)
 
-// 위로 문구 오브젝트(구역마다 1개). 위치는 고정이고 messageIndex 는 COMFORT_MESSAGES 의 순서다.
+// 위로 문구 오브젝트(구역마다 1개). 위치는 고정이다. messageIndex 는 COMFORT_MESSAGES 의 순서이고,
+// kind 가 'fortune' 인 작은 푯말은 문구 대신 포춘쿠키를 연다.
 const COMFORT_RADIUS = 0.5;
 const COMFORT_KEEP_OUT = 2.0; // 숲 내부 장식과의 최소 거리
 const INTERACT_MARGIN = 0.8; // 반경 + 플레이어 반경 위에 더하는 상호작용 여유
 const COMFORT_OBJECTS = [
-  { name: 'stump_roundDetailed', label: '쉬어가는 그루터기', x: -9.0, z: 5.0, scale: 3.5, rotY: 0.6 },
-  { name: 'sign', label: '작은 푯말', x: 0.8, z: -6.5, scale: 3.4, rotY: Math.PI / 4 },
-  { name: 'statue_head', label: '조용한 조각상', x: 6.0, z: 9.0, scale: 1.3, rotY: Math.PI / 4 },
+  { name: 'stump_roundDetailed', label: '쉬어가는 그루터기', kind: 'comfort', messageIndex: 0, x: -9.0, z: 5.0, scale: 3.5, rotY: 0.6 },
+  { name: 'sign', label: '작은 푯말', kind: 'fortune', x: 0.8, z: -6.5, scale: 3.4, rotY: Math.PI / 4 },
+  { name: 'statue_head', label: '조용한 조각상', kind: 'comfort', messageIndex: 2, x: 6.0, z: 9.0, scale: 1.3, rotY: Math.PI / 4 },
 ];
+
+// 소각로 곁 벤치 2개(소각로를 사이에 두고 마주 본다). Kenney furniture 'bench' 원본은 폭 0.4 x 깊이 0.2 x 높이 0.47 이고
+// 원점이 모서리라서 중심이 로컬 (0.2, -0.1) 이다. 앉는 면 높이는 0.24, 등받이는 로컬 -z 쪽이라 +z 가 앞이다.
+const BENCH = { scale: 3.6, radius: 0.7, distance: 3.2, seatTop: 0.24, center: { x: 0.2, z: -0.1 } };
+const BENCH_KEEP_OUT = 2.0; // 숲 내부 장식과의 최소 거리
+const BENCH_CLEARANCE = 1.7; // 통나무·간판과의 선호 최소 거리(규칙은 1.5)
+// 카메라(+x,+z 쪽)에서 볼 때 소각로 양옆이 되는 방향(각도: atan2(z, x)).
+const BENCH_PREFERRED_ANGLE = -Math.PI / 4;
 
 const nature = (name, x, z, scale, rotY) => ({ pack: 'nature', name, x, z, scale, rotY });
 
@@ -101,18 +111,47 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
   for (const a of [0, -(sign.width / 2 - 0.4), sign.width / 2 - 0.4]) {
     obstacles.push({ x: sign.x + a * Math.cos(sign.rotY), z: sign.z - a * Math.sin(sign.rotY), radius: sign.obstacleRadius });
   }
-  // 상호작용 대상: 소각로(이미 만들어진 모델) + 위로 오브젝트 3개. 위로 오브젝트는 충돌 원도 둔다.
+  // 벤치 위치: 선호 방향에서 가까운 순서로 훑어 통나무·간판에서 충분히 떨어진 첫 각도를 쓴다(없으면 가장 여유 있는 각도).
+  const benchSpots = (angle) => [angle, angle + Math.PI].map((a) => ({ x: FURNACE.x + Math.cos(a) * BENCH.distance, z: FURNACE.z + Math.sin(a) * BENCH.distance }));
+  const signCircles = obstacles.filter((o) => o.radius === sign.obstacleRadius);
+  const benchClearance = (angle) => Math.min(...benchSpots(angle).flatMap((s) => [
+    ...furnaceItems.slice(1).map((it) => Math.hypot(s.x - it.x, s.z - it.z)),
+    ...signCircles.map((o) => Math.hypot(s.x - o.x, s.z - o.z) - o.radius),
+  ]));
+  let benchAngle = BENCH_PREFERRED_ANGLE;
+  for (let k = 0, best = -Infinity; k <= 36; k++) {
+    const angle = BENCH_PREFERRED_ANGLE + Math.ceil(k / 2) * (Math.PI / 36) * (k % 2 ? 1 : -1); // 5도 간격, 0, +5, -5, +10, ...
+    const clearance = benchClearance(angle);
+    if (clearance >= BENCH_CLEARANCE) { benchAngle = angle; break; }
+    if (clearance > best) { best = clearance; benchAngle = angle; }
+  }
+
+  // 상호작용 대상: 소각로(이미 만들어진 모델) + 위로 오브젝트 3개 + 벤치 2개. 위로 오브젝트와 벤치는 충돌 원도 둔다.
   const interactables = [{
     id: 'furnace', label: '소각로', kind: 'furnace', x: FURNACE.x, z: FURNACE.z, radius: FURNACE.radius,
     interactRange: FURNACE.radius + PLAYER.radius + INTERACT_MARGIN,
   }];
-  COMFORT_OBJECTS.forEach((c, messageIndex) => {
+  COMFORT_OBJECTS.forEach((c, index) => {
     interactables.push({
-      id: `comfort-${messageIndex}`, label: c.label, kind: 'comfort', messageIndex, x: c.x, z: c.z, radius: COMFORT_RADIUS,
+      id: `comfort-${index}`, label: c.label, kind: c.kind, ...(c.messageIndex === undefined ? {} : { messageIndex: c.messageIndex }),
+      x: c.x, z: c.z, radius: COMFORT_RADIUS,
       interactRange: COMFORT_RADIUS + PLAYER.radius + INTERACT_MARGIN,
       item: nature(c.name, c.x, c.z, c.scale, c.rotY),
     });
     obstacles.push({ x: c.x, z: c.z, radius: COMFORT_RADIUS });
+  });
+  benchSpots(benchAngle).forEach((s, index) => {
+    const rotY = headingY(s, FURNACE); // 소각로를 바라본다(+z 가 앞).
+    const lx = BENCH.center.x * BENCH.scale;
+    const lz = BENCH.center.z * BENCH.scale;
+    interactables.push({
+      id: `seat-${index}`, label: '벤치', kind: 'seat', x: s.x, z: s.z, radius: BENCH.radius,
+      interactRange: BENCH.radius + PLAYER.radius + INTERACT_MARGIN,
+      seat: { x: s.x, z: s.z, rotY, y: BENCH.seatTop * BENCH.scale },
+      // 모델 원점은 모서리이므로 중심이 (s.x, s.z) 에 오도록 원점을 옮긴다.
+      item: { pack: 'furniture', name: 'bench', x: s.x - (lx * Math.cos(rotY) + lz * Math.sin(rotY)), z: s.z - (-lx * Math.sin(rotY) + lz * Math.cos(rotY)), scale: BENCH.scale, rotY },
+    });
+    obstacles.push({ x: s.x, z: s.z, radius: BENCH.radius });
   });
 
   // 숲 구역 내부 장식: 거절 표집(항목당 최대 200회, 실패하면 건너뜀).
@@ -125,7 +164,7 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
         if (Math.hypot(x - FURNACE.x, z - FURNACE.z) < minFurnace) continue;
         if (Math.hypot(x - SPAWN.x, z - SPAWN.z) < minSpawn) continue;
         if (Math.hypot(x - sign.x, z - sign.z) < SIGN_KEEP_OUT) continue;
-        if (interactables.some((o) => o.kind === 'comfort' && Math.hypot(x - o.x, z - o.z) < COMFORT_KEEP_OUT)) continue;
+        if (interactables.some((o) => o.kind !== 'furnace' && Math.hypot(x - o.x, z - o.z) < (o.kind === 'seat' ? BENCH_KEEP_OUT : COMFORT_KEEP_OUT))) continue;
         if (placed.some((o) => Math.hypot(x - o.x, z - o.z) < gap)) continue;
         const item = nature(pick(rng, names), x, z, rand(rng, smin, smax), rand(rng, 0, Math.PI * 2));
         into.push(item);

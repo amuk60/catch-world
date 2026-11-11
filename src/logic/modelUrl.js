@@ -3,6 +3,7 @@ const PACK_DIRS = {
   nature: 'assets/models/kenney_nature-kit/Models/GLTF format',
   fantasy: 'assets/models/kenney_fantasy-town-kit_2.0/Models/GLB format',
   characters: 'assets/models/kenney-mini-characters/Models/GLB format',
+  furniture: 'assets/models/kenney_furniture-kit/Models/GLTF format',
 };
 
 export function modelUrl(pack, name) {

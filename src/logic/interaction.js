@@ -10,11 +10,33 @@ export function inRange(playerPos, item) {
   return Math.hypot(playerPos.x - item.x, playerPos.z - item.z) <= item.interactRange;
 }
 
-// 도착 순간에 실행할 대상. 대기 중인 대상이 있고, 도착했고, 범위 안일 때만 돌려준다.
-export function resolveArrival({ pendingId, arrived, playerPos, items }) {
-  if (!pendingId || !arrived) return null;
-  const item = items.find((it) => it.id === pendingId);
-  return item && inRange(playerPos, item) ? item : null;
+// 범위 안에서 가장 가까운 대상(거리가 같으면 먼저 나온 것). 없으면 null.
+export function nearestInRange(playerPos, items) {
+  let best = null;
+  let bestDist = Infinity;
+  for (const item of items) {
+    if (!inRange(playerPos, item)) continue;
+    const dist = Math.hypot(playerPos.x - item.x, playerPos.z - item.z);
+    if (dist < bestDist) {
+      best = item;
+      bestDist = dist;
+    }
+  }
+  return best;
+}
+
+const ACTIONS = {
+  furnace: { type: 'burn', prompt: '소각 시작' },
+  comfort: { type: 'comfort', prompt: '살펴보기' },
+  fortune: { type: 'fortune', prompt: '포춘쿠키 열기' },
+  seat: { type: 'seat', prompt: '앉기' },
+};
+
+// E 키를 눌렀을 때의 동작 종류와 안내 문구.
+export function actionOf(item) {
+  const action = ACTIONS[item.kind];
+  if (!action) throw new Error(`알 수 없는 상호작용 종류: ${item.kind}`);
+  return { ...action };
 }
 
 export function hoverLabel(item) {
