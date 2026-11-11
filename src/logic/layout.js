@@ -30,6 +30,16 @@ const FOREST_INNER_MAX_X = ZONES.forestMaxX - 1; // 숲 내부 장식 x 상한(-
 const SIGN_KEEP_OUT = 2.8; // 숲 내부 장식과의 최소 거리
 const SIGN_OBSTACLE_RADIUS = 0.7; // 간판 충돌 원 반경(가운데 + 양 끝 3개)
 
+// 위로 문구 오브젝트(구역마다 1개). 위치는 고정이고 messageIndex 는 COMFORT_MESSAGES 의 순서다.
+const COMFORT_RADIUS = 0.5;
+const COMFORT_KEEP_OUT = 2.0; // 숲 내부 장식과의 최소 거리
+const INTERACT_MARGIN = 0.8; // 반경 + 플레이어 반경 위에 더하는 상호작용 여유
+const COMFORT_OBJECTS = [
+  { name: 'stump_roundDetailed', label: '쉬어가는 그루터기', x: -9.0, z: 5.0, scale: 3.5, rotY: 0.6 },
+  { name: 'sign', label: '작은 푯말', x: 0.8, z: -6.5, scale: 3.4, rotY: Math.PI / 4 },
+  { name: 'statue_head', label: '조용한 조각상', x: 6.0, z: 9.0, scale: 1.3, rotY: Math.PI / 4 },
+];
+
 const nature = (name, x, z, scale, rotY) => ({ pack: 'nature', name, x, z, scale, rotY });
 
 // 한 변이 2r인 정사각 둘레 위의 거리 d에 해당하는 점.
@@ -91,6 +101,20 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
   for (const a of [0, -(sign.width / 2 - 0.4), sign.width / 2 - 0.4]) {
     obstacles.push({ x: sign.x + a * Math.cos(sign.rotY), z: sign.z - a * Math.sin(sign.rotY), radius: sign.obstacleRadius });
   }
+  // 상호작용 대상: 소각로(이미 만들어진 모델) + 위로 오브젝트 3개. 위로 오브젝트는 충돌 원도 둔다.
+  const interactables = [{
+    id: 'furnace', label: '소각로', kind: 'furnace', x: FURNACE.x, z: FURNACE.z, radius: FURNACE.radius,
+    interactRange: FURNACE.radius + PLAYER.radius + INTERACT_MARGIN,
+  }];
+  COMFORT_OBJECTS.forEach((c, messageIndex) => {
+    interactables.push({
+      id: `comfort-${messageIndex}`, label: c.label, kind: 'comfort', messageIndex, x: c.x, z: c.z, radius: COMFORT_RADIUS,
+      interactRange: COMFORT_RADIUS + PLAYER.radius + INTERACT_MARGIN,
+      item: nature(c.name, c.x, c.z, c.scale, c.rotY),
+    });
+    obstacles.push({ x: c.x, z: c.z, radius: COMFORT_RADIUS });
+  });
+
   // 숲 구역 내부 장식: 거절 표집(항목당 최대 200회, 실패하면 건너뜀).
   const placed = []; // 이미 놓은 숲 내부 항목(간격 유지용)
   function scatterForest({ count, names, smin, smax, xmin, obstacleRadius, minFurnace, minSpawn = 0, gap, into }) {
@@ -101,6 +125,7 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
         if (Math.hypot(x - FURNACE.x, z - FURNACE.z) < minFurnace) continue;
         if (Math.hypot(x - SPAWN.x, z - SPAWN.z) < minSpawn) continue;
         if (Math.hypot(x - sign.x, z - sign.z) < SIGN_KEEP_OUT) continue;
+        if (interactables.some((o) => o.kind === 'comfort' && Math.hypot(x - o.x, z - o.z) < COMFORT_KEEP_OUT)) continue;
         if (placed.some((o) => Math.hypot(x - o.x, z - o.z) < gap)) continue;
         const item = nature(pick(rng, names), x, z, rand(rng, smin, smax), rand(rng, 0, Math.PI * 2));
         into.push(item);
@@ -121,7 +146,7 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
   scatterForest({ count: params.rocks, names: SMALL_ROCKS, smin: 2.5, smax: 3, xmin: -walk, obstacleRadius: 0.4, minFurnace: 3.2, gap: 1.2, into: rocks });
 
   return {
-    trees, bushes, rocks, lanterns, furnaceItems, sign,
+    trees, bushes, rocks, lanterns, furnaceItems, sign, interactables,
     buildingSlots: BUILDING_SLOTS.map((s) => ({ ...s })), plaza: { ...PLAZA }, obstacles,
   };
 }

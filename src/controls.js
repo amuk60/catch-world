@@ -1,9 +1,24 @@
 import { CLICK } from './config.js';
 import { isClick } from './logic/click.js';
 
-// 포인터 입력을 드래그/클릭/휠 핸들러로 변환한다. 왼쪽 버튼만 사용.
-export function createControls(domElement, { onDrag, onClick, onWheel }) {
+// 포인터 입력을 드래그/클릭/휠/호버 핸들러로 변환한다. 왼쪽 버튼만 사용.
+// onHover(ndc, clientX, clientY): 버튼을 누르지 않은 이동에서 프레임당 한 번. 캔버스를 벗어나면 onHover(null).
+export function createControls(domElement, { onDrag, onClick, onWheel, onHover }) {
   let down = null; // { x, y, t, lastX, lastY }
+  let hoverEvent = null; // 다음 프레임에 처리할 마지막 이동
+  let hoverFrame = 0;
+
+  function flushHover() {
+    hoverFrame = 0;
+    const e = hoverEvent;
+    hoverEvent = null;
+    if (!e || down) return;
+    const rect = domElement.getBoundingClientRect();
+    onHover({
+      x: ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      y: -((e.clientY - rect.top) / rect.height) * 2 + 1,
+    }, e.clientX, e.clientY);
+  }
 
   domElement.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
@@ -12,7 +27,13 @@ export function createControls(domElement, { onDrag, onClick, onWheel }) {
   });
 
   domElement.addEventListener('pointermove', (e) => {
-    if (!down) return;
+    if (!down) {
+      if (onHover && e.buttons === 0) {
+        hoverEvent = e;
+        if (!hoverFrame) hoverFrame = requestAnimationFrame(flushHover);
+      }
+      return;
+    }
     onDrag(e.clientX - down.lastX, e.clientY - down.lastY);
     down.lastX = e.clientX;
     down.lastY = e.clientY;
@@ -30,6 +51,12 @@ export function createControls(domElement, { onDrag, onClick, onWheel }) {
       x: ((e.clientX - rect.left) / rect.width) * 2 - 1,
       y: -((e.clientY - rect.top) / rect.height) * 2 + 1,
     });
+  });
+
+  domElement.addEventListener('pointerleave', () => {
+    if (!onHover) return;
+    hoverEvent = null;
+    onHover(null);
   });
 
   domElement.addEventListener('pointercancel', () => { down = null; });

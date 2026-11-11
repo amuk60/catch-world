@@ -24,7 +24,7 @@ test('없앤 항목은 결과에 없다', () => {
   }
   assert.deepEqual(
     Object.keys(L).sort(),
-    ['buildingSlots', 'bushes', 'furnaceItems', 'lanterns', 'obstacles', 'plaza', 'rocks', 'sign', 'trees'],
+    ['buildingSlots', 'bushes', 'furnaceItems', 'interactables', 'lanterns', 'obstacles', 'plaza', 'rocks', 'sign', 'trees'],
   );
 });
 
@@ -123,7 +123,8 @@ test('개수와 장애물', () => {
   assert.equal(L.obstacles.filter((o) => o.radius === 0.3).length, 4);
   assert.equal(L.obstacles.filter((o) => o.radius === 0.4).length, interiorTrees.length + L.rocks.length); // 나무·바위
   assert.equal(L.obstacles.filter((o) => o.radius === 0.7).length, 3); // 간판
-  assert.equal(L.obstacles.length, interiorTrees.length + L.rocks.length + 4 + 3);
+  assert.equal(L.obstacles.filter((o) => o.radius === 0.5).length, 3); // 위로 오브젝트
+  assert.equal(L.obstacles.length, interiorTrees.length + L.rocks.length + 4 + 3 + 3);
   // 소각로 원은 obstacles 에 들어가지 않는다(이동 코드가 따로 처리).
   assert.ok(!L.obstacles.some((o) => o.x === FURNACE.x && o.z === FURNACE.z));
 });
@@ -191,4 +192,66 @@ test('나무 크기: 고리 1.8~2.5, 바깥 띠 2.3~3.2, 숲 내부 1.9~2.5', ()
     else if (r <= 13.5) assert.ok(t.scale >= 1.8 && t.scale <= 3.2, `ring ${t.scale}`); // 고리 범위는 띠와 겹칠 수 있다
     else assert.ok(t.scale >= 2.3 && t.scale <= 3.2, `band ${t.scale}`);
   }
+});
+
+// ---- 상호작용 오브젝트 ----
+const comfort = L.interactables.filter((i) => i.kind === 'comfort');
+const furnaceI = L.interactables.find((i) => i.id === 'furnace');
+
+test('상호작용 대상 4개: 소각로 + 위로 오브젝트 3개', () => {
+  assert.equal(L.interactables.length, 4);
+  assert.deepEqual(L.interactables.map((i) => i.id), ['furnace', 'comfort-0', 'comfort-1', 'comfort-2']);
+  assert.deepEqual(furnaceI, {
+    id: 'furnace', label: '소각로', kind: 'furnace', x: FURNACE.x, z: FURNACE.z, radius: FURNACE.radius,
+    interactRange: FURNACE.radius + PLAYER.radius + 0.8,
+  });
+  assert.deepEqual(comfort.map((c) => [c.item.name, c.label, c.x, c.z, c.item.scale]), [
+    ['stump_roundDetailed', '쉬어가는 그루터기', -9.0, 5.0, 3.5],
+    ['sign', '작은 푯말', 0.8, -6.5, 3.4],
+    ['statue_head', '조용한 조각상', 6.0, 9.0, 1.3],
+  ]);
+});
+
+test('위로 오브젝트: 구역, 걸을 수 있는 영역, 소각로·큰 간판·스폰과의 거리', () => {
+  const [forest, buffer, city] = comfort;
+  assert.ok(forest.x <= ZONES.forestMaxX, 'forest');
+  assert.ok(buffer.x > ZONES.forestMaxX && buffer.x < ZONES.cityMinX, 'buffer');
+  assert.ok(city.x >= ZONES.cityMinX, 'city');
+  for (const c of comfort) {
+    assert.ok(inWalk(c), c.id);
+    assert.ok(d(c, FURNACE) >= 3, `${c.id} furnace`);
+    assert.ok(d(c, L.sign) >= 2.8, `${c.id} sign`);
+    assert.ok(d(c, SPAWN) >= 2.5, `${c.id} spawn`);
+    assert.equal(c.item.pack, 'nature');
+    assert.deepEqual([c.item.x, c.item.z], [c.x, c.z]);
+    assert.ok(Number.isFinite(c.item.rotY));
+  }
+});
+
+test('위로 오브젝트는 모두 장애물로 등록되어 있다', () => {
+  for (const c of comfort) {
+    assert.equal(c.radius, 0.5);
+    assert.ok(L.obstacles.some((o) => o.x === c.x && o.z === c.z && o.radius === c.radius), c.id);
+  }
+});
+
+test('상호작용 범위는 반경 + 플레이어 반경보다 크다, messageIndex 는 0,1,2 한 번씩', () => {
+  for (const i of L.interactables) {
+    assert.ok(i.interactRange > i.radius + PLAYER.radius, i.id);
+    assert.ok(i.interactRange >= i.radius + PLAYER.radius + 0.8 - 1e-9, i.id);
+  }
+  assert.deepEqual(comfort.map((c) => c.messageIndex).sort(), [0, 1, 2]);
+});
+
+test('숲 내부 장식은 위로 오브젝트에서 2.0 이상 떨어져 있다(여러 시드)', () => {
+  for (const seed of [1, 2, 3, 42, 777, 20261111]) {
+    const l = buildLayout(seed);
+    for (const c of l.interactables.filter((i) => i.kind === 'comfort')) {
+      for (const o of [...l.trees.filter(inWalk), ...l.bushes, ...l.rocks]) assert.ok(d(o, c) >= 2.0, `seed ${seed} ${c.id}`);
+    }
+  }
+});
+
+test('상호작용 대상은 시드와 무관하게 같은 위치', () => {
+  assert.deepEqual(buildLayout(1).interactables, buildLayout(2).interactables);
 });

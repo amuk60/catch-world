@@ -194,3 +194,16 @@ export function buildCity(scene, layout) {
   scene.add(group);
   return group;
 }
+
+// 상호작용 대상마다 보이지 않는 클릭/호버 판정 부피(원기둥)를 만든다. 레이캐스트는 재질이 안 보여도 동작한다.
+export function buildPickables(scene, interactables) {
+  return interactables.map((it) => {
+    const r = it.radius * 1.4;
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 2.2), new THREE.MeshBasicMaterial());
+    mesh.material.visible = false;
+    mesh.position.set(it.x, 1.1, it.z);
+    mesh.userData.interactId = it.id;
+    scene.add(mesh);
+    return mesh;
+  });
+}

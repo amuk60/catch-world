@@ -5,7 +5,7 @@ import { occlusionTarget } from './logic/occlusion.js';
 
 // 그룹 이름 -> 그림자 던지기 여부
 const GROUPS = {
-  trees: true, bushes: false, rocks: true, lanterns: true, furnaceItems: true,
+  trees: true, bushes: false, rocks: true, lanterns: true, furnaceItems: true, comfortItems: true,
 };
 
 // Kenney 'grass'·'leafsDark' 재질은 원본 색이 청록(시안)에 가까워 초록 덤불·소나무가 청록으로 보인다. 재질 이름별로 초록으로 되돌린다.
@@ -22,12 +22,14 @@ const OCCLUSION_EPS = 0.01; // 이 이상 달라져야 행렬을 다시 쓴다.
 
 export function buildDecor(scene, layout, models) {
   const root = new THREE.Group();
+  // 위로 오브젝트의 모델 배치는 layout.interactables 에서 가져온다.
+  const source = { ...layout, comfortItems: layout.interactables.filter((i) => i.item).map((i) => i.item) };
   const treeRecords = []; // 가림 축소 대상: 나무 한 그루마다 { item, factor, applied, parts }
 
   for (const [group, castShadow] of Object.entries(GROUPS)) {
     // 이 그룹의 아이템을 모델별로 묶는다.
     const byModel = new Map();
-    for (const it of layout[group]) {
+    for (const it of source[group]) {
       const key = `${it.pack}/${it.name}`;
       if (!models.get(key)) continue; // 로딩 실패한 모델은 조용히 건너뜀
       if (!byModel.has(key)) byModel.set(key, []);
