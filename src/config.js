@@ -25,7 +25,7 @@ export const YARD = { width: 24, depth: 24 };
 // followSpeed: 타깃 추적 지수 보간 속도, rotateSpeed: 드래그 1px당 라디안, zoomStep: 휠 1칸 배율.
 export const ORBIT = {
   baseFov: 45, minAspect: 1.5,
-  distance: 9, minDistance: 5, maxDistance: 16,
+  distance: 9, minDistance: 5, maxDistance: 12,
   azimuthDeg: 45, polarDeg: 60, minPolarDeg: 25, maxPolarDeg: 75,
   targetHeight: 1.0, followSpeed: 6, rotateSpeed: 0.005, zoomStep: 0.9,
 };
@@ -37,7 +37,13 @@ export const PLAYER = { speed: 4, radius: 0.4 };
 export const CLICK = { maxMovePx: 6, maxMs: 350 };
 
 // 임시 소각로(장애물).
-export const FURNACE = { x: 0, z: -4, radius: 1.2 };
+export const FURNACE = { x: -6.5, z: -1.5, radius: 1.6 };
+
+// 플레이어 시작 위치. 숲과 도시 사이 완충 구역의 열린 잔디밭.
+export const SPAWN = { x: 0, z: 3 };
+
+// 구역 경계(world x축, +x = 동쪽). x <= forestMaxX 는 숲+소각로, x >= cityMinX 는 도시, 그 사이는 완충 구역.
+export const ZONES = { forestMaxX: -1.5, cityMinX: 2.5 };
 
 // 상호작용 반경(단위). 이후 단계에서 사용한다.
 export const INTERACT_RADIUS = 1.5;
@@ -48,8 +54,12 @@ export const SEED = 20261111;
 // 색상 (0xRRGGBB)
 export const COLORS = {
   skyTop: 0x3f6fa8, skyHorizon: 0xf1c48f, fog: 0xdcbf94,
-  ground: 0x6b8f3a, water: 0x3f8fb5, sun: 0xffd6a0,
-  hemiSky: 0xa9c4ee, hemiGround: 0x6a5a3a,
+  ground: 0x6b8f3a, sun: 0xffd6a0,
+  hemiSky: 0xe9dcc0, hemiGround: 0x7a6a4a,
+  // 도시 구역: 포장 광장과 건물 터(건물 자체는 이후 단계).
+  plaza: 0x8d8d96, pad: 0x6d6d78,
+  // 모델 재질 보정: 원본이 청록이라 초록으로 바꾼다(덤불 / 어두운 소나무 잎).
+  bush: 0x6aa83a, pine: 0x52934a,
   // 아래 셋은 모델 로딩 실패 시 쓰는 도형 대체물용.
   player: 0x6ec6ff, trunk: 0x6b4a2f, leaves: 0xb5452a, furnace: 0x6a6a78, marker: 0xffd166,
 };
@@ -58,4 +68,4 @@ export const COLORS = {
 export const FOG = { near: 22, far: 75 };
 
 // 조명: 해(방향광) 세기, 하늘빛(반구광) 세기, 해 위치, 그림자 범위(단위).
-export const LIGHT = { sun: 2.2, hemi: 0.7, sunPosition: [-12, 10, 8], shadowExtent: 24 };
+export const LIGHT = { sun: 1.9, hemi: 0.75, sunPosition: [-12, 10, 8], shadowExtent: 24 };

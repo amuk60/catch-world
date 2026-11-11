@@ -5,7 +5,7 @@ import { applyAtmosphere } from './atmosphere.js';
 import { loadModels } from './assets.js';
 import { buildDecor } from './decor.js';
 import { buildLayout } from './logic/layout.js';
-import { buildGround, buildBoundary, buildFurnace, buildPlayer, buildMarker } from './world.js';
+import { buildGround, buildCity, buildBoundary, buildFurnace, buildPlayer, buildMarker, MARKER_Y } from './world.js';
 import { createControls } from './controls.js';
 import { ORBIT, YARD, PLAYER, FURNACE, SEED } from './config.js';
 import { applyDrag, applyZoom, orbitPosition } from './logic/orbit.js';
@@ -28,6 +28,7 @@ if (isMobileUA(navigator.userAgent)) {
   }
   applyAtmosphere(scene, renderer);
   const ground = buildGround(scene);
+  buildCity(scene, layout);
   buildDecor(scene, layout, models);
   // 모델이 없으면 도형 대체물.
   if (!models.get('nature/campfire_stones')) buildFurnace(scene);
@@ -62,7 +63,7 @@ if (isMobileUA(navigator.userAgent)) {
       let p = clampToYard({ x: hit.point.x, z: hit.point.z }, YARD, PLAYER.radius + 0.5);
       p = pushOut(p);
       moveTarget = p;
-      marker.position.set(p.x, 0.02, p.z);
+      marker.position.set(p.x, MARKER_Y, p.z);
       marker.visible = true;
     },
   });

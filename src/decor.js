@@ -2,11 +2,13 @@
 import * as THREE from 'three';
 import { COLORS } from './config.js';
 
-// 그룹 이름 -> [그림자 던지기 여부]
+// 그룹 이름 -> 그림자 던지기 여부
 const GROUPS = {
-  trees: true, rocks: true, bushes: false, flowers: false, grass: false, plants: false,
-  pathTiles: false, lanterns: true, obelisks: true, pondLilies: false, pondRocks: true, furnaceItems: true,
+  trees: true, bushes: false, rocks: true, lanterns: true, furnaceItems: true,
 };
+
+// Kenney 'grass'·'leafsDark' 재질은 원본 색이 청록(시안)에 가까워 초록 덤불·소나무가 청록으로 보인다. 재질 이름별로 초록으로 되돌린다.
+const MATERIAL_TINTS = { grass: COLORS.bush, leafsDark: COLORS.pine };
 
 const m = new THREE.Matrix4();
 const q = new THREE.Quaternion();
@@ -38,7 +40,10 @@ export function buildDecor(scene, layout, models) {
       model.traverse((obj) => {
         if (!obj.isMesh) return;
         // Kenney glb 재질은 metallic=1 이라 환경맵 없이는 검게 보인다. 비금속으로 되돌린다.
-        for (const mat of [].concat(obj.material)) mat.metalness = 0;
+        for (const mat of [].concat(obj.material)) {
+          mat.metalness = 0;
+          if (MATERIAL_TINTS[mat.name] !== undefined) mat.color.setHex(MATERIAL_TINTS[mat.name]);
+        }
         const local = new THREE.Matrix4().multiplyMatrices(rootInv, obj.matrixWorld);
         const mesh = new THREE.InstancedMesh(obj.geometry, obj.material, items.length);
         instances.forEach((inst, i) => mesh.setMatrixAt(i, m.multiplyMatrices(inst, local)));
@@ -50,19 +55,6 @@ export function buildDecor(scene, layout, models) {
       });
     }
   }
-
-  // 연못 수면.
-  const { pond } = layout;
-  const water = new THREE.Mesh(
-    new THREE.CircleGeometry(pond.radius, 48),
-    new THREE.MeshStandardMaterial({
-      color: COLORS.water, roughness: 0.25, metalness: 0.1, transparent: true, opacity: 0.92,
-    }),
-  );
-  water.rotation.x = -Math.PI / 2;
-  water.position.set(pond.x, 0.04, pond.z);
-  water.receiveShadow = true;
-  root.add(water);
 
   scene.add(root);
   return root;

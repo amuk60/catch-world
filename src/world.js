@@ -1,7 +1,11 @@
 import * as THREE from 'three';
-import { YARD, FURNACE, COLORS } from './config.js';
+import { YARD, FURNACE, SPAWN, COLORS } from './config.js';
 
 const GROUND_SIZE = 140;
+// 납작한 면은 높이를 달리하고 polygonOffset 을 더해 지면(y=0)과 깊이가 겹쳐 깜빡이지 않게 한다.
+const PLAZA_Y = 0.02;
+const PAD_Y = 0.04;
+export const MARKER_Y = 0.06; // 광장(0.02)·터(0.04)보다 위
 
 // 바닥. 시각적으로는 마당보다 훨씬 넓고, 이동 범위는 YARD 가 따로 제한한다. 클릭 레이캐스트 대상.
 export function buildGround(scene) {
@@ -83,7 +87,7 @@ export function buildPlayer(scene) {
     eye.position.set(x, 0.65, 0.41);
     group.add(eye);
   }
-  group.position.set(0, 0, 4);
+  group.position.set(SPAWN.x, 0, SPAWN.z);
   scene.add(group);
   return group;
 }
@@ -95,8 +99,31 @@ export function buildMarker(scene) {
     new THREE.MeshBasicMaterial({ color: COLORS.marker, side: THREE.DoubleSide }),
   );
   marker.rotation.x = -Math.PI / 2;
-  marker.position.y = 0.02;
+  marker.position.y = MARKER_Y;
   marker.visible = false;
   scene.add(marker);
   return marker;
+}
+
+// 도시 구역: 포장 광장 + 건물 터 2곳(건물 모델은 이후 단계). 납작한 면이라 지면과 깊이가 겹치지 않게 처리한다.
+function flatPlane(width, depth, x, z, y, color, offset) {
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(width, depth),
+    new THREE.MeshStandardMaterial({
+      color, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: offset, polygonOffsetUnits: offset,
+    }),
+  );
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.set(x, y, z);
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+export function buildCity(scene, layout) {
+  const { plaza, buildingSlots } = layout;
+  const group = new THREE.Group();
+  group.add(flatPlane(plaza.x2 - plaza.x1, plaza.z2 - plaza.z1, (plaza.x1 + plaza.x2) / 2, (plaza.z1 + plaza.z2) / 2, PLAZA_Y, COLORS.plaza, -1));
+  for (const s of buildingSlots) group.add(flatPlane(s.width, s.depth, s.x, s.z, PAD_Y, COLORS.pad, -2));
+  scene.add(group);
+  return group;
 }
