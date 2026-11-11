@@ -3,17 +3,23 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { modelUrl } from './logic/modelUrl.js';
 
 const loader = new GLTFLoader();
-const cache = new Map(); // url -> Promise<Group|null>
+const cache = new Map(); // url -> Promise<gltf|null>
 
-export function loadModel(pack, name) {
+// 전체 glTF 객체({scene, animations})를 불러온다. 실패하면 한 번만 경고하고 null.
+export function loadGltf(pack, name) {
   const url = modelUrl(pack, name);
   if (!cache.has(url)) {
-    cache.set(url, loader.loadAsync(url).then((gltf) => gltf.scene).catch((err) => {
+    cache.set(url, loader.loadAsync(url).catch((err) => {
       console.warn(`모델 로딩 실패: ${url}`, err);
       return null;
     }));
   }
   return cache.get(url);
+}
+
+export async function loadModel(pack, name) {
+  const gltf = await loadGltf(pack, name);
+  return gltf ? gltf.scene : null;
 }
 
 // items 에 쓰인 고유한 (pack,name) 모델을 병렬로 불러와 `${pack}/${name}` -> Group 맵으로 돌려준다.

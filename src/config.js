@@ -33,6 +33,10 @@ export const ORBIT = {
 // 플레이어 이동 속도(단위/초)와 충돌 반경(단위).
 export const PLAYER = { speed: 4, radius: 0.4 };
 
+// 플레이어 캐릭터 모델. name 을 예: 'character-female-a', 'character-worker' 로 바꾸면 캐릭터가 바뀐다.
+// facingOffsetDeg: 모델이 +z 를 보지 않으면 (예: 180) 돌려서 맞춘다.
+export const PLAYER_MODEL = { name: 'character-male-a', scale: 1.5, facingOffsetDeg: 0 };
+
 // 클릭 판정: 이동 px와 시간(ms)이 모두 이하면 클릭, 넘으면 드래그.
 export const CLICK = { maxMovePx: 6, maxMs: 350 };
 

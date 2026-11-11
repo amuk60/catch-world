@@ -26,6 +26,9 @@ const CITY_BAND_KEEP = 0.3; // 도시 쪽(x > 4) 바깥 띠 나무 유지 비율
 const MAX_ATTEMPTS = 200;
 const FOREST_INNER_MAX_X = ZONES.forestMaxX - 1; // 숲 내부 장식 x 상한(-2.5): 완충 구역과 여유를 둔다.
 
+// 캐치 로고 간판: 소각로 북쪽(-z). 기본 카메라(+x,+z 쪽)를 비스듬히 향한다.
+const SIGN_KEEP_OUT = 2.8; // 숲 내부 장식과의 최소 거리
+
 const nature = (name, x, z, scale, rotY) => ({ pack: 'nature', name, x, z, scale, rotY });
 
 // 한 변이 2r인 정사각 둘레 위의 거리 d에 해당하는 점.
@@ -80,6 +83,11 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
     obstacles.push({ x: 3.2, z, radius: 0.3 });
   }
 
+  // 로고 간판 (SIGN_KEEP_OUT 만큼 숲 내부 장식을 비운다).
+  const logoSign = {
+    x: FURNACE.x, z: FURNACE.z - 4.3, rotY: Math.PI / 4, width: 4.0, height: 1.5, obstacleRadius: 1.2,
+  };
+  obstacles.push({ x: logoSign.x, z: logoSign.z, radius: logoSign.obstacleRadius });
   // 숲 구역 내부 장식: 거절 표집(항목당 최대 200회, 실패하면 건너뜀).
   const placed = []; // 이미 놓은 숲 내부 항목(간격 유지용)
   function scatterForest({ count, names, smin, smax, xmin, obstacleRadius, minFurnace, minSpawn = 0, gap, into }) {
@@ -89,6 +97,7 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
         const z = rand(rng, -walkZ, walkZ);
         if (Math.hypot(x - FURNACE.x, z - FURNACE.z) < minFurnace) continue;
         if (Math.hypot(x - SPAWN.x, z - SPAWN.z) < minSpawn) continue;
+        if (Math.hypot(x - logoSign.x, z - logoSign.z) < SIGN_KEEP_OUT) continue;
         if (placed.some((o) => Math.hypot(x - o.x, z - o.z) < gap)) continue;
         const item = nature(pick(rng, names), x, z, rand(rng, smin, smax), rand(rng, 0, Math.PI * 2));
         into.push(item);
@@ -109,7 +118,7 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
   scatterForest({ count: params.rocks, names: SMALL_ROCKS, smin: 2.5, smax: 3, xmin: -walk, obstacleRadius: 0.4, minFurnace: 3.2, gap: 1.2, into: rocks });
 
   return {
-    trees, bushes, rocks, lanterns, furnaceItems,
+    trees, bushes, rocks, lanterns, furnaceItems, logoSign,
     buildingSlots: BUILDING_SLOTS.map((s) => ({ ...s })), plaza: { ...PLAZA }, obstacles,
   };
 }

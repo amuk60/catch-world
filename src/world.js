@@ -92,6 +92,49 @@ export function buildPlayer(scene) {
   return group;
 }
 
+// 캐치 로고 간판: 나무 기둥 2개 + 판자 + 로고 그림. 로고는 판자의 +z 면(로컬)에 붙는다.
+export function buildLogoSign(scene, sign) {
+  const { width, height } = sign;
+  const BOARD_Y = 1.9;
+  const BOARD_D = 0.15;
+  const group = new THREE.Group();
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2f });
+  const postH = height + 0.6;
+  for (const sx of [-1, 1]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, postH, 12), postMat);
+    post.position.set(sx * (width / 2 - 0.2), postH / 2, 0);
+    post.castShadow = true;
+    post.receiveShadow = true;
+    group.add(post);
+  }
+  const board = new THREE.Mesh(
+    new THREE.BoxGeometry(width, height, BOARD_D),
+    new THREE.MeshStandardMaterial({ color: 0x8a5f3a }),
+  );
+  board.position.y = BOARD_Y;
+  board.castShadow = true;
+  board.receiveShadow = true;
+  group.add(board);
+
+  const texture = new THREE.TextureLoader().load('assets/catch_logo.png');
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const logoW = width * 0.9;
+  const logo = new THREE.Mesh(
+    new THREE.PlaneGeometry(logoW, logoW * 276 / 723),
+    new THREE.MeshBasicMaterial({
+      map: texture, transparent: true, toneMapped: false,
+      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+    }),
+  );
+  logo.position.set(0, BOARD_Y, BOARD_D / 2 + 0.09);
+  group.add(logo);
+
+  group.position.set(sign.x, 0, sign.z);
+  group.rotation.y = sign.rotY;
+  scene.add(group);
+  return group;
+}
+
 // 클릭 지점 표시용 납작한 링. 처음엔 숨김.
 export function buildMarker(scene) {
   const marker = new THREE.Mesh(

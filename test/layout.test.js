@@ -24,7 +24,7 @@ test('없앤 항목은 결과에 없다', () => {
   }
   assert.deepEqual(
     Object.keys(L).sort(),
-    ['buildingSlots', 'bushes', 'furnaceItems', 'lanterns', 'obstacles', 'plaza', 'rocks', 'trees'],
+    ['buildingSlots', 'bushes', 'furnaceItems', 'lanterns', 'logoSign', 'obstacles', 'plaza', 'rocks', 'trees'],
   );
 });
 
@@ -123,7 +123,7 @@ test('개수와 장애물', () => {
   assert.equal(L.obstacles.filter((o) => o.radius === 0.45).length, interiorTrees.length);
   assert.equal(L.obstacles.filter((o) => o.radius === 0.3).length, 4);
   assert.equal(L.obstacles.filter((o) => o.radius === 0.4).length, L.rocks.length);
-  assert.equal(L.obstacles.length, interiorTrees.length + L.rocks.length + 4);
+  assert.equal(L.obstacles.length, interiorTrees.length + L.rocks.length + 4 + 1); // +1 = 로고 간판
   // 소각로 원은 obstacles 에 들어가지 않는다(이동 코드가 따로 처리).
   assert.ok(!L.obstacles.some((o) => o.x === FURNACE.x && o.z === FURNACE.z));
 });
@@ -143,5 +143,29 @@ test('여러 시드에서도 규칙이 유지된다', () => {
       assert.ok(t.x >= -11 && t.x <= -2.5 && d(t, FURNACE) >= 4.5 && d(t, SPAWN) >= 2.5, `seed ${seed}`);
     }
     for (const o of [...l.bushes, ...l.rocks]) assert.ok(o.x <= -2.5 && d(o, FURNACE) >= 3.2, `seed ${seed}`);
+  }
+});
+
+test('로고 간판: 값, 숲 구역, 걸을 수 있는 영역 안, 소각로에서 3 이상', () => {
+  const s = L.logoSign;
+  assert.deepEqual(s, {
+    x: FURNACE.x, z: FURNACE.z - 4.3, rotY: Math.PI / 4, width: 4.0, height: 1.5, obstacleRadius: 1.2,
+  });
+  assert.ok(inWalk(s), 'walkable');
+  assert.ok(s.x <= ZONES.forestMaxX, 'forest zone');
+  assert.ok(d(s, FURNACE) >= 3);
+});
+
+test('로고 간판 장애물이 obstacles 에 있고, 숲 내부 나무·덤불·바위는 2.8 이상 떨어져 있다', () => {
+  const s = L.logoSign;
+  assert.ok(L.obstacles.some((o) => o.x === s.x && o.z === s.z && o.radius === 1.2));
+  for (const o of [...interiorTrees, ...forestOnly]) assert.ok(d(o, s) >= 2.8, JSON.stringify(o));
+  assert.ok(d(s, SPAWN) >= 1.2 + PLAYER.radius);
+});
+
+test('여러 시드에서도 간판 주변 2.8 안에 숲 내부 장식이 없다', () => {
+  for (const seed of [1, 2, 3, 42, 777, 20261111]) {
+    const l = buildLayout(seed);
+    for (const o of [...l.trees.filter(inWalk), ...l.bushes, ...l.rocks]) assert.ok(d(o, l.logoSign) >= 2.8, `seed ${seed}`);
   }
 });

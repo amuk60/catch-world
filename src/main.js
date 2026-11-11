@@ -2,12 +2,13 @@ import * as THREE from 'three';
 import { isMobileUA } from './env.js';
 import { createStage } from './stage.js';
 import { applyAtmosphere } from './atmosphere.js';
-import { loadModels } from './assets.js';
+import { loadModels, loadGltf } from './assets.js';
 import { buildDecor } from './decor.js';
 import { buildLayout } from './logic/layout.js';
-import { buildGround, buildCity, buildBoundary, buildFurnace, buildPlayer, buildMarker, MARKER_Y } from './world.js';
+import { buildGround, buildCity, buildBoundary, buildFurnace, buildPlayer, buildLogoSign, buildMarker, MARKER_Y } from './world.js';
+import { createPlayer } from './player.js';
 import { createControls } from './controls.js';
-import { ORBIT, YARD, PLAYER, FURNACE, SEED } from './config.js';
+import { ORBIT, YARD, PLAYER, PLAYER_MODEL, FURNACE, SPAWN, SEED } from './config.js';
 import { applyDrag, applyZoom, orbitPosition } from './logic/orbit.js';
 import { clampToYard, stepToward, pushOutOfCircle, headingY } from './logic/movement.js';
 
@@ -20,9 +21,10 @@ if (isMobileUA(navigator.userAgent)) {
   const loading = document.getElementById('loading');
 
   let models = new Map();
+  let characterGltf = null;
   try {
     const all = Object.values(layout).filter(Array.isArray).flat().filter((it) => it.pack);
-    models = await loadModels(all);
+    [models, characterGltf] = await Promise.all([loadModels(all), loadGltf('characters', PLAYER_MODEL.name)]);
   } catch (err) {
     console.warn('모델 로딩 중 오류. 도형 대체물을 사용합니다.', err);
   }
@@ -30,13 +32,24 @@ if (isMobileUA(navigator.userAgent)) {
   const ground = buildGround(scene);
   buildCity(scene, layout);
   buildDecor(scene, layout, models);
+  buildLogoSign(scene, layout.logoSign);
   // 모델이 없으면 도형 대체물.
   if (!models.get('nature/campfire_stones')) buildFurnace(scene);
   const treeCount = [...models.keys()].filter((k) => k.startsWith('nature/tree_') && models.get(k)).length;
   if (treeCount < 5) buildBoundary(scene);
   loading.classList.add('hidden');
   setTimeout(() => { loading.style.display = 'none'; }, 500); // 페이드가 끝난 뒤 완전히 제거
-  const player = buildPlayer(scene);
+  // 캐릭터 모델이 없으면 상자 플레이어. 이동/회전은 항상 group 이 맡는다.
+  let character = null;
+  let player;
+  if (characterGltf) {
+    character = createPlayer(characterGltf);
+    player = character.group;
+    player.position.set(SPAWN.x, 0, SPAWN.z);
+    scene.add(player);
+  } else {
+    player = buildPlayer(scene);
+  }
   const marker = buildMarker(scene);
 
   // 여러 장애물이 가까울 때도 자리 잡도록 몇 번 반복해서 밀어낸다.
@@ -83,6 +96,8 @@ if (isMobileUA(navigator.userAgent)) {
         marker.visible = false;
       }
     }
+    character?.setMoving(moveTarget !== null);
+    character?.update(dt);
 
     const k = 1 - Math.exp(-ORBIT.followSpeed * dt);
     desired.set(player.position.x, ORBIT.targetHeight, player.position.z);

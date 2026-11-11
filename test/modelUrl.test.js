@@ -10,6 +10,10 @@ test('fantasy 팩 URL', () => {
   assert.equal(modelUrl('fantasy', 'lantern'),
     'assets/models/kenney_fantasy-town-kit_2.0/Models/GLB%20format/lantern.glb');
 });
+test('characters 팩 URL', () => {
+  assert.equal(modelUrl('characters', 'character-male-a'),
+    'assets/models/kenney-mini-characters/Models/GLB%20format/character-male-a.glb');
+});
 test('알 수 없는 팩은 오류', () => {
   assert.throws(() => modelUrl('scifi', 'x'), /scifi/);
 });
