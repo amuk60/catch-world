@@ -112,7 +112,7 @@
 - [ ] 소각장 게임 초안값 검증·조정(플레이 후), 연출 상세
 - [ ] 월드 세부: 캐릭터 외형, 시작 화면 유무, 위로 문구 오브젝트 문구
 - [ ] 레퍼런스 스크린샷·녹화(`assets/reference/`)와 따라갈 요소 확정
-- [ ] 3D 모델: 캐릭터는 Kenney Mini Characters(CC0), 가구·소품은 Kenney Furniture Kit(CC0) **확보 완료**. **야외용 자연 팩(나무·돌·풀·캠프파이어 등) 추가 확보 대기**. 소각로는 팩에 맞는 게 없으면 도형, 파쇄기는 도형으로 보완
+- [x] 3D 모델 **확보 완료**(모두 CC0, `assets/models/`, 출처 `assets/CREDITS.md`): Mini Characters(캐릭터), **Nature Kit**(단풍 포함 나무·돌길·연못·풀·꽃·바위·**모닥불=소각로** `campfire_stones`), Fantasy Town Kit(등롱·울타리·아치문·기둥·분수), Furniture Kit(소품), Building Kit(미사용). 파쇄기만 도형으로 보완
 - [ ] 제한형 카메라의 각도·거리·회전 범위
 - [ ] 공유 이미지 문구·디자인
 - [ ] 팀원별 이름·역할

@@ -57,8 +57,7 @@
 - [x] 🙋 Mini Characters 팩(CC0) 확보 → `assets/models/kenney-mini-characters/`
 - [x] 🙋 캐치 로고 준비 → `assets/catch_logo.png`
 - [x] 🙋 Furniture Kit(CC0) 확보 → `assets/models/kenney_furniture-kit/`
-- [ ] 🙋 야외용 자연 팩 확보 (kenney.nl 3D에서 나무·바위·풀·캠프파이어가 있는 CC0 팩, 소각로·파쇄기는 없으면 도형으로)
-- [ ] 🙋 `assets/models/팩이름/` 경로 확인 (경로가 붙지 않게)
+- [x] 🙋 Nature Kit, Fantasy Town Kit, Building Kit(CC0) 확보, 사용하지 않는 형식 정리 후 커밋 (`92e2bf1`)
 - [ ] 🙋 레퍼런스 스크린샷·녹화를 `assets/reference/`에 넣기
 - [ ] 재질·조명·색감 1차 개선 (레퍼런스 방향)
 - [ ] 캐치 로고를 벽에 붙이기
