@@ -42,8 +42,20 @@ export const FURNACE = { x: 0, z: -4, radius: 1.2 };
 // 상호작용 반경(단위). 이후 단계에서 사용한다.
 export const INTERACT_RADIUS = 1.5;
 
+// 시드: 마당 배치를 항상 같게 만든다.
+export const SEED = 20261111;
+
 // 색상 (0xRRGGBB)
 export const COLORS = {
-  sky: 0x8fb8d8, ground: 0x5f8a3f, player: 0x6ec6ff, trunk: 0x6b4a2f,
-  leaves: 0xb5452a, furnace: 0x6a6a78, marker: 0xffd166,
+  skyTop: 0x3f6fa8, skyHorizon: 0xf1c48f, fog: 0xdcbf94,
+  ground: 0x6b8f3a, water: 0x3f8fb5, sun: 0xffd6a0,
+  hemiSky: 0xa9c4ee, hemiGround: 0x6a5a3a,
+  // 아래 셋은 모델 로딩 실패 시 쓰는 도형 대체물용.
+  player: 0x6ec6ff, trunk: 0x6b4a2f, leaves: 0xb5452a, furnace: 0x6a6a78, marker: 0xffd166,
 };
+
+// 안개 거리(단위).
+export const FOG = { near: 22, far: 75 };
+
+// 조명: 해(방향광) 세기, 하늘빛(반구광) 세기, 해 위치, 그림자 범위(단위).
+export const LIGHT = { sun: 2.2, hemi: 0.7, sunPosition: [-12, 10, 8], shadowExtent: 24 };

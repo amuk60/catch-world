@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { YARD, FURNACE, COLORS } from './config.js';
 
-// 마당 바닥. 클릭 레이캐스트 대상.
+const GROUND_SIZE = 140;
+
+// 바닥. 시각적으로는 마당보다 훨씬 넓고, 이동 범위는 YARD 가 따로 제한한다. 클릭 레이캐스트 대상.
 export function buildGround(scene) {
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(YARD.width, YARD.depth),
+    new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE),
     new THREE.MeshStandardMaterial({ color: COLORS.ground }),
   );
   ground.rotation.x = -Math.PI / 2;
