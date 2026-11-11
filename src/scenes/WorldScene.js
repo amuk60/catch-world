@@ -82,8 +82,7 @@ export default class WorldScene extends Phaser.Scene {
 
   interact(obj) {
     if (obj.id === 'furnace') {
-      // 단계 4에서 BurnGame 씬 전환 연결
-      return;
+      this.scene.start('BurnGame'); return;
     }
     this.dialog.setText(obj.message).setVisible(true);
     if (this.dialogTimer) this.dialogTimer.remove();
