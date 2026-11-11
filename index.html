@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>캐치 월드 - 번아웃 소각장</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #1b1b2f; color: #cfcfe6;
+      font-family: system-ui, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; }
+    #wrap { display: flex; flex-direction: column; height: 100%; }
+    #game { flex: 1; min-height: 0; }
+    footer { font-size: 12px; text-align: center; padding: 6px 8px; background: #12121f; }
+    #mobile-notice { display: none; position: fixed; inset: 0; background: #1b1b2f;
+      align-items: center; justify-content: center; text-align: center;
+      padding: 24px; font-size: 18px; z-index: 10; }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <div id="game"></div>
+    <footer>※ 학사 과제용 비공식 프로젝트입니다. '캐치(Catch)'와 무관하며 비상업적 목적으로만 제작되었습니다. 방문 통계(Google Analytics)를 수집합니다.</footer>
+  </div>
+  <div id="mobile-notice">이 체험은 PC 브라우저(키보드·마우스)에서 이용해 주세요.</div>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
