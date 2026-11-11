@@ -35,7 +35,10 @@ export const PLAYER = { speed: 4, radius: 0.4 };
 
 // 플레이어 캐릭터 모델. name 을 예: 'character-female-a', 'character-worker' 로 바꾸면 캐릭터가 바뀐다.
 // facingOffsetDeg: 모델이 +z 를 보지 않으면 (예: 180) 돌려서 맞춘다.
-export const PLAYER_MODEL = { name: 'character-male-a', scale: 1.5, facingOffsetDeg: 0 };
+export const PLAYER_MODEL = { name: 'character-male-d', scale: 1.5, facingOffsetDeg: 0 };
+
+// 카메라와 플레이어 사이를 가리는 나무를 줄이는 설정. radius: 가림 판정 거리(단위), minT/maxT: 카메라→타깃 선분의 판정 구간(0~1), minScale: 가장 작아질 때의 배율.
+export const OCCLUSION = { radius: 2.0, minT: 0.08, maxT: 0.97, minScale: 0.2 };
 
 // 클릭 판정: 이동 px와 시간(ms)이 모두 이하면 클릭, 넘으면 드래그.
 export const CLICK = { maxMovePx: 6, maxMs: 350 };
@@ -61,9 +64,9 @@ export const COLORS = {
   ground: 0x6b8f3a, sun: 0xffd6a0,
   hemiSky: 0xe9dcc0, hemiGround: 0x7a6a4a,
   // 도시 구역: 포장 광장과 건물 터(건물 자체는 이후 단계).
-  plaza: 0x8d8d96, pad: 0x6d6d78,
-  // 모델 재질 보정: 원본이 청록이라 초록으로 바꾼다(덤불 / 어두운 소나무 잎).
-  bush: 0x6aa83a, pine: 0x52934a,
+  plaza: 0x8a98b8, pad: 0x707e96,
+  // 모델 재질 보정: 원본이 청록이라 초록으로 바꾼다(덤불 / 소나무 잎).
+  bush: 0x6aa83a, pine: 0x4f7a2a,
   // 아래 셋은 모델 로딩 실패 시 쓰는 도형 대체물용.
   player: 0x6ec6ff, trunk: 0x6b4a2f, leaves: 0xb5452a, furnace: 0x6a6a78, marker: 0xffd166,
 };
@@ -72,4 +75,4 @@ export const COLORS = {
 export const FOG = { near: 22, far: 75 };
 
 // 조명: 해(방향광) 세기, 하늘빛(반구광) 세기, 해 위치, 그림자 범위(단위).
-export const LIGHT = { sun: 1.9, hemi: 0.75, sunPosition: [-12, 10, 8], shadowExtent: 24 };
+export const LIGHT = { sun: 1.5, hemi: 0.95, sunPosition: [-9, 14, 7], shadowExtent: 24 };

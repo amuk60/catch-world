@@ -3,7 +3,7 @@
 import { YARD, FURNACE, PLAYER, SPAWN, ZONES } from '../config.js';
 import { mulberry32, rand, pick } from './rng.js';
 
-const DEFAULT_PARAMS = { ringTrees: 40, bandTrees: 50, interiorTrees: 14, bushes: 6, rocks: 3 };
+const DEFAULT_PARAMS = { ringTrees: 40, bandTrees: 30, interiorTrees: 8, bushes: 6, rocks: 3 };
 
 // 도시 구역 데이터. 건물 모델은 이후 단계에서 슬롯 위에 올린다.
 const PLAZA = { x1: 2.5, x2: 12, z1: -12, z2: 12 };
@@ -26,8 +26,9 @@ const CITY_BAND_KEEP = 0.3; // 도시 쪽(x > 4) 바깥 띠 나무 유지 비율
 const MAX_ATTEMPTS = 200;
 const FOREST_INNER_MAX_X = ZONES.forestMaxX - 1; // 숲 내부 장식 x 상한(-2.5): 완충 구역과 여유를 둔다.
 
-// 캐치 로고 간판: 소각로 북쪽(-z). 기본 카메라(+x,+z 쪽)를 비스듬히 향한다.
+// 간판: 소각로 북쪽(-z). 기본 카메라(+x,+z 쪽)를 비스듬히 향한다.
 const SIGN_KEEP_OUT = 2.8; // 숲 내부 장식과의 최소 거리
+const SIGN_OBSTACLE_RADIUS = 0.7; // 간판 충돌 원 반경(가운데 + 양 끝 3개)
 
 const nature = (name, x, z, scale, rotY) => ({ pack: 'nature', name, x, z, scale, rotY });
 
@@ -54,7 +55,7 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
   for (let i = 0; i < params.ringTrees; i++) {
     const r = rand(rng, 11.8, 13.5);
     const p = squarePoint(((i + rand(rng, -0.35, 0.35) + params.ringTrees) % params.ringTrees) / params.ringTrees * 8 * r, r);
-    const tree = nature(treeName(), p.x, p.z, rand(rng, 2.4, 3.4), rand(rng, 0, Math.PI * 2));
+    const tree = nature(treeName(), p.x, p.z, rand(rng, 1.8, 2.5), rand(rng, 0, Math.PI * 2));
     const keep = rng() < CITY_RING_KEEP; // 항상 뽑아 두어야 시드 흐름이 일정하다.
     if (p.x > ZONES.cityMinX && (!keep || insidePlaza(p.x, p.z))) continue;
     trees.push(tree);
@@ -62,7 +63,7 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
   for (let i = 0; i < params.bandTrees; i++) {
     const r = rand(rng, 14, 22);
     const p = squarePoint(rng() * 8 * r, r);
-    const tree = nature(treeName(), p.x, p.z, rand(rng, 3.0, 4.2), rand(rng, 0, Math.PI * 2));
+    const tree = nature(treeName(), p.x, p.z, rand(rng, 2.3, 3.2), rand(rng, 0, Math.PI * 2));
     const keep = rng() < CITY_BAND_KEEP;
     if (p.x > 4 && !keep) continue;
     trees.push(tree);
@@ -83,11 +84,13 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
     obstacles.push({ x: 3.2, z, radius: 0.3 });
   }
 
-  // 로고 간판 (SIGN_KEEP_OUT 만큼 숲 내부 장식을 비운다).
-  const logoSign = {
-    x: FURNACE.x, z: FURNACE.z - 4.3, rotY: Math.PI / 4, width: 4.0, height: 1.5, obstacleRadius: 1.2,
+  // 간판 (SIGN_KEEP_OUT 만큼 숲 내부 장식을 비운다). 충돌 원은 판의 로컬 x축을 따라 가운데와 양 끝에 둔다.
+  const sign = {
+    x: FURNACE.x, z: FURNACE.z - 4.3, rotY: Math.PI / 4, width: 3.2, height: 1.2, text: 'Catch World', obstacleRadius: SIGN_OBSTACLE_RADIUS,
   };
-  obstacles.push({ x: logoSign.x, z: logoSign.z, radius: logoSign.obstacleRadius });
+  for (const a of [0, -(sign.width / 2 - 0.4), sign.width / 2 - 0.4]) {
+    obstacles.push({ x: sign.x + a * Math.cos(sign.rotY), z: sign.z - a * Math.sin(sign.rotY), radius: sign.obstacleRadius });
+  }
   // 숲 구역 내부 장식: 거절 표집(항목당 최대 200회, 실패하면 건너뜀).
   const placed = []; // 이미 놓은 숲 내부 항목(간격 유지용)
   function scatterForest({ count, names, smin, smax, xmin, obstacleRadius, minFurnace, minSpawn = 0, gap, into }) {
@@ -97,7 +100,7 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
         const z = rand(rng, -walkZ, walkZ);
         if (Math.hypot(x - FURNACE.x, z - FURNACE.z) < minFurnace) continue;
         if (Math.hypot(x - SPAWN.x, z - SPAWN.z) < minSpawn) continue;
-        if (Math.hypot(x - logoSign.x, z - logoSign.z) < SIGN_KEEP_OUT) continue;
+        if (Math.hypot(x - sign.x, z - sign.z) < SIGN_KEEP_OUT) continue;
         if (placed.some((o) => Math.hypot(x - o.x, z - o.z) < gap)) continue;
         const item = nature(pick(rng, names), x, z, rand(rng, smin, smax), rand(rng, 0, Math.PI * 2));
         into.push(item);
@@ -110,7 +113,7 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
 
   scatterForest({
     count: params.interiorTrees, names: [...FALL_TREES, ...FALL_TREES, ...FALL_TREES, ...PINES],
-    smin: 2.6, smax: 3.4, xmin: -11, obstacleRadius: 0.45, minFurnace: 4.5, minSpawn: 2.5, gap: 2.2, into: trees,
+    smin: 1.9, smax: 2.5, xmin: -11, obstacleRadius: 0.4, minFurnace: 4.5, minSpawn: 2.5, gap: 2.2, into: trees,
   });
   const bushes = [];
   scatterForest({ count: params.bushes, names: BUSHES, smin: 2.6, smax: 3.2, xmin: -walk, minFurnace: 3.2, gap: 1.2, into: bushes });
@@ -118,7 +121,7 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
   scatterForest({ count: params.rocks, names: SMALL_ROCKS, smin: 2.5, smax: 3, xmin: -walk, obstacleRadius: 0.4, minFurnace: 3.2, gap: 1.2, into: rocks });
 
   return {
-    trees, bushes, rocks, lanterns, furnaceItems, logoSign,
+    trees, bushes, rocks, lanterns, furnaceItems, sign,
     buildingSlots: BUILDING_SLOTS.map((s) => ({ ...s })), plaza: { ...PLAZA }, obstacles,
   };
 }

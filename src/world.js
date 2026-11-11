@@ -92,8 +92,35 @@ export function buildPlayer(scene) {
   return group;
 }
 
-// 캐치 로고 간판: 나무 기둥 2개 + 판자 + 로고 그림. 로고는 판자의 +z 면(로컬)에 붙는다.
-export function buildLogoSign(scene, sign) {
+// 나무 팻말 글씨 텍스처. 글씨가 85% 폭에 들어가도록 글꼴을 줄인다.
+function signTexture(text) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 384;
+  const g = canvas.getContext('2d');
+  g.fillStyle = '#d9b27c';
+  g.fillRect(0, 0, canvas.width, canvas.height);
+  g.strokeStyle = '#8a5f3a';
+  g.lineWidth = 14;
+  g.strokeRect(7, 7, canvas.width - 14, canvas.height - 14);
+  let size = 150;
+  const font = (px) => `bold ${px}px "Georgia", "Times New Roman", serif`;
+  g.font = font(size);
+  while (size > 20 && g.measureText(text).width > canvas.width * 0.85) {
+    size -= 4;
+    g.font = font(size);
+  }
+  g.fillStyle = '#4a2f1a';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(text, canvas.width / 2, canvas.height / 2);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+// 나무 팻말: 기둥 2개 + 밝은 나무 판자 + 글씨 면. 글씨는 판자의 +z 면(로컬)에 붙는다.
+export function buildSign(scene, sign) {
   const { width, height } = sign;
   const BOARD_Y = 1.9;
   const BOARD_D = 0.15;
@@ -109,25 +136,22 @@ export function buildLogoSign(scene, sign) {
   }
   const board = new THREE.Mesh(
     new THREE.BoxGeometry(width, height, BOARD_D),
-    new THREE.MeshStandardMaterial({ color: 0x8a5f3a }),
+    new THREE.MeshStandardMaterial({ color: 0xb98a56 }),
   );
   board.position.y = BOARD_Y;
   board.castShadow = true;
   board.receiveShadow = true;
   group.add(board);
 
-  const texture = new THREE.TextureLoader().load('assets/catch_logo.png');
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const logoW = width * 0.9;
-  const logo = new THREE.Mesh(
-    new THREE.PlaneGeometry(logoW, logoW * 276 / 723),
+  const face = new THREE.Mesh(
+    new THREE.PlaneGeometry(width * 0.94, height * 0.9),
     new THREE.MeshBasicMaterial({
-      map: texture, transparent: true, toneMapped: false,
+      map: signTexture(sign.text), toneMapped: false,
       polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
     }),
   );
-  logo.position.set(0, BOARD_Y, BOARD_D / 2 + 0.09);
-  group.add(logo);
+  face.position.set(0, BOARD_Y, BOARD_D / 2 + 0.09);
+  group.add(face);
 
   group.position.set(sign.x, 0, sign.z);
   group.rotation.y = sign.rotY;

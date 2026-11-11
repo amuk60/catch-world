@@ -5,7 +5,7 @@ import { applyAtmosphere } from './atmosphere.js';
 import { loadModels, loadGltf } from './assets.js';
 import { buildDecor } from './decor.js';
 import { buildLayout } from './logic/layout.js';
-import { buildGround, buildCity, buildBoundary, buildFurnace, buildPlayer, buildLogoSign, buildMarker, MARKER_Y } from './world.js';
+import { buildGround, buildCity, buildBoundary, buildFurnace, buildPlayer, buildSign, buildMarker, MARKER_Y } from './world.js';
 import { createPlayer } from './player.js';
 import { createControls } from './controls.js';
 import { ORBIT, YARD, PLAYER, PLAYER_MODEL, FURNACE, SPAWN, SEED } from './config.js';
@@ -31,8 +31,8 @@ if (isMobileUA(navigator.userAgent)) {
   applyAtmosphere(scene, renderer);
   const ground = buildGround(scene);
   buildCity(scene, layout);
-  buildDecor(scene, layout, models);
-  buildLogoSign(scene, layout.logoSign);
+  const { updateTreeOcclusion } = buildDecor(scene, layout, models);
+  buildSign(scene, layout.sign);
   // 모델이 없으면 도형 대체물.
   if (!models.get('nature/campfire_stones')) buildFurnace(scene);
   const treeCount = [...models.keys()].filter((k) => k.startsWith('nature/tree_') && models.get(k)).length;
@@ -104,5 +104,6 @@ if (isMobileUA(navigator.userAgent)) {
     targetPos.lerp(desired, k);
     camera.position.set(...orbitPosition(targetPos.toArray(), orbit));
     camera.lookAt(targetPos);
+    updateTreeOcclusion(camera.position, targetPos, dt);
   });
 }

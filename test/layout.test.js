@@ -24,12 +24,12 @@ test('없앤 항목은 결과에 없다', () => {
   }
   assert.deepEqual(
     Object.keys(L).sort(),
-    ['buildingSlots', 'bushes', 'furnaceItems', 'lanterns', 'logoSign', 'obstacles', 'plaza', 'rocks', 'trees'],
+    ['buildingSlots', 'bushes', 'furnaceItems', 'lanterns', 'obstacles', 'plaza', 'rocks', 'sign', 'trees'],
   );
 });
 
 test('걸을 수 있는 영역 안의 나무는 숲 내부 나무뿐: x∈[-11,-2.5], 소각로 4.5 이상, 스폰 2.5 이상', () => {
-  assert.ok(interiorTrees.length >= 10, `interior ${interiorTrees.length}`);
+  assert.ok(interiorTrees.length >= 6, `interior ${interiorTrees.length}`);
   for (const t of interiorTrees) {
     assert.ok(t.x >= -11 && t.x <= -2.5, `x ${t.x}`);
     assert.ok(d(t, FURNACE) >= 4.5, 'furnace');
@@ -117,13 +117,13 @@ test('장애물은 마당 + 2 안에 있고 값이 유효', () => {
 });
 
 test('개수와 장애물', () => {
-  assert.ok(interiorTrees.length >= 10 && interiorTrees.length <= 14);
-  assert.ok(L.trees.length >= 40 && L.trees.length <= 90, `trees ${L.trees.length}`);
-  assert.ok(L.obstacles.filter((o) => o.radius === 0.45).length >= 10);
-  assert.equal(L.obstacles.filter((o) => o.radius === 0.45).length, interiorTrees.length);
+  assert.ok(interiorTrees.length >= 6 && interiorTrees.length <= 8);
+  assert.ok(L.trees.length >= 30 && L.trees.length <= 70, `trees ${L.trees.length}`);
+  assert.equal(L.obstacles.filter((o) => o.radius === 0.45).length, 0);
   assert.equal(L.obstacles.filter((o) => o.radius === 0.3).length, 4);
-  assert.equal(L.obstacles.filter((o) => o.radius === 0.4).length, L.rocks.length);
-  assert.equal(L.obstacles.length, interiorTrees.length + L.rocks.length + 4 + 1); // +1 = 로고 간판
+  assert.equal(L.obstacles.filter((o) => o.radius === 0.4).length, interiorTrees.length + L.rocks.length); // 나무·바위
+  assert.equal(L.obstacles.filter((o) => o.radius === 0.7).length, 3); // 간판
+  assert.equal(L.obstacles.length, interiorTrees.length + L.rocks.length + 4 + 3);
   // 소각로 원은 obstacles 에 들어가지 않는다(이동 코드가 따로 처리).
   assert.ok(!L.obstacles.some((o) => o.x === FURNACE.x && o.z === FURNACE.z));
 });
@@ -146,26 +146,49 @@ test('여러 시드에서도 규칙이 유지된다', () => {
   }
 });
 
-test('로고 간판: 값, 숲 구역, 걸을 수 있는 영역 안, 소각로에서 3 이상', () => {
-  const s = L.logoSign;
+// 간판 로컬 x축 위의 월드 좌표(three.js 의 rotation.y: 로컬 +x -> (cos, -sin)).
+const signPoint = (s, a) => ({ x: s.x + a * Math.cos(s.rotY), z: s.z - a * Math.sin(s.rotY) });
+
+test('간판: 값, 숲 구역, 걸을 수 있는 영역 안, 소각로에서 3 이상', () => {
+  const s = L.sign;
   assert.deepEqual(s, {
-    x: FURNACE.x, z: FURNACE.z - 4.3, rotY: Math.PI / 4, width: 4.0, height: 1.5, obstacleRadius: 1.2,
+    x: FURNACE.x, z: FURNACE.z - 4.3, rotY: Math.PI / 4, width: 3.2, height: 1.2, text: 'Catch World', obstacleRadius: 0.7,
   });
   assert.ok(inWalk(s), 'walkable');
   assert.ok(s.x <= ZONES.forestMaxX, 'forest zone');
   assert.ok(d(s, FURNACE) >= 3);
 });
 
-test('로고 간판 장애물이 obstacles 에 있고, 숲 내부 나무·덤불·바위는 2.8 이상 떨어져 있다', () => {
-  const s = L.logoSign;
-  assert.ok(L.obstacles.some((o) => o.x === s.x && o.z === s.z && o.radius === 1.2));
+test('간판 장애물 3개(가운데 + 양 끝)가 obstacles 에 있고, 판 전체를 덮는다', () => {
+  const s = L.sign;
+  const half = s.width / 2 - 0.4;
+  const expected = [0, -half, half].map((a) => signPoint(s, a));
+  for (const e of expected) {
+    assert.ok(L.obstacles.some((o) => Math.abs(o.x - e.x) < 1e-9 && Math.abs(o.z - e.z) < 1e-9 && o.radius === 0.7), JSON.stringify(e));
+  }
+  // 판 위의 모든 점이 어떤 간판 장애물 원 안에 든다(끝으로 통과할 틈이 없다).
+  const mine = L.obstacles.filter((o) => o.radius === 0.7);
+  for (let a = -s.width / 2; a <= s.width / 2 + 1e-9; a += 0.1) {
+    const p = signPoint(s, a);
+    assert.ok(mine.some((o) => d(o, p) <= o.radius), `gap at ${a}`);
+  }
   for (const o of [...interiorTrees, ...forestOnly]) assert.ok(d(o, s) >= 2.8, JSON.stringify(o));
-  assert.ok(d(s, SPAWN) >= 1.2 + PLAYER.radius);
+  for (const o of mine) assert.ok(d(o, SPAWN) >= o.radius + PLAYER.radius);
+  for (const o of mine) assert.ok(Math.abs(o.x) <= WALK && Math.abs(o.z) <= WALK);
 });
 
 test('여러 시드에서도 간판 주변 2.8 안에 숲 내부 장식이 없다', () => {
   for (const seed of [1, 2, 3, 42, 777, 20261111]) {
     const l = buildLayout(seed);
-    for (const o of [...l.trees.filter(inWalk), ...l.bushes, ...l.rocks]) assert.ok(d(o, l.logoSign) >= 2.8, `seed ${seed}`);
+    for (const o of [...l.trees.filter(inWalk), ...l.bushes, ...l.rocks]) assert.ok(d(o, l.sign) >= 2.8, `seed ${seed}`);
+  }
+});
+
+test('나무 크기: 고리 1.8~2.5, 바깥 띠 2.3~3.2, 숲 내부 1.9~2.5', () => {
+  for (const t of L.trees) {
+    const r = ring(t);
+    if (inWalk(t)) assert.ok(t.scale >= 1.9 && t.scale <= 2.5, `interior ${t.scale}`);
+    else if (r <= 13.5) assert.ok(t.scale >= 1.8 && t.scale <= 3.2, `ring ${t.scale}`); // 고리 범위는 띠와 겹칠 수 있다
+    else assert.ok(t.scale >= 2.3 && t.scale <= 3.2, `band ${t.scale}`);
   }
 });
