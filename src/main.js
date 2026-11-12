@@ -20,7 +20,7 @@ import { createGameState } from './logic/gameState.js';
 import { ACTIONS, createRunner, fitDurations, canPerform } from './logic/actions.js';
 import { createPassive } from './logic/passive.js';
 import { createOnce } from './logic/once.js';
-import { shareLines, shareFilename, shareUrl } from './logic/cta.js';
+import { shareLines, shareFilename, shareUrl, resultPlan } from './logic/cta.js';
 import { initAnalytics, track } from './analytics.js';
 import { renderShareCard, saveShareCard, copyText } from './share.js';
 import { easeInOut } from './logic/burn.js';
@@ -125,15 +125,20 @@ if (isMobileUA(navigator.userAgent)) {
   hud.showStressBar(gameState.stress.value, gameState.stress.start);
 
   const once = createOnce(); // 페이지를 연 뒤 한 번만 보내는 분석 이벤트(game_start)
-  let clearInfo = null; // 클리어한 순간의 { stress, actions }
-  let clearWait = null; // 팝업이 뜨기까지 남은 초. 행동이 끝난 뒤부터 센다. null 이면 대기 중이 아님.
+  let emptyInfo = null; // 지수 0 에 닿은 순간의 { stress, actions } (결과 이미지에 쓴다)
+  let pending = null; // 띄우기를 기다리는 팝업 { kind: 'side' | 'modal', info, wait }. wait 는 행동이 끝난 뒤부터 센다.
 
-  // 지수가 처음 목표치 이하가 되는 순간 한 번 불린다(다시 하기 뒤 새 판에서는 또 한 번). 진행 중인 행동이 끝나면 종료 화면을 띄운다.
-  function onClear() {
-    runner.cancelAuto();
-    clearInfo = { stress: gameState.stress.value, actions: gameState.actionsDone };
-    clearWait = CLEAR_POPUP_DELAY;
-    track('game_clear', { ...clearInfo });
+  // 지수가 처음 목표치 이하(측면 팝업)·처음 0(가운데 팝업)이 되는 호출에서 한 번씩 불린다(다시 하기 뒤 새 판에서는 또). 둘이 한꺼번에 오면 가운데 팝업만.
+  // 팝업은 진행 중인 행동이 끝난 뒤에 띄운다. 가운데 팝업은 자동을 끄고, 측면 팝업은 플레이에 아무 영향도 주지 않는다.
+  function onResultPlan(plan, justGoal, value) {
+    const info = { stress: value, actions: gameState.actionsDone };
+    if (justGoal) track('goal_reached', { ...info });
+    if (plan === 'modal') {
+      runner.cancelAuto();
+      emptyInfo = info;
+      track('game_clear', { ...info });
+    }
+    pending = { kind: plan, info, wait: CLEAR_POPUP_DELAY };
   }
 
   // 플레이어 머리 위 월드 점을 화면(컨테이너 기준 px)으로 투영해 팝업을 띄운다.
@@ -146,10 +151,11 @@ if (isMobileUA(navigator.userAgent)) {
   // 지수를 줄이고(0 아래로는 내려가지 않는다) 막대·팝업을 갱신한다. 행동 효과 순간과 불멍이 함께 쓴다.
   function applyReduction(amount, counts = true) {
     const before = gameState.stress.value;
-    const { value, justCleared } = gameState.apply(amount, { counts });
+    const { value, justGoal, justEmpty } = gameState.apply(amount, { counts });
     hud.updateStressBar(value);
     if (before - value > 0) popDelta(`-${before - value}`);
-    if (justCleared) onClear();
+    const plan = resultPlan({ justGoal, justEmpty });
+    if (plan !== 'none') onResultPlan(plan, justGoal, value);
   }
 
   // ---- 소각장 행동: 러너가 시간을 재고, 여기서 캐릭터 동작·종이·효과를 맡는다. ----
@@ -358,11 +364,13 @@ if (isMobileUA(navigator.userAgent)) {
     const relief = passive.update(dt, meditating);
     if (meditating && once('game_start')) track('game_start');
     if (relief > 0) applyReduction(relief, false); // 불멍은 소각 횟수에 넣지 않는다
-    if (clearWait !== null && !runner.isBusy() && mode !== 'fortune') {
-      clearWait -= dt;
-      if (clearWait <= 0) {
-        clearWait = null;
-        showResult();
+    if (pending && !runner.isBusy() && (pending.kind === 'side' || mode !== 'fortune')) {
+      pending.wait -= dt;
+      if (pending.wait <= 0) {
+        const { kind, info } = pending;
+        pending = null;
+        if (kind === 'side') showSidePopup(info);
+        else showResult();
       }
     }
     if (inZone) {
@@ -413,7 +421,7 @@ if (isMobileUA(navigator.userAgent)) {
     return true;
   }
 
-  // ---- 종료 화면(클리어 팝업)과 캐치 칩 ----
+  // ---- 측면 팝업(목표 달성)·가운데 팝업(지수 0)과 캐치 칩 ----
   function openCatch(place) {
     window.open(CATCH_URL, '_blank', 'noopener');
     track('banner_click', { place });
@@ -421,7 +429,7 @@ if (isMobileUA(navigator.userAgent)) {
 
   async function saveResultImage() {
     try { renderer.render(scene, camera); } catch (err) { console.warn('저장용 화면을 그리지 못했습니다.', err); } // 같은 틱에서 바로 복사해야 캔버스가 비지 않는다.
-    const { stress, actions } = clearInfo;
+    const { stress, actions } = emptyInfo;
     const card = renderShareCard(renderer.domElement, {
       ...shareLines(stress, actions, gameState.stress.start), footer: SHARE_FOOTER, url: shareUrl(location),
     });
@@ -447,20 +455,34 @@ if (isMobileUA(navigator.userAgent)) {
     gameState.reset();
     hud.updateStressBar(gameState.stress.value);
     hud.hideCtaChip();
-    clearInfo = null;
+    hud.closeSidePopup();
+    pending = null;
+    emptyInfo = null;
     track('game_restart');
+  }
+
+  const showChip = () => hud.showCtaChip(() => openCatch('chip'));
+
+  // 측면 팝업: 모드·자동·입력은 그대로 두고 카드만 띄운다. 닫으면(✕) 우상단 칩이 남는다.
+  function showSidePopup({ stress }) {
+    hud.openSidePopup({
+      stress,
+      onCta: () => openCatch('side'),
+      onClose: () => { hud.closeSidePopup(); showChip(); },
+    });
   }
 
   function showResult() {
     if (!dispatch('open:result')) return; // 앉아 있었으면 일어나고, 자동·진행 중인 행동은 이미 멈춰 있다.
+    hud.closeSidePopup(); // 측면 팝업이 아직 열려 있으면 먼저 숨긴다.
     stopWalking();
     controls.setEnabled(false);
     renderer.domElement.style.cursor = '';
     hud.hideTooltip();
     hud.hideBubble();
-    hud.showCtaChip(() => openCatch('chip'));
+    showChip();
     hud.openResult({
-      stress: clearInfo.stress, onCta: () => openCatch('modal'), onSave: saveResultImage, onCopy: copyAddress, onContinue: closeResult, onRestart: restart,
+      onCta: () => openCatch('modal'), onSave: saveResultImage, onCopy: copyAddress, onContinue: closeResult, onRestart: restart,
     });
   }
 

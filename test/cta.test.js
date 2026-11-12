@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ctaMessage, shareLines, shareFilename, shareUrl } from '../src/logic/cta.js';
+import { ctaMessage, emptyMessage, goalMessage, resultPlan, shareLines, shareFilename, shareUrl } from '../src/logic/cta.js';
 
 test('ctaMessage: 제목과 두 줄 문구', () => {
   assert.deepEqual(ctaMessage(19), {
@@ -34,4 +34,31 @@ test('shareFilename: 로컬 날짜, 0 채움', () => {
 test('shareUrl: origin + pathname, 쿼리·해시 제거', () => {
   assert.equal(shareUrl({ origin: 'https://a.vercel.app', pathname: '/', search: '?x=1', hash: '#h' }), 'https://a.vercel.app/');
   assert.equal(shareUrl({ origin: 'http://localhost:5173', pathname: '/play/index.html', search: '?q=2', hash: '' }), 'http://localhost:5173/play/index.html');
+});
+
+test('emptyMessage: 지수 0 문구', () => {
+  assert.deepEqual(emptyMessage(), {
+    title: '소각 완료!',
+    line1: '스트레스 지수 0! 마음이 한결 가벼워졌죠?',
+    line2: '다음 지원서는 캐치가 같이 찾아드릴게요!',
+  });
+});
+
+test('goalMessage: 측면 팝업 문구(제목 목표 달성!)', () => {
+  assert.deepEqual(goalMessage(18), {
+    title: '목표 달성!',
+    line1: '스트레스 지수 18! 이제 새 시작할 준비 끝.',
+    line2: '다음 지원서는 캐치가 같이 찾아드릴게요!',
+  });
+});
+
+test('shareLines: 지수 0 이면 100 → 0', () => {
+  assert.equal(shareLines(0, 34, 100).delta, '스트레스 지수 100 → 0');
+});
+
+test('resultPlan: 0 이 우선(modal), 목표만이면 side, 둘 다 아니면 none', () => {
+  assert.equal(resultPlan({ justGoal: false, justEmpty: false }), 'none');
+  assert.equal(resultPlan({ justGoal: true, justEmpty: false }), 'side');
+  assert.equal(resultPlan({ justGoal: false, justEmpty: true }), 'modal');
+  assert.equal(resultPlan({ justGoal: true, justEmpty: true }), 'modal');
 });

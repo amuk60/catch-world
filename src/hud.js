@@ -1,6 +1,6 @@
-// 브라우저 전용: 툴팁·말풍선·E 키 안내·포춘쿠키 모달·전역 스트레스 바·행동 막대·불멍 안내·감소량(-4) 팝업·클리어 팝업·캐치 칩(HTML). 컨테이너(#game) 안에 절대 위치로 놓는다.
+// 브라우저 전용: 툴팁·말풍선·E 키 안내·포춘쿠키 모달·전역 스트레스 바·행동 막대·불멍 안내·감소량(-4) 팝업·측면 팝업(목표 달성)·가운데 팝업(지수 0)·캐치 칩(HTML). 컨테이너(#game) 안에 절대 위치로 놓는다.
 import { barRatio } from './logic/burn.js';
-import { ctaMessage } from './logic/cta.js';
+import { emptyMessage, goalMessage } from './logic/cta.js';
 
 const BUBBLE_MS = 3000;
 const CRACK_MS = 400; // index.html 의 crack 애니메이션 길이와 같게 둔다.
@@ -101,7 +101,22 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
     const handler = { save: 'onSave', copy: 'onCopy', continue: 'onContinue', restart: 'onRestart' }[button.dataset.act];
     button.addEventListener('click', () => resultHandlers[handler]?.());
   }
-  // 캐치 칩(우상단): 클리어 뒤 계속 보인다.
+  // 측면 팝업(목표 달성): 우측 가장자리에서 밀려 들어오는 카드. 배경을 어둡게 하지 않고 플레이를 막지 않으며 스스로 사라지지 않는다.
+  const side = document.createElement('div');
+  side.id = 'side-popup';
+  side.setAttribute('role', 'dialog');
+  side.setAttribute('aria-labelledby', 'side-title');
+  side.innerHTML = `
+    <button type="button" class="side-close" aria-label="닫기">✕</button>
+    <h2 id="side-title" class="side-title"></h2>
+    <p class="side-message"></p>
+    <button type="button" class="side-cta">캐치 구경하기</button>`;
+  const sideTitle = side.querySelector('.side-title');
+  const sideMessage = side.querySelector('.side-message');
+  let sideHandlers = {};
+  side.querySelector('.side-cta').addEventListener('click', () => sideHandlers.onCta?.());
+  side.querySelector('.side-close').addEventListener('click', () => sideHandlers.onClose?.());
+  // 캐치 칩(우상단): 측면 팝업을 닫은 뒤·가운데 팝업이 뜬 뒤 계속 보인다.
   const ctaChip = document.createElement('button');
   ctaChip.id = 'cta-chip';
   ctaChip.type = 'button';
@@ -109,7 +124,7 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
   ctaChip.addEventListener('pointerdown', (e) => e.preventDefault()); // 포커스를 가져가지 않는다(스페이스·엔터로 다시 눌리지 않게)
   let chipHandler = () => {};
   ctaChip.addEventListener('click', () => chipHandler());
-  container.append(tooltip, bubble, prompt, fortune, stress, actionBar, meditate, ctaChip, result);
+  container.append(tooltip, bubble, prompt, fortune, stress, actionBar, meditate, ctaChip, side, result);
   let stressStart = 100;
 
   cookieButton.addEventListener('click', () => onCrack());
@@ -220,9 +235,9 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
       container.append(el);
       setTimeout(() => el.remove(), DELTA_MS + 100);
     },
-    // 클리어 팝업. stress: 클리어한 순간의 지수. 나머지는 버튼 핸들러.
-    openResult({ stress: value, onCta, onSave, onCopy, onContinue, onRestart }) {
-      const m = ctaMessage(value);
+    // 가운데 팝업(지수 0). 버튼 핸들러를 받는다.
+    openResult({ onCta, onSave, onCopy, onContinue, onRestart }) {
+      const m = emptyMessage();
       resultTitle.textContent = m.title;
       resultMessage.replaceChildren(m.line1, document.createElement('br'), m.line2);
       resultFeedback.textContent = '';
@@ -237,6 +252,19 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
     setResultFeedback(text) {
       resultFeedback.textContent = text;
     },
+    // 측면 팝업. stress: 목표를 넘은 순간의 지수.
+    openSidePopup({ stress: value, onCta, onClose }) {
+      const m = goalMessage(value);
+      sideTitle.textContent = m.title;
+      sideMessage.replaceChildren(m.line1, document.createElement('br'), m.line2);
+      sideHandlers = { onCta, onClose };
+      side.classList.add('open');
+    },
+    closeSidePopup() {
+      side.classList.remove('open');
+      sideHandlers = {};
+    },
+    isSidePopupOpen: () => side.classList.contains('open'),
     showCtaChip(onClick) {
       chipHandler = onClick;
       ctaChip.classList.add('visible');

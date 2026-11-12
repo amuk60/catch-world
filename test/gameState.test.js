@@ -18,9 +18,9 @@ test('행동 하나의 감소량은 3 이다', () => {
   assert.equal(ACTION_REDUCE, 3);
 });
 
-test('apply 는 줄이고 { value, justCleared } 를 돌려준다', () => {
+test('apply 는 줄이고 { value, justGoal, justEmpty } 를 돌려준다', () => {
   const g = make();
-  assert.deepEqual(g.apply(ACTION_REDUCE), { value: 97, justCleared: false });
+  assert.deepEqual(g.apply(ACTION_REDUCE), { value: 97, justGoal: false, justEmpty: false });
   assert.equal(g.stress.value, 97);
   assert.equal(g.actionsDone, 1);
 });
@@ -37,32 +37,32 @@ test('27번이면 목표(20) 이하, 33번이면 1, 34번이면 0 이고 그 뒤
   assert.equal(g.actionsDone, 40);
 });
 
-test('justCleared 는 목표(20) 이하가 되는 순간 정확히 한 번(27번째)', () => {
+test('justGoal 는 목표(20) 이하가 되는 순간 정확히 한 번(27번째)', () => {
   const g = make();
   const fired = [];
-  for (let i = 1; i <= 40; i++) if (g.apply(ACTION_REDUCE).justCleared) fired.push(i);
+  for (let i = 1; i <= 40; i++) if (g.apply(ACTION_REDUCE).justGoal) fired.push(i);
   assert.deepEqual(fired, [27]);
   assert.equal(g.cleared, true);
 });
 
 test('목표를 정확히 맞추면(<=) 클리어', () => {
   const g = createGameState({ start: 24, goal: 20 });
-  assert.deepEqual(g.apply(4), { value: 20, justCleared: true });
+  assert.deepEqual(g.apply(4), { value: 20, justGoal: true, justEmpty: false });
 });
 
 test('목표를 넘어 한 번에 크게 줄어도 한 번만', () => {
   const g = createGameState({ start: 10, goal: 4 });
-  assert.equal(g.apply(7).justCleared, true);
-  assert.equal(g.apply(7).justCleared, false);
+  assert.equal(g.apply(7).justGoal, true);
+  assert.equal(g.apply(7).justGoal, false);
   assert.equal(g.stress.value, 0);
 });
 
-test('클리어 뒤에도 계속 줄고 다시는 justCleared 가 없다', () => {
+test('클리어 뒤에도 계속 줄고 다시는 justGoal 가 없다', () => {
   const g = make();
   for (let i = 0; i < 27; i++) g.apply(ACTION_REDUCE);
   const after = [];
   for (let i = 0; i < 10; i++) after.push(g.apply(ACTION_REDUCE));
-  assert.ok(after.every((r) => r.justCleared === false));
+  assert.ok(after.every((r) => r.justGoal === false));
   assert.deepEqual(after.map((r) => r.value), [16, 13, 10, 7, 4, 1, 0, 0, 0, 0]);
 });
 
@@ -81,7 +81,7 @@ test('reset 은 시작값·클리어 아님·행동 0회로 되돌리고 다시 
   assert.equal(g.cleared, false);
   assert.equal(g.actionsDone, 0);
   let fired = 0;
-  for (let i = 0; i < 30; i++) if (g.apply(ACTION_REDUCE).justCleared) fired++;
+  for (let i = 0; i < 30; i++) if (g.apply(ACTION_REDUCE).justGoal) fired++;
   assert.equal(fired, 1);
 });
 
@@ -99,4 +99,46 @@ test('apply(amount, { counts: false }) 는 줄이되 행동 횟수에는 넣지 
   assert.equal(g.actionsDone, 0);
   g.apply(ACTION_REDUCE);
   assert.equal(g.actionsDone, 1);
+});
+
+test('justEmpty 는 값이 처음 0 이 되는 호출에서 정확히 한 번(34번째), justGoal 은 27번째', () => {
+  const g = make();
+  const goal = [];
+  const empty = [];
+  for (let i = 1; i <= 40; i++) {
+    const r = g.apply(ACTION_REDUCE);
+    if (r.justGoal) goal.push(i);
+    if (r.justEmpty) empty.push(i);
+  }
+  assert.deepEqual(goal, [27]);
+  assert.deepEqual(empty, [34]);
+  assert.equal(g.emptied, true);
+});
+
+test('한 번에 목표 위에서 0 으로 떨어지면 justGoal 과 justEmpty 가 같은 호출에서 둘 다 true', () => {
+  const g = createGameState({ start: 100, goal: 20 });
+  assert.deepEqual(g.apply(100), { value: 0, justGoal: true, justEmpty: true });
+  assert.deepEqual(g.apply(5), { value: 0, justGoal: false, justEmpty: false });
+});
+
+test('이미 0 인 상태에서 더 줄여도 justEmpty 가 다시 나오지 않는다', () => {
+  const g = createGameState({ start: 5, goal: 2 });
+  assert.equal(g.apply(5).justEmpty, true);
+  assert.equal(g.apply(5).justEmpty, false);
+});
+
+test('reset 은 emptied 도 지우고 두 신호가 다음 판에 다시 나온다', () => {
+  const g = make();
+  for (let i = 0; i < 40; i++) g.apply(ACTION_REDUCE);
+  g.reset();
+  assert.equal(g.emptied, false);
+  assert.equal(g.cleared, false);
+  let goal = 0;
+  let empty = 0;
+  for (let i = 0; i < 40; i++) {
+    const r = g.apply(ACTION_REDUCE);
+    if (r.justGoal) goal++;
+    if (r.justEmpty) empty++;
+  }
+  assert.deepEqual([goal, empty], [1, 1]);
 });
