@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createPassive } from '../src/logic/passive.js';
+import { PASSIVE } from '../src/config.js';
 
 const make = () => createPassive({ interval: 5, amount: 4 });
 
@@ -56,4 +57,9 @@ test('reset() 은 누적을 비운다', () => {
   p.update(4.5, true);
   p.reset();
   assert.equal(p.update(0.6, true), 0);
+});
+
+test('설정값: 5초마다 2 (행동 하나(3)보다 약하다)', () => {
+  assert.deepEqual(PASSIVE, { interval: 5, amount: 2 });
+  assert.equal(createPassive(PASSIVE).update(10, true), 4);
 });

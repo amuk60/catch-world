@@ -17,23 +17,23 @@ import { nextMode, showPrompt as promptAllowed } from './logic/playerMode.js';
 import { pickFortune } from './logic/fortune.js';
 import { createControls } from './controls.js';
 import { createGameState } from './logic/gameState.js';
-import { ACTIONS, createRunner } from './logic/actions.js';
+import { ACTIONS, createRunner, stretchDurations, canPerform } from './logic/actions.js';
 import { createPassive } from './logic/passive.js';
 import { easeInOut } from './logic/burn.js';
 import {
   ORBIT, YARD, PLAYER, PLAYER_MODEL, FURNACE, STRESS, SPAWN, SEED, COMFORT_MESSAGES, FORTUNES,
-  ACTION_REDUCE, ACTION_EFFECT_AT, ACTION_EXTRA_SECONDS, AUTO_GAP, PASSIVE, FIRE_ZONE_RADIUS, FIRE_RANGE, SHREDDER_RANGE,
+  ACTION_REDUCE, ACTION_EFFECT_AT, ACTION_EXTRA_SECONDS, ACTION_TURN_SECONDS, PICKUP_AT, AUTO_GAP, PASSIVE,
+  FIRE_ZONE_RADIUS, FIRE_RANGE, SHREDDER_RANGE, STACK_RANGE,
 } from './config.js';
 import { applyDrag, applyZoom, orbitPosition } from './logic/orbit.js';
 import { clampToYard, stepToward, pushOutOfCircle, headingY } from './logic/movement.js';
 
 const MAX_DT = 0.1; // 한 프레임에 진행하는 최대 시간(초). 탭이 멈췄다 돌아와도 행동·애니메이션이 한꺼번에 튀지 않게 한다.
-const FALLBACK_DURATIONS = { 'pick-up': 1.7, 'attack-melee-right': 2.1, 'attack-melee-left': 2.1 }; // 캐릭터 모델이 없을 때(늘려 재생한 길이와 비슷한 값)
+const FALLBACK_RAW_DURATIONS = { 'pick-up': 0.333, 'attack-melee-right': 0.417, 'attack-melee-left': 0.417 }; // 캐릭터 모델이 없을 때(모델의 실제 클립 길이)
 const PAPER_FLIGHT_SEC = 0.35; // 던진 종이가 불까지 날아가는 시간
 const PAPER_SLIDE_SEC = 0.2; // 파쇄기 투입구로 들어가는 시간
 const PAPER_ARC = 0.6; // 던질 때 포물선이 올라가는 높이
 const PAPER_FIRE_Y = 0.9; // 종이가 도착하는 불 위 높이
-const PAPER_PICK_AT = 0.5; // pick-up 클립이 이만큼(비율) 진행했을 때 손에 종이가 나타난다.
 const POP_HEIGHT = 1.6; // -4 팝업이 뜨는 머리 위 높이
 // 손에 든 종이의 위치·방향(손 뼈 기준, 단위는 월드 단위). 화면으로 보며 맞춘 값이다.
 const PAPER_HAND = { pos: [-0.38, 0, 0.05], rot: [0, 0, 0] };
@@ -73,7 +73,7 @@ if (isMobileUA(navigator.userAgent)) {
   let character = null;
   let player;
   if (characterGltf) {
-    character = createPlayer(characterGltf, { extraSeconds: ACTION_EXTRA_SECONDS });
+    character = createPlayer(characterGltf);
     player = character.group;
     player.position.set(SPAWN.x, 0, SPAWN.z);
     scene.add(player);
@@ -110,7 +110,7 @@ if (isMobileUA(navigator.userAgent)) {
   // 게임 전체에서 하나뿐인 상태: 스트레스 지수. 모든 행동이 같은 지수를 줄이고 reset() 으로만 초기화된다.
   const gameState = createGameState({ ...STRESS });
   // 전역 목표 표시이므로 처음부터 보인다.
-  hud.showStressBar(gameState.stress.value, gameState.stress.start, gameState.stress.goal);
+  hud.showStressBar(gameState.stress.value, gameState.stress.start);
 
   // 지수가 처음 목표치 이하가 되는 순간 한 번 불린다. 아무것도 끝내지 않고 플레이는 그대로 계속된다.
   function onClear() {
@@ -134,10 +134,11 @@ if (isMobileUA(navigator.userAgent)) {
   }
 
   // ---- 소각장 행동: 러너가 시간을 재고, 여기서 캐릭터 동작·손 소품·효과를 맡는다. ----
-  // 행동 클립은 합이 (원래 합 + ACTION_EXTRA_SECONDS) 가 되도록 천천히 재생되고, 러너도 같은 늘어난 길이를 받는다.
-  const durations = character ? character.getClipDurations(Object.values(ACTIONS).map((a) => a.clips)) : FALLBACK_DURATIONS;
+  // 두 클립은 합이 (원래 합 + ACTION_EXTRA_SECONDS) 가 되도록 비례해서 천천히 재생되고(speeds), 러너도 같은 늘어난 길이를 받는다.
+  // 총 행동 시간 = 회전 2번(ACTION_TURN_SECONDS) + 클립 합 + ACTION_EXTRA_SECONDS.
+  const { durations, speeds } = stretchDurations(character ? character.getRawClipDurations() : FALLBACK_RAW_DURATIONS, ACTION_EXTRA_SECONDS);
   const runner = createRunner({
-    durations, effectAt: ACTION_EFFECT_AT, autoGap: AUTO_GAP, canStart: (id) => inRangeFor(id),
+    durations, turnSeconds: ACTION_TURN_SECONDS, effectAt: ACTION_EFFECT_AT, pickupAt: PICKUP_AT, autoGap: AUTO_GAP, canStart: (id) => inRangeFor(id),
   });
   const passive = createPassive(PASSIVE);
 
@@ -163,35 +164,45 @@ if (isMobileUA(navigator.userAgent)) {
   placePaperInHand();
 
   let flight = null; // 날아가는 종이 { kind: 'burn' | 'shred', from, to, t, dur }
-  let actionTime = 0; // 지금 행동이 시작된 뒤 경과(초). 손 소품 타이밍용
   let actionId = null;
-  let thrown = false; // 이번 행동에서 종이를 이미 손에서 떠나보냈는가
   const tmpFrom = new THREE.Vector3();
 
-  const targetOf = (id) => (ACTIONS[id].target === 'fire' ? FURNACE : layout.shredder);
+  // 회전 단계의 대상 지점과 사정거리 계산.
+  const pointOf = (name) => (name === 'fire' ? FURNACE : name === 'stack' ? layout.paperStack : layout.shredder);
   const distTo = (t) => Math.hypot(player.position.x - t.x, player.position.z - t.z);
-  const inRangeFor = (id) => distTo(targetOf(id)) <= (ACTIONS[id].target === 'fire' ? FIRE_RANGE : SHREDDER_RANGE);
+  const RANGES = { fire: FIRE_RANGE, shredder: SHREDDER_RANGE, stack: STACK_RANGE };
+  // 태우기는 소각로와 종이 더미, 파쇄는 파쇄기와 종이 더미가 모두 사정거리 안일 때만 할 수 있다.
+  const inRangeFor = (id) => canPerform(id, { fire: distTo(FURNACE), shredder: distTo(layout.shredder), stack: distTo(layout.paperStack) }, RANGES);
 
-  // 러너가 행동을 시작했을 때(수동·자동 공통): 대상을 바라보고 클립을 재생한다.
-  function beginAnimation(id) {
-    const action = ACTIONS[id];
-    const t = targetOf(id);
-    actionId = id;
-    actionTime = 0;
-    thrown = false;
-    if (character) {
-      character.faceToward(t.x, t.z);
-      character.playClips(action.clips);
+  // 러너의 단계 시작: 회전(제자리에서 대상 쪽으로, 대기 자세) 또는 클립 재생.
+  function onStep({ action, index, step }) {
+    if (index === 0) {
+      actionId = action;
+      character?.beginAction();
+    }
+    if (step.kind === 'turn') {
+      const t = pointOf(step.target);
+      if (character) {
+        character.idleInPlace();
+        character.turnToward(t.x, t.z, step.seconds);
+      } else {
+        player.rotation.y = headingY(player.position, t);
+      }
     } else {
-      player.rotation.y = headingY(player.position, t);
+      character?.playClip(step.name, speeds[action]);
     }
   }
 
-  // 효과 순간: 지수 -4, 그리고 행동별 연출.
+  // 줍는 순간(pick-up 단계의 PICKUP_AT): 종이가 손에 나타난다. 효과 순간까지 들고 있다.
+  function onPickup() {
+    placePaperInHand();
+    paper.visible = true;
+  }
+
+  // 효과 순간: 지수 -ACTION_REDUCE, 그리고 행동별 연출(종이가 손을 떠난다).
   function onEffect(id) {
     applyReduction(ACTION_REDUCE);
     // 종이를 손에서 떼어 씬으로 옮기고 목표로 날린다.
-    thrown = true;
     paper.visible = true;
     paper.getWorldPosition(tmpFrom);
     scene.attach(paper);
@@ -211,13 +222,22 @@ if (isMobileUA(navigator.userAgent)) {
     actionId = null;
   }
 
+  // 진행 중인 행동을 깨끗하게 취소한다(걷기·앉기·포춘 등): 손 종이와 날아가는 종이를 치우고 자세를 idle 로 되돌린다.
+  function abortAction() {
+    if (!runner.isBusy() && actionId === null) return;
+    runner.abort();
+    character?.endAction();
+    flight = null;
+    placePaperInHand();
+    paper.visible = false;
+    actionId = null;
+  }
+
   // 행동 요청(막대 클릭·숫자 키). 막대가 보이는 자유 상태에서 쉬는 중이고 사정거리 안일 때만 시작한다.
   function requestAction(id) {
     if (mode !== 'free' || runner.isBusy() || !ACTIONS[id] || !inRangeFor(id)) return false;
     stopWalking();
-    if (!runner.start(id)) return false;
-    beginAnimation(id);
-    return true;
+    return runner.start(id); // 첫 단계(종이 더미 쪽으로 돌기)는 이 프레임의 update 에서 시작된다.
   }
 
   function toggleAuto() {
@@ -250,25 +270,16 @@ if (isMobileUA(navigator.userAgent)) {
     }
   }
 
-  // 손 소품 타이밍: 태우기/파쇄는 pick-up 이 절반쯤 진행되면 종이가 손에 나타난다(효과 순간 전까지 들고 있다).
-  function updateHandProps(dt) {
-    if (actionId === null) return;
-    actionTime += dt;
-    if (thrown) return;
-    paper.visible = actionTime >= (durations['pick-up'] ?? 0) * PAPER_PICK_AT;
-  }
-
   // 매 프레임: AUTO 유효성 확인 -> 러너 진행(효과/끝 처리) -> 손 소품·날아가는 종이 -> 행동 막대·불멍 안내·불멍 감소.
   function updateActions(dt) {
     // AUTO 해제 조건: 걷기 시작·앉기·포춘(진행 중인 행동은 끝까지 한다). 다음 행동의 사정거리 밖이면 러너가 canStart 로 끈다.
     if (runner.autoOn && (mode !== 'free' || moveTarget)) runner.cancelAuto();
-    const startedBefore = runner.startedCount;
     for (const e of runner.update(dt)) {
-      if (e.type === 'effect') onEffect(e.action);
+      if (e.type === 'step') onStep(e);
+      else if (e.type === 'pickup') onPickup();
+      else if (e.type === 'effect') onEffect(e.action);
       else onDone();
     }
-    if (runner.startedCount !== startedBefore && runner.isBusy()) beginAnimation(runner.lastActionId); // 자동으로 시작된 행동
-    updateHandProps(dt);
     updateFlight(dt);
 
     const inZone = mode === 'free' && distTo(FURNACE) <= FIRE_ZONE_RADIUS;
@@ -289,6 +300,7 @@ if (isMobileUA(navigator.userAgent)) {
 
   // 장애물 밖으로 밀어낸 목표 지점으로 이동을 시작한다.
   function walkTo(point) {
+    abortAction();
     const p = pushOut(clampToYard(point, YARD, PLAYER.radius + 0.5));
     moveTarget = p;
     marker.position.set(p.x, MARKER_Y, p.z);
@@ -318,7 +330,7 @@ if (isMobileUA(navigator.userAgent)) {
     if (mode === 'seated') standUp();
     if (mode === 'fortune') hud.closeFortune();
     mode = next;
-    if (mode !== 'free') runner.cancelAuto(); // 앉기·포춘 모달을 열면 자동은 꺼진다.
+    if (mode !== 'free') { runner.cancelAuto(); abortAction(); } // 앉기·포춘 모달을 열면 자동이 꺼지고 진행 중인 행동도 취소된다.
     return true;
   }
 

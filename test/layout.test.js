@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildLayout } from '../src/logic/layout.js';
-import { YARD, FURNACE, PLAYER, SEED, SPAWN, ZONES, FIRE_ZONE_RADIUS, FIRE_RANGE, SHREDDER_RANGE } from '../src/config.js';
+import { YARD, FURNACE, PLAYER, SEED, SPAWN, ZONES, FIRE_ZONE_RADIUS, FIRE_RANGE, SHREDDER_RANGE, STACK_RANGE } from '../src/config.js';
 import { headingY } from '../src/logic/movement.js';
 
 const L = buildLayout(SEED);
@@ -411,7 +411,7 @@ test('벤치 위치는 파쇄기·종이 더미를 추가하기 전과 같다(�
   assert.equal(L.trees.length, buildLayout(SEED).trees.length);
 });
 
-test('서 있을 수 있는 자리: 장애물 밖에서 소각로 사정거리와 파쇄기 사정거리를 동시에 만족하는 점이 있다', () => {
+test('서 있을 수 있는 자리: 장애물 밖에서 소각로·파쇄기·종이 더미 사정거리를 모두 만족하는 점이 있다', () => {
   const all = [FURNACE, ...L.obstacles];
   const free = (p) => all.every((o) => d(p, o) >= o.radius + PLAYER.radius) && inWalk(p);
   let both = 0;
@@ -421,7 +421,7 @@ test('서 있을 수 있는 자리: 장애물 밖에서 소각로 사정거리�
       const p = { x, z };
       if (!free(p) || d(p, FURNACE) > FIRE_ZONE_RADIUS || d(p, L.shredder) > SHREDDER_RANGE) continue;
       shredderOnly++;
-      if (d(p, FURNACE) <= FIRE_RANGE) both++;
+      if (d(p, FURNACE) <= FIRE_RANGE && d(p, L.paperStack) <= STACK_RANGE) both++; // 태우기와 파쇄를 모두 할 수 있는 자리
     }
   }
   assert.ok(shredderOnly > 20, `shredder reachable ${shredderOnly}`);

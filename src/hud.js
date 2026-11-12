@@ -1,5 +1,5 @@
 // 브라우저 전용: 툴팁·말풍선·E 키 안내·포춘쿠키 모달·전역 스트레스 바·행동 막대·불멍 안내·감소량(-4) 팝업(HTML). 컨테이너(#game) 안에 절대 위치로 놓는다.
-import { barRatio, goalRatio } from './logic/burn.js';
+import { barRatio } from './logic/burn.js';
 
 const BUBBLE_MS = 3000;
 const CRACK_MS = 400; // index.html 의 crack 애니메이션 길이와 같게 둔다.
@@ -45,10 +45,9 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
   stress.id = 'stress';
   stress.innerHTML = `
     <div class="stress-label">스트레스 지수 <b></b></div>
-    <div class="stress-bar"><div class="stress-fill"></div><div class="stress-goal"></div></div>`;
+    <div class="stress-bar"><div class="stress-fill"></div></div>`;
   const stressValue = stress.querySelector('b');
   const stressFill = stress.querySelector('.stress-fill');
-  const stressGoal = stress.querySelector('.stress-goal');
   // 행동 막대(하단 중앙): [1] 태우기 [2] 파쇄 [R] 자동. 사용할 수 없는 버튼은 회색(aria-disabled)이고 눌러도 아무 일 없다.
   const actionBar = document.createElement('div');
   actionBar.id = 'action-bar';
@@ -138,9 +137,8 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
       setStage(null);
     },
     // 전역 스트레스 바: 항상 보인다. 처음 한 번 만들고 값이 바뀔 때마다 update.
-    showStressBar(value, start, goal) {
+    showStressBar(value, start) {
       stressStart = start;
-      stressGoal.style.left = `${goalRatio(goal, start) * 100}%`;
       stress.classList.add('visible');
       this.updateStressBar(value);
     },

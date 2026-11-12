@@ -72,19 +72,25 @@ export const INTERACT_RADIUS = 1.5;
 // 소각장 행동(태우기·파쇄)과 불멍. 거리는 월드 단위, 시간은 초.
 // ACTION_REDUCE: 행동 하나가 효과 순간에 줄이는 스트레스 지수.
 // AUTO_GAP: 자동 버튼이 행동을 끝낸 뒤 다음 행동(태우기 -> 파쇄 -> 태우기 ...)을 시작하기까지 쉬는 시간.
-// PASSIVE: 불멍(소각로 옆 벤치에 앉아 있기)으로 interval 초마다 amount 씩 자동으로 줄어든다.
+// PASSIVE: 불멍(소각로 옆 벤치에 앉아 있기)으로 interval 초마다 amount 씩 자동으로 줄어든다(행동 하나보다 약하게).
 // FIRE_ZONE_RADIUS: 소각로 중심에서 이 거리 안에 있어야 행동 막대가 보인다.
 // FIRE_RANGE: 이 거리 안이면 태우기가 켜진다(소각로 중심 기준).
 // SHREDDER_RANGE: 파쇄기 중심에서 이 거리 안이면 파쇄가 켜진다. 두 범위가 겹치는 자리(소각로와 파쇄기 사이)에서 자동이 두 행동을 번갈아 한다.
-// ACTION_EFFECT_AT: 행동 전체 길이 중 효과(종이가 불에 닿는 순간 등)가 일어나는 비율.
-// ACTION_EXTRA_SECONDS: 행동 클립을 천천히 재생해 클립 길이의 합보다 이만큼 더 길게 만든다(동작이 읽히도록).
+// STACK_RANGE: 종이 더미 중심에서 이 거리 안이어야 태우기·파쇄를 할 수 있다(종이를 집으러 돌아서야 하므로).
+// 행동 순서: 종이 더미 쪽으로 돈다(ACTION_TURN_SECONDS) -> 집는다(pick-up) -> 대상 쪽으로 돈다 -> 던진다/친다. 캐릭터는 걷지 않고 제자리에서 돈다.
+// ACTION_EFFECT_AT: 마지막 단계(던지기/치기) 길이 중 효과(종이가 불에 닿는 순간 등)가 일어나는 비율.
+// PICKUP_AT: pick-up 단계 길이 중 종이가 손에 나타나는 비율.
+// ACTION_EXTRA_SECONDS: 두 클립을 비례해서 천천히 재생해 클립 길이의 합보다 이만큼 더 길게 만든다(회전 시간은 따로 더해진다).
 export const ACTION_REDUCE = 3;
 export const AUTO_GAP = 1;
-export const PASSIVE = { interval: 5, amount: 4 };
+export const PASSIVE = { interval: 5, amount: 2 };
 export const FIRE_ZONE_RADIUS = 4.5;
 export const FIRE_RANGE = 4.0;
 export const SHREDDER_RANGE = 4.0;
-export const ACTION_EFFECT_AT = 0.68;
+export const STACK_RANGE = 4.0;
+export const ACTION_TURN_SECONDS = 0.5;
+export const ACTION_EFFECT_AT = 0.45;
+export const PICKUP_AT = 0.6;
 export const ACTION_EXTRA_SECONDS = 3;
 
 // 시드: 마당 배치를 항상 같게 만든다.
