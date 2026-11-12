@@ -1,5 +1,6 @@
-// 브라우저 전용: 툴팁·말풍선·E 키 안내·포춘쿠키 모달·전역 스트레스 바·행동 막대·불멍 안내·감소량(-4) 팝업(HTML). 컨테이너(#game) 안에 절대 위치로 놓는다.
+// 브라우저 전용: 툴팁·말풍선·E 키 안내·포춘쿠키 모달·전역 스트레스 바·행동 막대·불멍 안내·감소량(-4) 팝업·클리어 팝업·캐치 칩(HTML). 컨테이너(#game) 안에 절대 위치로 놓는다.
 import { barRatio } from './logic/burn.js';
+import { ctaMessage } from './logic/cta.js';
 
 const BUBBLE_MS = 3000;
 const CRACK_MS = 400; // index.html 의 crack 애니메이션 길이와 같게 둔다.
@@ -72,7 +73,43 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
   const meditate = document.createElement('div');
   meditate.id = 'meditate';
   meditate.textContent = '불멍 중… 가만히 있어도 지수가 줄어요';
-  container.append(tooltip, bubble, prompt, fortune, stress, actionBar, meditate);
+  // 클리어 팝업(종료 화면): 흐린 배경 + 카드. 문구는 열 때 채운다.
+  const result = document.createElement('div');
+  result.id = 'result';
+  result.innerHTML = `
+    <div class="result-card" role="dialog" aria-modal="true" aria-labelledby="result-title">
+      <h2 id="result-title" class="result-title"></h2>
+      <p class="result-message"></p>
+      <button type="button" class="result-cta">캐치 구경하기</button>
+      <div class="result-row">
+        <button type="button" class="result-sub" data-act="save">결과 이미지 저장</button>
+        <button type="button" class="result-sub" data-act="copy">사이트 주소 복사</button>
+      </div>
+      <p class="result-feedback" aria-live="polite"></p>
+      <div class="result-row">
+        <button type="button" class="result-text" data-act="continue">계속 둘러보기</button>
+        <button type="button" class="result-text" data-act="restart">다시 하기</button>
+      </div>
+      <p class="result-note">※ 학사 과제용 비공식 프로젝트</p>
+    </div>`;
+  const resultTitle = result.querySelector('.result-title');
+  const resultMessage = result.querySelector('.result-message');
+  const resultFeedback = result.querySelector('.result-feedback');
+  let resultHandlers = {};
+  result.querySelector('.result-cta').addEventListener('click', () => resultHandlers.onCta?.());
+  for (const button of result.querySelectorAll('[data-act]')) {
+    const handler = { save: 'onSave', copy: 'onCopy', continue: 'onContinue', restart: 'onRestart' }[button.dataset.act];
+    button.addEventListener('click', () => resultHandlers[handler]?.());
+  }
+  // 캐치 칩(우상단): 클리어 뒤 계속 보인다.
+  const ctaChip = document.createElement('button');
+  ctaChip.id = 'cta-chip';
+  ctaChip.type = 'button';
+  ctaChip.textContent = '캐치 구경하기 →';
+  ctaChip.addEventListener('pointerdown', (e) => e.preventDefault()); // 포커스를 가져가지 않는다(스페이스·엔터로 다시 눌리지 않게)
+  let chipHandler = () => {};
+  ctaChip.addEventListener('click', () => chipHandler());
+  container.append(tooltip, bubble, prompt, fortune, stress, actionBar, meditate, ctaChip, result);
   let stressStart = 100;
 
   cookieButton.addEventListener('click', () => onCrack());
@@ -182,6 +219,30 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
       el.style.top = `${screenY}px`;
       container.append(el);
       setTimeout(() => el.remove(), DELTA_MS + 100);
+    },
+    // 클리어 팝업. stress: 클리어한 순간의 지수. 나머지는 버튼 핸들러.
+    openResult({ stress: value, onCta, onSave, onCopy, onContinue, onRestart }) {
+      const m = ctaMessage(value);
+      resultTitle.textContent = m.title;
+      resultMessage.replaceChildren(m.line1, document.createElement('br'), m.line2);
+      resultFeedback.textContent = '';
+      resultHandlers = { onCta, onSave, onCopy, onContinue, onRestart };
+      result.classList.add('open');
+    },
+    closeResult() {
+      result.classList.remove('open');
+      resultHandlers = {};
+    },
+    isResultOpen: () => result.classList.contains('open'),
+    setResultFeedback(text) {
+      resultFeedback.textContent = text;
+    },
+    showCtaChip(onClick) {
+      chipHandler = onClick;
+      ctaChip.classList.add('visible');
+    },
+    hideCtaChip() {
+      ctaChip.classList.remove('visible');
     },
     isFortuneOpen: () => stage !== null,
     fortuneStage: () => stage,

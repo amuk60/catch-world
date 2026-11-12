@@ -1,0 +1,37 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { ctaMessage, shareLines, shareFilename, shareUrl } from '../src/logic/cta.js';
+
+test('ctaMessage: 제목과 두 줄 문구', () => {
+  assert.deepEqual(ctaMessage(19), {
+    title: '소각 완료!',
+    line1: '스트레스 지수 19! 이제 새 시작할 준비 끝.',
+    line2: '다음 지원서는 캐치가 같이 찾아드릴게요!',
+  });
+  assert.equal(ctaMessage(20).line1, '스트레스 지수 20! 이제 새 시작할 준비 끝.');
+});
+
+test('shareLines: 행동 횟수가 있으면 소각 횟수 문구', () => {
+  assert.deepEqual(shareLines(19, 27, 100), {
+    title: '번아웃 소각 완료!',
+    delta: '스트레스 지수 100 → 19',
+    detail: '27번의 소각으로 후련해졌어요',
+    tagline: '다음 지원서는 캐치와 함께',
+  });
+});
+
+test('shareLines: 행동이 0번(불멍으로 클리어)이면 불멍 문구', () => {
+  const s = shareLines(20, 0, 100);
+  assert.equal(s.detail, '불멍으로 후련해졌어요');
+  assert.equal(s.delta, '스트레스 지수 100 → 20');
+});
+
+test('shareFilename: 로컬 날짜, 0 채움', () => {
+  assert.equal(shareFilename(new Date(2026, 0, 5, 13, 0)), 'catch-world-20260105.png');
+  assert.equal(shareFilename(new Date(2026, 10, 27, 23, 59)), 'catch-world-20261127.png');
+});
+
+test('shareUrl: origin + pathname, 쿼리·해시 제거', () => {
+  assert.equal(shareUrl({ origin: 'https://a.vercel.app', pathname: '/', search: '?x=1', hash: '#h' }), 'https://a.vercel.app/');
+  assert.equal(shareUrl({ origin: 'http://localhost:5173', pathname: '/play/index.html', search: '?q=2', hash: '' }), 'http://localhost:5173/play/index.html');
+});

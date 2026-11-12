@@ -91,3 +91,12 @@ test('옛 종이 큐·파쇄기 상태는 없다', () => {
     assert.equal(g[k], undefined, k);
   }
 });
+
+test('apply(amount, { counts: false }) 는 줄이되 행동 횟수에는 넣지 않는다(불멍 자동 감소)', () => {
+  const g = make();
+  g.apply(2, { counts: false });
+  assert.equal(g.stress.value, 98);
+  assert.equal(g.actionsDone, 0);
+  g.apply(ACTION_REDUCE);
+  assert.equal(g.actionsDone, 1);
+});

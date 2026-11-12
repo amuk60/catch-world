@@ -9,9 +9,10 @@ export function createGameState({ start, goal }) {
     actionsDone: 0,
 
     // 지수를 amount 만큼 줄인다(0 아래로는 내려가지 않는다). 값이 처음으로 목표 이하가 되는 그 한 번만 justCleared 가 true.
-    apply(amount) {
+    // counts: false 면 행동 횟수에 넣지 않는다(불멍의 자동 감소).
+    apply(amount, { counts = true } = {}) {
       const value = stress.reduce(amount);
-      state.actionsDone += 1;
+      if (counts) state.actionsDone += 1;
       const justCleared = !state.cleared && stress.cleared;
       if (justCleared) state.cleared = true;
       return { value, justCleared };

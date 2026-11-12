@@ -77,6 +77,31 @@
     @keyframes delta-rise {
       0% { opacity: 1; margin-top: 0; } 70% { opacity: 1; } 100% { opacity: 0; margin-top: -40px; }
     }
+    /* 클리어 팝업(종료 화면)과 캐치 칩. */
+    #result { position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+      background: rgba(10, 10, 20, 0.7); z-index: 4; }
+    #result.open { display: flex; }
+    .result-card { display: flex; flex-direction: column; align-items: center; width: min(440px, 88%); padding: 30px 28px 18px;
+      box-sizing: border-box; border-radius: 16px; background: #fdf6e3; color: #3a2f1f; text-align: center;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55); }
+    .result-title { margin: 0 0 10px; font-size: 28px; }
+    .result-message { margin: 0 0 22px; font-size: 17px; line-height: 1.6; word-break: keep-all; }
+    .result-card button { font: inherit; cursor: pointer; }
+    .result-cta { width: 100%; padding: 16px 20px; border: 0; border-radius: 14px; background: #e8833a; color: #fff;
+      font-size: 22px; font-weight: 800; box-shadow: 0 4px 0 #b9611f, 0 8px 18px rgba(232, 131, 58, 0.4); }
+    .result-cta:hover { background: #f0913f; }
+    .result-row { display: flex; justify-content: center; gap: 10px; width: 100%; margin-top: 14px; }
+    .result-sub { flex: 1; padding: 9px 8px; border: 1px solid #c9b98f; border-radius: 10px; background: #fff; color: #3a2f1f; font-size: 14px; }
+    .result-sub:hover { background: #f4ead0; }
+    .result-feedback { min-height: 18px; margin: 8px 0 0; font-size: 13px; color: #8a4a12; }
+    .result-text { padding: 6px 10px; border: 0; background: none; color: #6b5d44; font-size: 14px; text-decoration: underline; }
+    .result-text:hover { color: #3a2f1f; }
+    .result-note { margin: 10px 0 0; font-size: 12px; color: #9a9a9a; }
+    #cta-chip { position: absolute; top: 12px; right: 12px; display: none; padding: 8px 16px; border: 0; border-radius: 999px;
+      background: #e8833a; color: #fff; font: inherit; font-size: 14px; font-weight: 700; white-space: nowrap; cursor: pointer;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35); z-index: 2; }
+    #cta-chip:hover { background: #f0913f; }
+    #cta-chip.visible { display: block; }
     footer { font-size: 12px; text-align: center; padding: 6px 8px; background: #12121f; }
     #loading { position: fixed; inset: 0; background: rgba(18, 18, 31, 0.85); display: flex;
       align-items: center; justify-content: center; font-size: 20px; z-index: 5;

@@ -19,11 +19,15 @@ import { createControls } from './controls.js';
 import { createGameState } from './logic/gameState.js';
 import { ACTIONS, createRunner, fitDurations, canPerform } from './logic/actions.js';
 import { createPassive } from './logic/passive.js';
+import { createOnce } from './logic/once.js';
+import { shareLines, shareFilename, shareUrl } from './logic/cta.js';
+import { initAnalytics, track } from './analytics.js';
+import { renderShareCard, saveShareCard, copyText } from './share.js';
 import { easeInOut } from './logic/burn.js';
 import {
   ORBIT, YARD, PLAYER, PLAYER_MODEL, FURNACE, STRESS, SPAWN, SEED, COMFORT_MESSAGES, FORTUNES,
   ACTION_REDUCE, ACTION_EFFECT_AT, ACTION_TARGET_SECONDS, ACTION_TURN_SECONDS, AUTO_GAP, PASSIVE,
-  FIRE_ZONE_RADIUS, FIRE_RANGE, SHREDDER_RANGE,
+  FIRE_ZONE_RADIUS, FIRE_RANGE, SHREDDER_RANGE, CATCH_URL, GA_MEASUREMENT_ID,
 } from './config.js';
 import { applyDrag, applyZoom, orbitPosition } from './logic/orbit.js';
 import { clampToYard, stepToward, pushOutOfCircle, headingY } from './logic/movement.js';
@@ -38,6 +42,8 @@ const POP_HEIGHT = 1.6; // -3 팝업이 뜨는 머리 위 높이
 // 재킷 가슴 주머니(캐릭터 기준 로컬: 왼쪽 가슴 = +x, 키의 55% 높이, 살짝 앞). 종이는 여기서 작게 시작해 손으로 올라온다.
 const POCKET = { pos: [0.13, 0.6, 0.2] };
 const POCKET_SCALE = 0.3;
+const CLEAR_POPUP_DELAY = 0.3; // 클리어한 행동이 끝난 뒤 팝업이 뜨기까지(초)
+const SHARE_FOOTER = 'Catch World · 학사 과제용 비공식 프로젝트';
 const CRUMPLE_FRACTION = 0.35; // 태우기: 던지기 단계 앞쪽 이만큼 동안 종이를 구긴다
 const CRUMPLE_SCALE = 0.5; // 구긴 종이의 크기
 const CRUMPLE_SPIN = 18; // 구길 때 도는 속도(라디안/초)
@@ -47,6 +53,7 @@ const PAPER_HAND = { pos: [-0.38, 0, 0.05], rot: [Math.PI / 2, 0, 0] };
 if (isMobileUA(navigator.userAgent)) {
   document.getElementById('mobile-notice').style.display = 'flex';
 } else {
+  initAnalytics(GA_MEASUREMENT_ID);
   const { scene, camera, renderer, onFrame } = createStage(document.getElementById('game'));
   const layout = buildLayout(SEED);
   const obstacles = [FURNACE, ...layout.obstacles];
@@ -104,7 +111,7 @@ if (isMobileUA(navigator.userAgent)) {
   const targetPos = new THREE.Vector3(player.position.x, ORBIT.targetHeight, player.position.z);
   const desired = new THREE.Vector3();
   let moveTarget = null;
-  let mode = 'free'; // 'free' | 'seated' | 'fortune' (전이는 logic/playerMode.js)
+  let mode = 'free'; // 'free' | 'seated' | 'fortune' | 'result' (전이는 logic/playerMode.js)
   let seatItem = null; // 앉아 있는 벤치(layout.interactables 의 항목)
   let lastFortune = -1;
   let promptText = null;
@@ -117,9 +124,16 @@ if (isMobileUA(navigator.userAgent)) {
   // 전역 목표 표시이므로 처음부터 보인다.
   hud.showStressBar(gameState.stress.value, gameState.stress.start);
 
-  // 지수가 처음 목표치 이하가 되는 순간 한 번 불린다. 아무것도 끝내지 않고 플레이는 그대로 계속된다.
+  const once = createOnce(); // 페이지를 연 뒤 한 번만 보내는 분석 이벤트(game_start)
+  let clearInfo = null; // 클리어한 순간의 { stress, actions }
+  let clearWait = null; // 팝업이 뜨기까지 남은 초. 행동이 끝난 뒤부터 센다. null 이면 대기 중이 아님.
+
+  // 지수가 처음 목표치 이하가 되는 순간 한 번 불린다(다시 하기 뒤 새 판에서는 또 한 번). 진행 중인 행동이 끝나면 종료 화면을 띄운다.
   function onClear() {
-    // 단계 7에서 종료 화면(CTA)을 연결
+    runner.cancelAuto();
+    clearInfo = { stress: gameState.stress.value, actions: gameState.actionsDone };
+    clearWait = CLEAR_POPUP_DELAY;
+    track('game_clear', { ...clearInfo });
   }
 
   // 플레이어 머리 위 월드 점을 화면(컨테이너 기준 px)으로 투영해 팝업을 띄운다.
@@ -130,9 +144,9 @@ if (isMobileUA(navigator.userAgent)) {
   }
 
   // 지수를 줄이고(0 아래로는 내려가지 않는다) 막대·팝업을 갱신한다. 행동 효과 순간과 불멍이 함께 쓴다.
-  function applyReduction(amount) {
+  function applyReduction(amount, counts = true) {
     const before = gameState.stress.value;
-    const { value, justCleared } = gameState.apply(amount);
+    const { value, justCleared } = gameState.apply(amount, { counts });
     hud.updateStressBar(value);
     if (before - value > 0) popDelta(`-${before - value}`);
     if (justCleared) onClear();
@@ -201,6 +215,7 @@ if (isMobileUA(navigator.userAgent)) {
   // 러너의 단계 시작: 클립 재생 또는 회전(제자리에서 대상 쪽으로, 대기 자세).
   function onStep({ action, index, step }) {
     if (index === 0) {
+      if (once('game_start')) track('game_start');
       actionId = action;
       character?.beginAction();
     }
@@ -236,6 +251,7 @@ if (isMobileUA(navigator.userAgent)) {
 
   // 효과 순간: 지수 -ACTION_REDUCE, 그리고 행동별 연출(종이가 손을 떠난다).
   function onEffect(id) {
+    track('action_done', { action: id });
     applyReduction(ACTION_REDUCE);
     crumple = null;
     paper.visible = true;
@@ -340,7 +356,15 @@ if (isMobileUA(navigator.userAgent)) {
     const inZone = mode === 'free' && distTo(FURNACE) <= FIRE_ZONE_RADIUS;
     const meditating = mode === 'seated' && Boolean(seatItem) && Math.hypot(seatItem.x - FURNACE.x, seatItem.z - FURNACE.z) <= FIRE_ZONE_RADIUS;
     const relief = passive.update(dt, meditating);
-    if (relief > 0) applyReduction(relief);
+    if (meditating && once('game_start')) track('game_start');
+    if (relief > 0) applyReduction(relief, false); // 불멍은 소각 횟수에 넣지 않는다
+    if (clearWait !== null && !runner.isBusy() && mode !== 'fortune') {
+      clearWait -= dt;
+      if (clearWait <= 0) {
+        clearWait = null;
+        showResult();
+      }
+    }
     if (inZone) {
       if (!hud.isActionBarVisible()) hud.showActionBar({ onAction: requestAction, onToggleAuto: toggleAuto });
       hud.updateActionBar({
@@ -389,6 +413,57 @@ if (isMobileUA(navigator.userAgent)) {
     return true;
   }
 
+  // ---- 종료 화면(클리어 팝업)과 캐치 칩 ----
+  function openCatch(place) {
+    window.open(CATCH_URL, '_blank', 'noopener');
+    track('banner_click', { place });
+  }
+
+  async function saveResultImage() {
+    try { renderer.render(scene, camera); } catch (err) { console.warn('저장용 화면을 그리지 못했습니다.', err); } // 같은 틱에서 바로 복사해야 캔버스가 비지 않는다.
+    const { stress, actions } = clearInfo;
+    const card = renderShareCard(renderer.domElement, {
+      ...shareLines(stress, actions, gameState.stress.start), footer: SHARE_FOOTER, url: shareUrl(location),
+    });
+    const ok = await saveShareCard(card, shareFilename(new Date()));
+    if (ok) track('share_image');
+    hud.setResultFeedback(ok ? '저장했어요!' : '저장하지 못했어요. 다시 시도해 주세요.');
+  }
+
+  async function copyAddress() {
+    const ok = await copyText(shareUrl(location));
+    if (ok) track('share_link');
+    hud.setResultFeedback(ok ? '주소를 복사했어요!' : '복사에 실패했어요. 주소창의 주소를 직접 복사해 주세요.');
+  }
+
+  function closeResult() {
+    hud.closeResult();
+    dispatch('close'); // result -> free
+    controls.setEnabled(true);
+  }
+
+  function restart() {
+    closeResult();
+    gameState.reset();
+    hud.updateStressBar(gameState.stress.value);
+    hud.hideCtaChip();
+    clearInfo = null;
+    track('game_restart');
+  }
+
+  function showResult() {
+    if (!dispatch('open:result')) return; // 앉아 있었으면 일어나고, 자동·진행 중인 행동은 이미 멈춰 있다.
+    stopWalking();
+    controls.setEnabled(false);
+    renderer.domElement.style.cursor = '';
+    hud.hideTooltip();
+    hud.hideBubble();
+    hud.showCtaChip(() => openCatch('chip'));
+    hud.openResult({
+      stress: clearInfo.stress, onCta: () => openCatch('modal'), onSave: saveResultImage, onCopy: copyAddress, onContinue: closeResult, onRestart: restart,
+    });
+  }
+
   // E 키: 포춘 모달이면 깨기/닫기, 앉은 상태면 일어나기, 아니면 가장 가까운 대상의 동작(소각로는 E 동작이 없다).
   function onInteractKey() {
     if (mode === 'fortune') {
@@ -418,6 +493,10 @@ if (isMobileUA(navigator.userAgent)) {
 
   const ACTION_KEYS = { Digit1: 'burn', Digit2: 'shred', Numpad1: 'burn', Numpad2: 'shred' };
   window.addEventListener('keydown', (e) => {
+    if (mode === 'result') { // 종료 화면 중에는 Esc(계속 둘러보기)만 받는다.
+      if (e.code === 'Escape') closeResult();
+      return;
+    }
     if (e.code === 'KeyE') {
       if (!e.repeat) onInteractKey();
     } else if (e.code === 'Escape') {
