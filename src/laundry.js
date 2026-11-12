@@ -4,8 +4,6 @@ import * as THREE from 'three';
 import {
   hangSlot, shirtColor, slotPoint, wobbleAmount, WOBBLE_SECONDS, foamBubble, FOAM_COUNT, FOAM_SECONDS, swingAngle, SWING_SECONDS,
 } from './logic/laundry.js';
-import { roofTarget } from './logic/occlusion.js';
-import { ROOF_FADE } from './config.js';
 
 // 건물 조립에 쓰는 Fantasy Town 조각(main 이 미리 불러온다).
 export const LAUNDRY_MODEL_ITEMS = ['wall', 'wall-door', 'wall-window-glass', 'wall-window-shutters', 'wall-window-small', 'roof-gable', 'roof-gable-end']
@@ -16,7 +14,6 @@ const WALL_HEIGHT_TILES = 1; // 판벽 조각 하나의 높이(원본 단위)
 // 지붕: 원본(높이 0.57)에 곱하는 높이 배율, 벽 위에 띄우는 높이(그 띠는 회반죽으로 채워 간판 자리가 된다), 앞뒤 처마 내밀기, 폭 방향 처마(양쪽 합) 여유
 const ROOF = { scaleY: 1.5, lift: 0.45, overhang: 0.15, crossExtra: 0.5 };
 const SIGN_TEXT = '세탁소';
-const WALL_MIN_SCALE = 0.3; // 플레이어가 가까이 갔을 때 벽이 낮아지는 최소 배율
 
 // 로컬(정면 +z) 기준 벽 조각 배치. side: 어느 벽인지, 바깥을 향하는 방향각 yaw(원본 +x 면이 바깥).
 const SIDES = {
@@ -380,18 +377,5 @@ export function buildClothesline(scene, line) {
 
 // 세탁소 건물 외관을 씬에 올린다. models: loadModels 결과(없는 조각은 색 상자로 대체).
 export function buildLaundryBuilding(scene, layout, models) {
-  const building = buildBuilding(scene, layout.buildings.find((b) => b.id === 'laundry'), models);
-  let roofScale = 1;
-  // 플레이어가 건물 근처면 지붕을 낮춘다(부드럽게).
-  building.updateRoof = (playerPos, dt) => {
-    const d = Math.hypot(playerPos.x - building.group.position.x, playerPos.z - building.group.position.z);
-    const target = roofTarget(d, ROOF_FADE);
-    roofScale += (target - roofScale) * (1 - Math.exp(-8 * dt));
-    // 벽도 같이 낮아지되(최소 WALL_MIN_SCALE) 지붕은 전체 기준으로 roofScale 배가 되도록 더 줄인다.
-    const wallScale = Math.max(roofScale, WALL_MIN_SCALE);
-    building.group.scale.y = wallScale;
-    building.roofGroup.scale.y = roofScale / wallScale;
-    building.roofGroup.visible = roofScale > 0.06;
-  };
-  return building;
+  return buildBuilding(scene, layout.buildings.find((b) => b.id === 'laundry'), models);
 }

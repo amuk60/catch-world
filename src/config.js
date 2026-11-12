@@ -54,9 +54,6 @@ export const PLAYER_MODEL = { name: 'character-male-d', scale: 1.5, facingOffset
 // 카메라와 플레이어 사이를 가리는 나무를 줄이는 설정. radius: 가림 판정 거리(단위), minT/maxT: 카메라→타깃 선분의 판정 구간(0~1), minScale: 가장 작아질 때의 배율.
 export const OCCLUSION = { radius: 2.0, minT: 0.08, maxT: 0.97, minScale: 0.2 };
 
-// 건물 지붕 줄이기: 플레이어가 건물 중심에서 near 이내면 지붕 높이가 minScale 배로 낮아져 캐릭터가 보이고, far 이상이면 원래대로.
-export const ROOF_FADE = { near: 4.5, far: 7.5, minScale: 0.04 };
-
 // 클릭 판정: 이동 px와 시간(ms)이 모두 이하면 클릭, 넘으면 드래그.
 export const CLICK = { maxMovePx: 6, maxMs: 350 };
 
