@@ -4,7 +4,7 @@ import { buildLaundryInterior } from '../src/logic/interiors.js';
 import { PLAYER, LAUNDRY_INTERIOR, WASHER_RANGE, CLOTHESLINE_RANGE } from '../src/config.js';
 import { stepToward, pushOutOfCircle } from '../src/logic/movement.js';
 import { clampToSpace } from '../src/logic/spaces.js';
-import { interactTarget, nearestInRange } from '../src/logic/interaction.js';
+import { interactTarget, nearestInRange, actionOf } from '../src/logic/interaction.js';
 
 const I = buildLaundryInterior();
 const B = I.bounds;
@@ -60,7 +60,7 @@ test('출입문: 서쪽 벽에 있고, 안쪽 1.5 지점이 비어 있다(플레
 });
 
 test('출구 상호작용: kind door, 마당으로(to yard), 출입문 가까이, 도착 지점에서는 안내가 뜨지 않는다', () => {
-  assert.equal(I.interactables.length, 1);
+  assert.equal(I.interactables.length, 2); // 출구 + 빨랫줄(새 셔츠 입기, 아래 테스트). 출구가 첫째.
   const door = I.interactables[0];
   assert.equal(door.id, 'laundry-exit');
   assert.equal(door.kind, 'door');
@@ -213,4 +213,17 @@ test('결정적이다: 두 번 만들어도 같고, 새 객체를 돌려준다',
   assert.deepEqual(buildLaundryInterior(), I);
   assert.notEqual(buildLaundryInterior(), I);
   assert.equal(JSON.stringify(buildLaundryInterior()), JSON.stringify(I));
+});
+
+test('빨랫줄 상호작용: 줄 곁 방 안쪽, 새 셔츠 입기(E), 출구와 안 겹치고 걸어갈 수 있는 자리', () => {
+  const line = I.interactables.find((i) => i.id === 'laundry-clothesline');
+  assert.equal(line.kind, 'clothesline');
+  assert.equal(actionOf(line).type, 'wear');
+  assert.equal(actionOf(line).prompt, '새 셔츠 입기');
+  assert.ok(line.label && line.radius > 0 && line.interactRange > line.radius);
+  assert.ok(line.x < I.clothesline.x1 && inBounds(line, 0.5), '줄에서 방 안쪽');
+  assert.ok(free(interactTarget(line)), '클릭하면 걸어갈 지점이 서 있을 수 있는 곳');
+  assert.equal(nearestInRange(I.arrival, I.interactables)?.id ?? null, null, '도착 직후에는 뜨지 않는다');
+  assert.equal(nearestInRange(interactTarget(line), I.interactables), line, '줄 앞에서는 뜬다');
+  assert.equal(nearestInRange({ x: I.exit.x + 1.0, z: I.exit.z }, I.interactables).id, 'laundry-exit', '출구 앞에서는 출구가 뜬다');
 });

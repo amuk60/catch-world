@@ -60,3 +60,13 @@ test('전환 중에는 걷지 못하고 E 안내도 없다', () => {
   assert.equal(canWalk('transition'), false);
   assert.equal(showPrompt('transition'), false);
 });
+
+test('wearing: free 에서만 시작하고, 입는 동안은 어떤 입력 이벤트에도 모드가 그대로, wear:end 로 free', () => {
+  assert.equal(nextMode('free', 'wear:start'), 'wearing');
+  for (const mode of ['seated', 'fortune', 'result', 'transition']) assert.equal(nextMode(mode, 'wear:start'), mode, mode);
+  for (const ev of [...EVENTS, 'transition:start', 'wear:start']) assert.equal(nextMode('wearing', ev), 'wearing', ev);
+  assert.equal(nextMode('wearing', 'wear:end'), 'free');
+  assert.equal(nextMode('free', 'wear:end'), 'free');
+  assert.equal(canWalk('wearing'), false);
+  assert.equal(showPrompt('wearing'), false);
+});

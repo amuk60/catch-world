@@ -3,7 +3,12 @@
 export const PASTELS = [0xffb3c1, 0xb8e0d2, 0xfff1a8, 0xc3b6f2, 0xffcfa3, 0xa9d4f5]; // 분홍·민트·노랑·보라·살구·하늘
 
 // n 번째(0부터) 널기가 걸리는 칸: 칸을 차례로 쓰고, 가득 차면 가장 오래된 것부터 바꾼다.
-export const hangSlot = (count, slots) => ((count % slots) + slots) % slots;
+// reserved(0 이상)가 주어지면 그 칸(내 새 셔츠 자리)은 건너뛴다. 나머지 칸끼리 같은 규칙으로 돈다.
+export function hangSlot(count, slots, reserved = -1) {
+  const free = reserved >= 0 && reserved < slots ? slots - 1 : slots;
+  const k = ((count % free) + free) % free;
+  return free < slots && k >= reserved ? k + 1 : k;
+}
 
 // n 번째 널기의 셔츠 색(행동 횟수에서 정해지는 파스텔).
 export const shirtColor = (count) => PASTELS[hangSlot(count, PASTELS.length)];

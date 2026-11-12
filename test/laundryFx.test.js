@@ -113,3 +113,11 @@ test('nearestIndex: 가장 가까운 항목의 번호, 같으면 앞쪽, 빈 목
   const w = interior.washers;
   assert.equal(nearestIndex({ x: w[2].x - 0.3, z: w[2].z + 1 }, w), 2);
 });
+
+test('hangSlot: reserved 칸(내 셔츠 자리)은 건너뛰고 나머지 칸이 차례로 돈다', () => {
+  assert.deepEqual([0, 1, 2, 3, 4, 5, 6].map((n) => hangSlot(n, 6, 3)), [0, 1, 2, 4, 5, 0, 1]);
+  assert.deepEqual([0, 1, 2, 3, 4, 5].map((n) => hangSlot(n, 6, 0)), [1, 2, 3, 4, 5, 1]);
+  assert.deepEqual([0, 1, 2, 3, 4, 5].map((n) => hangSlot(n, 6, 5)), [0, 1, 2, 3, 4, 0]);
+  for (let n = -3; n < 40; n++) assert.notEqual(hangSlot(n, 6, 3), 3);
+  assert.deepEqual([0, 1, 2, 6, 7].map((n) => hangSlot(n, 6, -1)), [0, 1, 2, 0, 1], 'reserved 가 없으면 그대로');
+});

@@ -29,13 +29,14 @@ import { createTransition } from './logic/transition.js';
 import { createPassive } from './logic/passive.js';
 import { createOnce } from './logic/once.js';
 import { shareLines, shareFilename, shareUrl, resultPlan } from './logic/cta.js';
+import { createOutfit, hasMyShirt, outfitPrompt, MY_SHIRT_SLOT } from './logic/outfit.js';
 import { initAnalytics, track } from './analytics.js';
 import { renderShareCard, saveShareCard, copyText } from './share.js';
 import { easeInOut } from './logic/burn.js';
 import {
   ORBIT, TRANSITION, PLAYER, PLAYER_MODEL, FURNACE, STRESS, SPAWN, SEED, COMFORT_MESSAGES, FORTUNES,
   ACTION_REDUCE, ACTION_EFFECT_AT, ACTION_TARGET_SECONDS, ACTION_TURN_SECONDS, AUTO_GAP, PASSIVE,
-  FIRE_RANGE, SHREDDER_RANGE, WASHER_RANGE, CLOTHESLINE_RANGE, FIRE_ZONE_RADIUS, CATCH_URL, GA_MEASUREMENT_ID,
+  FIRE_RANGE, SHREDDER_RANGE, WASHER_RANGE, CLOTHESLINE_RANGE, FIRE_ZONE_RADIUS, CATCH_URL, GA_MEASUREMENT_ID, WEAR_SECONDS, WEAR_SWAP_AT,
 } from './config.js';
 import { applyDrag, applyZoom, orbitPosition } from './logic/orbit.js';
 import { stepToward, pushOutOfCircle, headingY } from './logic/movement.js';
@@ -145,7 +146,7 @@ if (isMobileUA(navigator.userAgent)) {
   const targetPos = new THREE.Vector3(player.position.x, ORBIT.targetHeight, player.position.z);
   const desired = new THREE.Vector3();
   let moveTarget = null;
-  let mode = 'free'; // 'free' | 'seated' | 'fortune' | 'result' | 'transition' (전이는 logic/playerMode.js)
+  let mode = 'free'; // 'free' | 'seated' | 'fortune' | 'result' | 'transition' | 'wearing' (전이는 logic/playerMode.js)
   const transition = createTransition(TRANSITION); // 공간 전환(차원문) 상태 기계
   let transitionTarget = null; // 전환이 끝나면 가 있을 공간 id
   let seatItem = null; // 앉아 있는 벤치(layout.interactables 의 항목)
@@ -159,6 +160,10 @@ if (isMobileUA(navigator.userAgent)) {
   const gameState = createGameState({ ...STRESS });
   // 전역 목표 표시이므로 처음부터 보인다.
   hud.showStressBar(gameState.stress.value, gameState.stress.start);
+
+  // 입은 옷 상태(정장 -> 그을음 -> 나시 -> 새 셔츠 말리는 중 -> 마름). 꾸미기일 뿐 지수 계산과는 무관하다(logic/outfit.js).
+  const outfit = createOutfit();
+  let wearing = null; // 새 셔츠를 입는 중 { t, swapped }
 
   const once = createOnce(); // 페이지를 연 뒤 한 번만 보내는 분석 이벤트(game_start)
   let emptyInfo = null; // 지수 0 에 닿은 순간의 { stress, actions } (결과 이미지에 쓴다)
@@ -279,6 +284,7 @@ if (isMobileUA(navigator.userAgent)) {
       if (once('game_start')) track('game_start');
       actionId = action;
       held = HELD_BY_ACTION[action];
+      if (action === 'wash') dirtyShirt.userData.setSoiled(outfit.state === 'dirty'); // 그을음 옷을 빨 때는 어둡고 더러운 셔츠
       pocketQuat.setFromEuler(tmpEuler.set(...held.userData.rot));
       character?.beginAction();
     }
@@ -318,9 +324,12 @@ if (isMobileUA(navigator.userAgent)) {
     track('action_done', { action: id });
     applyReduction(ACTION_REDUCE);
     crumple = null;
+    changeOutfit(outfit.onAction(id));
     if (id === 'hang') {
-      // 깨끗한 셔츠가 줄에 걸려(파스텔 색, 가득 차면 가장 오래된 것을 바꾼다) 흔들린다. 손의 셔츠는 사라진다.
-      laundry.clothesline.hang(hangCount++);
+      // 깨끗한 셔츠가 줄에 걸려 흔들린다. 손의 셔츠는 사라진다. 나시만 입은 채 널면 내 새 흰 셔츠가 전용 칸에 걸리고,
+      // 아니면 파스텔 셔츠(가득 차면 가장 오래된 것을 바꾼다. 내 셔츠 칸은 건너뛴다)가 걸린다.
+      if (outfit.state === 'drying' && laundry.clothesline.mineSlot() < 0) laundry.clothesline.hangMine(MY_SHIRT_SLOT);
+      else laundry.clothesline.hang(hangCount++, hasMyShirt(outfit.state) ? MY_SHIRT_SLOT : -1);
       held.visible = false;
       return;
     }
@@ -340,6 +349,49 @@ if (isMobileUA(navigator.userAgent)) {
       shredder.slotWorld(flight.to);
       shredder.wiggle();
       shredder.spawnStrips();
+    }
+  }
+
+  // 옷 상태가 바뀌었으면(newState) 캐릭터 겉모습을 맞추고 분석 이벤트를 보낸다.
+  function changeOutfit(newState) {
+    if (!newState) return;
+    character?.applyOutfit(outfit.state);
+    if (newState === 'dirty') track('outfit_dirty');
+  }
+
+  // 마른 새 셔츠 입기(E): 모드를 'wearing' 으로 잠그고(이동·클릭·E 무시, 자동 해제) 줄 쪽으로 돌아 팔을 올리는 동작을 한다.
+  // 동작 중간(WEAR_SWAP_AT)에 셔츠가 줄에서 사라지고 정장으로 바뀌며, 끝나면 "면접 갈 준비 완료" 팝업을 띄운다.
+  function startWear() {
+    if (!outfit.canWear() || !dispatch('wear:start')) return;
+    stopWalking();
+    runner.cancelAuto();
+    renderer.domElement.style.cursor = '';
+    hud.hideTooltip();
+    hud.hideBubble();
+    wearing = { t: 0, swapped: false };
+    if (character) {
+      const c = interior.clothesline.centre;
+      character.beginAction();
+      character.turnToward(c.x, c.z, WEAR_SECONDS * 0.3);
+      character.playClip('interact-right', (FALLBACK_RAW_DURATIONS['interact-right'] ?? 0.667) / WEAR_SECONDS);
+    }
+  }
+
+  function updateWear(dt) {
+    if (!wearing) return;
+    wearing.t += dt;
+    if (!wearing.swapped && wearing.t >= WEAR_SECONDS * WEAR_SWAP_AT) {
+      wearing.swapped = true;
+      outfit.wear();
+      laundry.clothesline.removeMine();
+      character?.applyOutfit(outfit.state);
+      track('outfit_ready');
+    }
+    if (wearing.t >= WEAR_SECONDS) {
+      wearing = null;
+      character?.endAction();
+      dispatch('wear:end');
+      showReadyPopup();
     }
   }
 
@@ -441,7 +493,7 @@ if (isMobileUA(navigator.userAgent)) {
     const relief = passive.update(dt, meditating);
     if (meditating && once('game_start')) track('game_start');
     if (relief > 0) applyReduction(relief, false); // 불멍은 소각 횟수에 넣지 않는다
-    if (pending && !runner.isBusy() && (pending.kind === 'side' || (mode !== 'fortune' && mode !== 'transition'))) {
+    if (pending && !runner.isBusy() && (pending.kind === 'side' || (mode !== 'fortune' && mode !== 'transition' && mode !== 'wearing'))) {
       pending.wait -= dt;
       if (pending.wait <= 0) {
         const { kind, info } = pending;
@@ -541,17 +593,35 @@ if (isMobileUA(navigator.userAgent)) {
     hud.closeSidePopup();
     pending = null;
     emptyInfo = null;
+    outfit.reset(); // 옷도 처음으로: 정장, 줄의 내 셔츠 제거, 마르는 시간 취소
+    wearing = null;
+    laundry.clothesline.removeMine();
+    character?.applyOutfit(outfit.state);
     track('game_restart');
   }
 
   const showChip = () => hud.showCtaChip(() => openCatch('chip'));
 
   // 측면 팝업: 모드·자동·입력은 그대로 두고 카드만 띄운다. 닫으면(✕) 우상단 칩이 남는다.
+  // 측면 자리는 하나뿐이라 열려 있는 다른 측면 팝업(면접 준비 완료)이 있으면 그것을 대체한다(겹쳐 뜨지 않는다).
   function showSidePopup({ stress }) {
     hud.openSidePopup({
       stress,
       onCta: () => openCatch('side'),
       onClose: () => { hud.closeSidePopup(); showChip(); },
+    });
+  }
+
+  // 면접 갈 준비 완료 팝업(새 셔츠를 입을 때마다). 주 버튼은 캐치를 새 탭으로 열고, 보조 버튼과 ✕ 는 닫는다.
+  // 열려 있는 목표 달성 팝업이 있으면 그것을 대체한다(칩은 남긴다). 가운데 팝업이 떠 있으면 겹치지 않게 건너뛴다.
+  function showReadyPopup() {
+    if (hud.isResultOpen()) return;
+    if (hud.sidePopupKind() === 'goal') showChip();
+    hud.closeSidePopup();
+    hud.openReadyPopup({
+      onCta: () => { window.open(CATCH_URL, '_blank', 'noopener'); track('cta_click', { source: 'outfit_ready' }); },
+      onLater: () => hud.closeSidePopup(),
+      onClose: () => hud.closeSidePopup(),
     });
   }
 
@@ -607,12 +677,13 @@ if (isMobileUA(navigator.userAgent)) {
       else if (stage === 'card') dispatch('close');
       return;
     }
-    if (runner.isBusy() || mode === 'transition') return; // 행동·전환 중에는 E 동작을 하지 않는다.
+    if (runner.isBusy() || mode === 'transition' || mode === 'wearing') return; // 행동·전환·옷 갈아입기 중에는 E 동작을 하지 않는다.
     if (mode === 'seated') { dispatch('interact'); return; }
     const item = nearestInRange(player.position, here().interactables);
     if (!item) return;
     const { type } = actionOf(item);
     if (type === 'enter' || type === 'exit') startSpaceChange(item.to);
+    else if (type === 'wear') startWear();
     else if (type === 'comfort') hud.showBubble(COMFORT_MESSAGES[item.messageIndex]);
     else if (type === 'seat') {
       if (!dispatch('interact:seat')) return;
@@ -630,7 +701,7 @@ if (isMobileUA(navigator.userAgent)) {
   // 숫자 키 1·2 는 지금 구역의 첫째·둘째 행동(구역 밖이면 아무 일도 없다).
   const ACTION_KEYS = { Digit1: 0, Numpad1: 0, Digit2: 1, Numpad2: 1 };
   window.addEventListener('keydown', (e) => {
-    if (mode === 'transition') return; // 전환 중에는 모든 키를 무시한다.
+    if (mode === 'transition' || mode === 'wearing') return; // 전환·옷 갈아입기 중에는 모든 키를 무시한다.
     if (mode === 'result') { // 종료 화면 중에는 Esc(계속 둘러보기)만 받는다.
       if (e.code === 'Escape') closeResult();
       return;
@@ -664,7 +735,7 @@ if (isMobileUA(navigator.userAgent)) {
     // 클릭하면 그 지점/오브젝트로 걸어간다(도착해도 아무 일도 일어나지 않는다. 동작은 E 키). 앉아 있으면 먼저 일어난다.
     // 행동 중에는 이동 클릭을 무시하고, 쉬는 중의 이동 클릭은 자동을 끈다.
     onClick: (ndc) => {
-      if (mode === 'fortune' || mode === 'transition' || runner.isBusy()) return;
+      if (mode === 'fortune' || mode === 'transition' || mode === 'wearing' || runner.isBusy()) return;
       const item = pickInteractable(ndc);
       let target = item && interactTarget(item);
       if (!target) {
@@ -721,6 +792,8 @@ if (isMobileUA(navigator.userAgent)) {
       player.position.y += (y - player.position.y) * k;
       player.rotation.y += turn * k;
     }
+    outfit.update(dt); // 널어 둔 새 셔츠는 밖에 나가 있어도 마른다
+    updateWear(dt);
     updateActions(dt);
     fire.update(dt, time);
     shredder.update(dt);
@@ -733,17 +806,25 @@ if (isMobileUA(navigator.userAgent)) {
     }
     character?.setState(mode === 'seated' ? 'sit' : moveTarget ? 'walk' : 'idle');
     // E 키 안내: 포춘 모달 중에는 숨기고, 앉아 있으면 "일어나기", 아니면 가장 가까운 대상의 문구.
+    // 빨랫줄 곁은 옷 상태가 정한다: 마른 새 셔츠가 있을 때만 E, 마르는 중이면 누를 수 없는 힌트, 그 밖에는 안내 없음.
     let nextPrompt = null;
+    let actionable = true;
     if (promptAllowed(mode)) {
       if (mode === 'seated') nextPrompt = '일어나기';
       else {
         const near = nearestInRange(player.position, here().interactables);
-        nextPrompt = near ? actionOf(near).prompt : null;
+        const act = near && actionOf(near);
+        if (act?.type === 'wear') {
+          const p = outfitPrompt(outfit.state, outfit.secondsLeft);
+          nextPrompt = p ? p.text : null;
+          actionable = p?.actionable ?? true;
+        } else nextPrompt = act ? act.prompt : null;
       }
     }
-    if (nextPrompt !== promptText) {
-      promptText = nextPrompt;
-      if (nextPrompt) hud.showPrompt(nextPrompt);
+    const promptKey = nextPrompt && (actionable ? nextPrompt : `~${nextPrompt}`);
+    if (promptKey !== promptText) {
+      promptText = promptKey;
+      if (nextPrompt) hud.showPrompt(nextPrompt, actionable);
       else hud.hidePrompt();
     }
     character?.update(dt);

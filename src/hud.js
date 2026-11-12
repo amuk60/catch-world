@@ -1,6 +1,6 @@
 // 브라우저 전용: 공간 전환 오버레이(차원문)·툴팁·말풍선·E 키 안내·포춘쿠키 모달·전역 스트레스 바·행동 막대(구역마다 버튼이 바뀐다)·불멍 안내·감소량(-4) 팝업·측면 팝업(목표 달성)·가운데 팝업(지수 0)·캐치 칩(HTML). 컨테이너(#game) 안에 절대 위치로 놓는다.
 import { barRatio } from './logic/burn.js';
-import { emptyMessage, goalMessage } from './logic/cta.js';
+import { emptyMessage, goalMessage, readyMessage } from './logic/cta.js';
 
 const BUBBLE_MS = 3000;
 const CRACK_MS = 400; // index.html 의 crack 애니메이션 길이와 같게 둔다.
@@ -108,11 +108,16 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
     <button type="button" class="side-close" aria-label="닫기">✕</button>
     <h2 id="side-title" class="side-title"></h2>
     <p class="side-message"></p>
-    <button type="button" class="side-cta">캐치 구경하기</button>`;
+    <button type="button" class="side-cta">캐치 구경하기</button>
+    <button type="button" class="side-later" hidden></button>`;
   const sideTitle = side.querySelector('.side-title');
   const sideMessage = side.querySelector('.side-message');
+  const sideCta = side.querySelector('.side-cta');
+  const sideLater = side.querySelector('.side-later');
   let sideHandlers = {};
-  side.querySelector('.side-cta').addEventListener('click', () => sideHandlers.onCta?.());
+  let sideKind = null; // 'goal' | 'ready' | null
+  sideCta.addEventListener('click', () => sideHandlers.onCta?.());
+  sideLater.addEventListener('click', () => sideHandlers.onLater?.());
   side.querySelector('.side-close').addEventListener('click', () => sideHandlers.onClose?.());
   // 캐치 칩(우상단): 측면 팝업을 닫은 뒤·가운데 팝업이 뜬 뒤 계속 보인다.
   const ctaChip = document.createElement('button');
@@ -174,8 +179,10 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
       bubble.style.left = `${screenX}px`;
       bubble.style.top = `${screenY}px`;
     },
-    showPrompt(text) {
+    // actionable 이 false 면 E 키캡 없이 글자만(눌러도 아무 일 없는 힌트).
+    showPrompt(text, actionable = true) {
       promptLabel.textContent = text;
+      keycap.hidden = !actionable;
       prompt.classList.add('visible');
     },
     hidePrompt() {
@@ -274,13 +281,30 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
       const m = goalMessage(value);
       sideTitle.textContent = m.title;
       sideMessage.replaceChildren(m.line1, document.createElement('br'), m.line2);
+      sideCta.textContent = '캐치 구경하기';
+      sideLater.hidden = true;
       sideHandlers = { onCta, onClose };
+      sideKind = 'goal';
+      side.classList.add('open');
+    },
+    // 측면 팝업(면접 갈 준비 완료): 같은 카드에 주 버튼(캐치 열기)과 보조 버튼(더 쉬다 가기)을 보여 준다.
+    openReadyPopup({ onCta, onLater, onClose }) {
+      const m = readyMessage();
+      sideTitle.textContent = m.title;
+      sideMessage.replaceChildren(m.line1, document.createElement('br'), m.line2);
+      sideCta.textContent = m.cta;
+      sideLater.textContent = m.later;
+      sideLater.hidden = false;
+      sideHandlers = { onCta, onLater, onClose };
+      sideKind = 'ready';
       side.classList.add('open');
     },
     closeSidePopup() {
       side.classList.remove('open');
       sideHandlers = {};
+      sideKind = null;
     },
+    sidePopupKind: () => sideKind,
     isSidePopupOpen: () => side.classList.contains('open'),
     showCtaChip(onClick) {
       chipHandler = onClick;

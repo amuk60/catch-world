@@ -8,6 +8,7 @@ const WALL_OFFSET = 0.07; // 벽 조각 중심이 방 경계에서 바깥쪽으�
 const WASHER_RADIUS = 0.6;
 const EXIT = { z: 2 }; // 출입문 위치(서쪽 벽 위, 방 중심 기준 z)
 const INTERACT = { radius: 0.4, range: 1.6, inset: 0.9 }; // 출구 상호작용 판정(출입문에서 안쪽으로 inset 떨어진 점)
+const SHIRT_SPOT = { inset: 1.0, range: 2.0 }; // 빨랫줄에서 방 안쪽으로 떨어진 E 자리와 그 범위
 const ARRIVAL_DISTANCE = 2.6; // 출입문에서 안쪽으로 도착 지점까지(상호작용 범위 밖이라 도착 직후 E 안내가 뜨지 않는다)
 
 // 세탁기 줄: 중심 기준 x 오프셋과 종류. 건조기는 양 끝.
@@ -88,6 +89,11 @@ export function buildLaundryInterior() {
     id: 'laundry-exit', label: '출구', kind: 'door', to: 'yard', x: exitSpot.x, z: exitSpot.z, radius: INTERACT.radius,
     interactRange: INTERACT.range, walkTo: { x: exit.x + 1.4, z: exit.z },
   }];
+  // 빨랫줄 곁(방 안쪽): 마른 새 셔츠를 입는 자리. 호버 안내는 '빨랫줄', E 안내는 logic/outfit.js 가 상태에 맞게 정한다.
+  interactables.push({
+    id: 'laundry-clothesline', label: '빨랫줄', kind: 'clothesline', x: clothesline.x1 - SHIRT_SPOT.inset, z: clothesline.centre.z,
+    radius: 0.4, interactRange: SHIRT_SPOT.range,
+  });
   const arrival = { x: exit.x + ARRIVAL_DISTANCE, z: exit.z, rotY: Math.PI / 2 };
 
   // 천장 조명(눈에 보이는 램프의 위치. 같은 자리 근처에 점광을 둔다).

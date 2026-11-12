@@ -45,3 +45,14 @@ export function shareFilename(date) {
 
 // 공유할 사이트 주소: 쿼리와 해시는 뺀다.
 export const shareUrl = (loc) => `${loc.origin}${loc.pathname}`;
+
+// 측면 팝업(새 와이셔츠를 입어 면접 갈 준비가 됐을 때) 문구와 두 버튼 이름(cta: 캐치 열기, later: 닫기).
+export function readyMessage() {
+  return {
+    title: '면접 갈 준비 완료!',
+    line1: '빳빳한 새 와이셔츠로 갈아입었어요.',
+    line2: '이제 진짜 지원서를 낼 차례예요. 캐치에서 나에게 맞는 공고를 찾아볼까요?',
+    cta: '캐치에서 공고 보기',
+    later: '더 쉬다 가기',
+  };
+}
