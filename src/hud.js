@@ -1,4 +1,6 @@
-// 브라우저 전용: 툴팁·말풍선·E 키 안내·포춘쿠키 모달(HTML). 컨테이너(#game) 안에 절대 위치로 놓는다.
+// 브라우저 전용: 툴팁·말풍선·E 키 안내·포춘쿠키 모달·소각 미니게임 스트레스 바와 나가기 버튼(HTML). 컨테이너(#game) 안에 절대 위치로 놓는다.
+import { barRatio, goalRatio } from './logic/burn.js';
+
 const BUBBLE_MS = 3000;
 const CRACK_MS = 400; // index.html 의 crack 애니메이션 길이와 같게 둔다.
 
@@ -31,7 +33,23 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
     </div>`;
   const cookieButton = fortune.querySelector('.cookie');
   const fortuneText = fortune.querySelector('.fortune-text');
-  container.append(tooltip, bubble, prompt, fortune);
+  // 소각 미니게임: 스트레스 바(상단 중앙)와 나가기 버튼(상단 좌측).
+  const stress = document.createElement('div');
+  stress.id = 'stress';
+  stress.innerHTML = `
+    <div class="stress-label">스트레스 지수 <b></b></div>
+    <div class="stress-bar"><div class="stress-fill"></div><div class="stress-goal"></div></div>`;
+  const stressValue = stress.querySelector('b');
+  const stressFill = stress.querySelector('.stress-fill');
+  const stressGoal = stress.querySelector('.stress-goal');
+  const exitButton = document.createElement('button');
+  exitButton.id = 'exit-burn';
+  exitButton.type = 'button';
+  exitButton.textContent = '나가기';
+  container.append(tooltip, bubble, prompt, fortune, stress, exitButton);
+  let stressStart = 100;
+  let exitHandler = () => {};
+  exitButton.addEventListener('click', () => exitHandler());
 
   cookieButton.addEventListener('click', () => onCrack());
   fortune.querySelector('.fortune-close').addEventListener('click', () => onClose());
@@ -93,6 +111,27 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
     closeFortune() {
       clearTimeout(crackTimer);
       setStage(null);
+    },
+    showStressBar(value, start, goal) {
+      stressStart = start;
+      stressGoal.style.left = `${goalRatio(goal, start) * 100}%`;
+      stress.classList.add('visible');
+      this.updateStressBar(value);
+    },
+    updateStressBar(value) {
+      stressValue.textContent = Math.round(value);
+      stressFill.style.width = `${barRatio(value, stressStart) * 100}%`;
+    },
+    hideStressBar() {
+      stress.classList.remove('visible');
+    },
+    showExit(onClick) {
+      exitHandler = onClick;
+      exitButton.classList.add('visible');
+    },
+    hideExit() {
+      exitButton.classList.remove('visible');
+      exitHandler = () => {};
     },
     isFortuneOpen: () => stage !== null,
     fortuneStage: () => stage,

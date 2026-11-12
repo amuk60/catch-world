@@ -12,6 +12,7 @@ import { interactTarget, hoverLabel, nearestInRange, actionOf } from './logic/in
 import { nextMode, showPrompt as promptAllowed } from './logic/playerMode.js';
 import { pickFortune } from './logic/fortune.js';
 import { createControls } from './controls.js';
+import { createBurnGame } from './burnGame.js';
 import { ORBIT, YARD, PLAYER, PLAYER_MODEL, FURNACE, SPAWN, SEED, COMFORT_MESSAGES, FORTUNES } from './config.js';
 import { applyDrag, applyZoom, orbitPosition } from './logic/orbit.js';
 import { clampToYard, stepToward, pushOutOfCircle, headingY } from './logic/movement.js';
@@ -73,12 +74,23 @@ if (isMobileUA(navigator.userAgent)) {
   const targetPos = new THREE.Vector3(player.position.x, ORBIT.targetHeight, player.position.z);
   const desired = new THREE.Vector3();
   let moveTarget = null;
-  let mode = 'free'; // 'free' | 'seated' | 'fortune' (전이는 logic/playerMode.js)
+  let mode = 'free'; // 'free' | 'seated' | 'fortune' | 'burn' (전이는 logic/playerMode.js)
   let seatItem = null; // 앉아 있는 벤치(layout.interactables 의 항목)
   let lastFortune = -1;
   let promptText = null;
   const raycaster = new THREE.Raycaster();
   const bubblePoint = new THREE.Vector3();
+
+  // 소각 미니게임. 나갈 때 돌아갈 곳은 지금의 월드 궤도 카메라 자세다.
+  const returnPose = { position: new THREE.Vector3(), target: targetPos };
+  const burn = createBurnGame({
+    scene, camera, renderer, hud, furnace: FURNACE,
+    getReturnPose: () => {
+      returnPose.position.set(...orbitPosition(targetPos.toArray(), orbit));
+      return returnPose;
+    },
+    onExit: () => dispatch('close'),
+  });
 
   // 장애물 밖으로 밀어낸 목표 지점으로 이동을 시작한다.
   function walkTo(point) {
@@ -110,12 +122,22 @@ if (isMobileUA(navigator.userAgent)) {
     if (next === mode) return false;
     if (mode === 'seated') standUp();
     if (mode === 'fortune') hud.closeFortune();
+    if (mode === 'burn') { burn.exit(); player.visible = true; }
     mode = next;
     return true;
   }
 
-  // 단계 5에서 소각 미니게임 시작을 연결
-  function onStartBurning() {}
+  // 소각 미니게임 시작: 월드 입력을 끄고 플레이어를 숨긴 뒤 같은 씬에서 고정 카메라로 넘어간다.
+  function onStartBurning() {
+    if (!dispatch('interact:burn')) return;
+    stopWalking();
+    hud.hideTooltip();
+    hud.hideBubble();
+    renderer.domElement.style.cursor = '';
+    controls.setEnabled(false);
+    player.visible = false;
+    burn.enter();
+  }
 
   // E 키: 포춘 모달이면 깨기/닫기, 앉은 상태면 일어나기, 아니면 가장 가까운 대상의 동작.
   function onInteractKey() {
@@ -125,6 +147,7 @@ if (isMobileUA(navigator.userAgent)) {
       else if (stage === 'card') dispatch('close');
       return;
     }
+    if (mode === 'burn') return;
     if (mode === 'seated') { dispatch('interact'); return; }
     const item = nearestInRange(player.position, layout.interactables);
     if (!item) return;
@@ -159,7 +182,7 @@ if (isMobileUA(navigator.userAgent)) {
     return hit ? layout.interactables.find((i) => i.id === hit.object.userData.interactId) : null;
   }
 
-  createControls(renderer.domElement, {
+  const controls = createControls(renderer.domElement, {
     onDrag: (dx, dy) => {
       orbit = applyDrag(orbit, dx, dy, ORBIT.rotateSpeed, ORBIT);
       renderer.domElement.style.cursor = '';
@@ -241,8 +264,13 @@ if (isMobileUA(navigator.userAgent)) {
     const k = 1 - Math.exp(-ORBIT.followSpeed * dt);
     desired.set(player.position.x, ORBIT.targetHeight, player.position.z);
     targetPos.lerp(desired, k);
-    camera.position.set(...orbitPosition(targetPos.toArray(), orbit));
-    camera.lookAt(targetPos);
-    updateTreeOcclusion(camera.position, targetPos, dt);
+    // 소각 미니게임이 카메라를 맡는 동안(진입·플레이·복귀 이동)에는 궤도 카메라를 건드리지 않는다. orbit 상태는 그대로다.
+    const burnOwnsCamera = burn.update(dt);
+    controls.setEnabled(!burnOwnsCamera);
+    if (!burnOwnsCamera) {
+      camera.position.set(...orbitPosition(targetPos.toArray(), orbit));
+      camera.lookAt(targetPos);
+    }
+    updateTreeOcclusion(camera.position, burnOwnsCamera ? burn.cameraPose().target : targetPos, dt);
   });
 }

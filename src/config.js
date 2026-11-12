@@ -71,6 +71,18 @@ export const ZONES = { forestMaxX: -1.5, cityMinX: 2.5 };
 // 상호작용 반경(단위). 이후 단계에서 사용한다.
 export const INTERACT_RADIUS = 1.5;
 
+// 소각 미니게임(월드 단위). 위치는 소각로(FURNACE) 기준 오프셋.
+// camOffset/lookOffset: 고정 카메라 위치와 바라보는 점. fireRadius: 이 반경 안에 놓으면 소각.
+// paperY: 종이가 뜨는 높이. burnSec/flare/flareSec/shakeSec/shakeAmp: 소각 연출.
+export const BURN = {
+  glideSec: 0.6,
+  camOffset: [5.4, 6.0, 6.6], lookOffset: [0, 0.6, 0],
+  fireRadius: 1.3,
+  shredderOffset: [-2.7, 0, 0.4], trayOffset: [2.2, 0, 2.0],
+  paperY: 1.0, burnSec: 0.25, flare: 1.35, flareSec: 0.2, shakeSec: 0.15, shakeAmp: 0.08,
+  item: { type: 'resume', label: '이력서', reduce: 5 },
+};
+
 // 시드: 마당 배치를 항상 같게 만든다.
 export const SEED = 20261111;
 
