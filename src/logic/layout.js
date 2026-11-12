@@ -50,11 +50,10 @@ const BENCH_CLEARANCE = 1.7; // 통나무·간판과의 선호 최소 거리(규
 // 카메라(+x,+z 쪽)에서 볼 때 소각로 양옆이 되는 방향(각도: atan2(z, x)).
 const BENCH_PREFERRED_ANGLE = -Math.PI / 4;
 
-// 소각로 곁 상시 소품. 파쇄기와 종이 더미는 모든 배치(벤치·통나무·나무·덤불·바위·간판·위로 오브젝트)가 끝난 뒤에,
+// 소각로 곁 상시 소품. 파쇄기는 모든 배치(벤치·통나무·나무·덤불·바위·간판·위로 오브젝트)가 끝난 뒤에,
 // 선호 방향(소각로에서 atan2(z, x))과 선호 거리 순서로 훑어 PROP_CLEARANCE 이상 떨어진 첫 자리를 쓴다(없으면 가장 여유 있는 자리).
 // 기존 배치의 난수 흐름을 건드리지 않아 벤치·통나무·나무는 그대로다. 선호 방향은 기본 카메라(+x,+z 쪽)에서 볼 때 캐릭터가 서는 대각선 양옆이다.
 const SHREDDER = { radius: 0.7, angle: (5 * Math.PI) / 180, distances: [3.1, 3.2, 3.0, 2.9, 2.8, 2.7, 2.6] };
-const PAPER_STACK = { radius: 0.5, angle: (85 * Math.PI) / 180, distances: [2.3, 2.4, 2.2, 2.1] };
 const PROP_CLEARANCE = 1.5; // 다른 배치물과의 최소 거리(중심 사이)
 const PROP_ANGLE_STEP = Math.PI / 36; // 5도
 
@@ -192,11 +191,11 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
   const rocks = [];
   scatterForest({ count: params.rocks, names: SMALL_ROCKS, smin: 2.5, smax: 3, xmin: -walk, obstacleRadius: 0.4, minFurnace: 3.2, gap: 1.2, into: rocks });
 
-  // 파쇄기와 종이 더미. 앞서 놓은 것이 뒤의 것의 장애물이 된다.
+  // 파쇄기.
   const fixed = [
     ...interactables.filter((i) => i.kind !== 'furnace'), ...furnaceItems.slice(1), ...trees, ...bushes, ...rocks, ...signCircles,
   ];
-  function placeProp(spec, others) {
+  function placeProp(spec) {
     let best = null;
     let bestClearance = -Infinity;
     for (let k = 0; k <= 72 && bestClearance < 0; k++) {
@@ -204,7 +203,7 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
       for (const dist of spec.distances) {
         const p = { x: FURNACE.x + Math.cos(angle) * dist, z: FURNACE.z + Math.sin(angle) * dist };
         const clearance = Math.min(
-          ...[...fixed, ...others].map((o) => Math.hypot(p.x - o.x, p.z - o.z) - PROP_CLEARANCE),
+          ...fixed.map((o) => Math.hypot(p.x - o.x, p.z - o.z) - PROP_CLEARANCE),
           Math.hypot(p.x - SPAWN.x, p.z - SPAWN.z) - (spec.radius + PLAYER.radius),
           walk - Math.abs(p.x), walkZ - Math.abs(p.z), ZONES.forestMaxX - p.x,
         );
@@ -214,12 +213,11 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
     }
     return { x: best.x, z: best.z, rotY: headingY(best, FURNACE), radius: spec.radius };
   }
-  const shredder = placeProp(SHREDDER, []);
-  const paperStack = placeProp(PAPER_STACK, [shredder]);
-  obstacles.push({ x: shredder.x, z: shredder.z, radius: shredder.radius }, { x: paperStack.x, z: paperStack.z, radius: paperStack.radius });
+  const shredder = placeProp(SHREDDER);
+  obstacles.push({ x: shredder.x, z: shredder.z, radius: shredder.radius });
 
   return {
-    trees, bushes, rocks, lanterns, furnaceItems, sign, interactables, shredder, paperStack,
+    trees, bushes, rocks, lanterns, furnaceItems, sign, interactables, shredder,
     buildingSlots: BUILDING_SLOTS.map((s) => ({ ...s })), plaza: { ...PLAZA }, obstacles,
   };
 }

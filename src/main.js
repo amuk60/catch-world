@@ -7,7 +7,7 @@ import { buildDecor } from './decor.js';
 import { buildLayout } from './logic/layout.js';
 import {
   buildGround, buildCity, buildBoundary, buildFurnace, buildPlayer, buildSign, buildMarker, buildPickables,
-  buildShredder, buildPaperStack, buildPaper, MARKER_Y,
+  buildShredder, buildPaper, MARKER_Y,
 } from './world.js';
 import { createPlayer } from './player.js';
 import { createFire } from './fire.js';
@@ -17,26 +17,32 @@ import { nextMode, showPrompt as promptAllowed } from './logic/playerMode.js';
 import { pickFortune } from './logic/fortune.js';
 import { createControls } from './controls.js';
 import { createGameState } from './logic/gameState.js';
-import { ACTIONS, createRunner, stretchDurations, canPerform } from './logic/actions.js';
+import { ACTIONS, createRunner, fitDurations, canPerform } from './logic/actions.js';
 import { createPassive } from './logic/passive.js';
 import { easeInOut } from './logic/burn.js';
 import {
   ORBIT, YARD, PLAYER, PLAYER_MODEL, FURNACE, STRESS, SPAWN, SEED, COMFORT_MESSAGES, FORTUNES,
-  ACTION_REDUCE, ACTION_EFFECT_AT, ACTION_EXTRA_SECONDS, ACTION_TURN_SECONDS, PICKUP_AT, AUTO_GAP, PASSIVE,
-  FIRE_ZONE_RADIUS, FIRE_RANGE, SHREDDER_RANGE, STACK_RANGE,
+  ACTION_REDUCE, ACTION_EFFECT_AT, ACTION_TARGET_SECONDS, ACTION_TURN_SECONDS, AUTO_GAP, PASSIVE,
+  FIRE_ZONE_RADIUS, FIRE_RANGE, SHREDDER_RANGE,
 } from './config.js';
 import { applyDrag, applyZoom, orbitPosition } from './logic/orbit.js';
 import { clampToYard, stepToward, pushOutOfCircle, headingY } from './logic/movement.js';
 
 const MAX_DT = 0.1; // 한 프레임에 진행하는 최대 시간(초). 탭이 멈췄다 돌아와도 행동·애니메이션이 한꺼번에 튀지 않게 한다.
-const FALLBACK_RAW_DURATIONS = { 'pick-up': 0.333, 'attack-melee-right': 0.417, 'attack-melee-left': 0.417 }; // 캐릭터 모델이 없을 때(모델의 실제 클립 길이)
+const FALLBACK_RAW_DURATIONS = { 'emote-no': 0.667, 'pick-up': 0.333, 'attack-melee-right': 0.417, 'attack-melee-left': 0.417, 'emote-yes': 0.667 }; // 캐릭터 모델이 없을 때(모델의 실제 클립 길이)
 const PAPER_FLIGHT_SEC = 0.35; // 던진 종이가 불까지 날아가는 시간
 const PAPER_SLIDE_SEC = 0.2; // 파쇄기 투입구로 들어가는 시간
 const PAPER_ARC = 0.6; // 던질 때 포물선이 올라가는 높이
 const PAPER_FIRE_Y = 0.9; // 종이가 도착하는 불 위 높이
-const POP_HEIGHT = 1.6; // -4 팝업이 뜨는 머리 위 높이
+const POP_HEIGHT = 1.6; // -3 팝업이 뜨는 머리 위 높이
+// 재킷 가슴 주머니(캐릭터 기준 로컬: 왼쪽 가슴 = +x, 키의 55% 높이, 살짝 앞). 종이는 여기서 작게 시작해 손으로 올라온다.
+const POCKET = { pos: [0.13, 0.6, 0.2] };
+const POCKET_SCALE = 0.3;
+const CRUMPLE_FRACTION = 0.35; // 태우기: 던지기 단계 앞쪽 이만큼 동안 종이를 구긴다
+const CRUMPLE_SCALE = 0.5; // 구긴 종이의 크기
+const CRUMPLE_SPIN = 18; // 구길 때 도는 속도(라디안/초)
 // 손에 든 종이의 위치·방향(손 뼈 기준, 단위는 월드 단위). 화면으로 보며 맞춘 값이다.
-const PAPER_HAND = { pos: [-0.38, 0, 0.05], rot: [0, 0, 0] };
+const PAPER_HAND = { pos: [-0.38, 0, 0.05], rot: [Math.PI / 2, 0, 0] };
 
 if (isMobileUA(navigator.userAgent)) {
   document.getElementById('mobile-notice').style.display = 'flex';
@@ -63,10 +69,9 @@ if (isMobileUA(navigator.userAgent)) {
   if (!models.get('nature/campfire_stones')) buildFurnace(scene);
   const treeCount = [...models.keys()].filter((k) => k.startsWith('nature/tree_') && models.get(k)).length;
   if (treeCount < 5) buildBoundary(scene);
-  // 소각로 곁의 상시 소품: 불, 파쇄기, 종이 더미.
+  // 소각로 곁의 상시 소품: 불, 파쇄기.
   const fire = createFire(scene, FURNACE);
   const shredder = buildShredder(scene, layout.shredder);
-  buildPaperStack(scene, layout.paperStack);
   loading.classList.add('hidden');
   setTimeout(() => { loading.style.display = 'none'; }, 500); // 페이드가 끝난 뒤 완전히 제거
   // 캐릭터 모델이 없으면 상자 플레이어. 이동/회전은 항상 group 이 맡는다.
@@ -133,12 +138,11 @@ if (isMobileUA(navigator.userAgent)) {
     if (justCleared) onClear();
   }
 
-  // ---- 소각장 행동: 러너가 시간을 재고, 여기서 캐릭터 동작·손 소품·효과를 맡는다. ----
-  // 두 클립은 합이 (원래 합 + ACTION_EXTRA_SECONDS) 가 되도록 비례해서 천천히 재생되고(speeds), 러너도 같은 늘어난 길이를 받는다.
-  // 총 행동 시간 = 회전 2번(ACTION_TURN_SECONDS) + 클립 합 + ACTION_EXTRA_SECONDS.
-  const { durations, speeds } = stretchDurations(character ? character.getRawClipDurations() : FALLBACK_RAW_DURATIONS, ACTION_EXTRA_SECONDS);
+  // ---- 소각장 행동: 러너가 시간을 재고, 여기서 캐릭터 동작·종이·효과를 맡는다. ----
+  // 한숨 -> 주머니에서 종이 꺼내기 -> (대상 쪽으로 돌기) -> 던지기/치기 -> 후련. 던지기/치기 클립만 총 길이가 ACTION_TARGET_SECONDS 가 되도록 느려진다.
+  const { durations, speeds } = fitDurations(character ? character.getRawClipDurations() : FALLBACK_RAW_DURATIONS, ACTION_TURN_SECONDS, ACTION_TARGET_SECONDS);
   const runner = createRunner({
-    durations, turnSeconds: ACTION_TURN_SECONDS, effectAt: ACTION_EFFECT_AT, pickupAt: PICKUP_AT, autoGap: AUTO_GAP, canStart: (id) => inRangeFor(id),
+    durations, turnSeconds: ACTION_TURN_SECONDS, effectAt: ACTION_EFFECT_AT, autoGap: AUTO_GAP, canStart: (id) => inRangeFor(id),
   });
   const passive = createPassive(PASSIVE);
 
@@ -151,7 +155,8 @@ if (isMobileUA(navigator.userAgent)) {
     handAttach.position.set(0.5, 0.7, 0.3);
     player.add(handAttach);
   }
-  const paper = buildPaper(0.4, 0.53); // 손 -> 불/파쇄기로 날아갈 때도 같은 메쉬를 쓴다(소속만 손과 씬 사이에서 바꾼다).
+  // 종이 한 장을 모든 단계에서 재사용한다: 주머니(player 기준) -> 손(handAttach) -> 날아가기(scene). 행동이 끝나면 항상 숨긴다.
+  const paper = buildPaper(0.4, 0.53);
   paper.visible = false;
   handAttach.add(paper);
 
@@ -163,18 +168,37 @@ if (isMobileUA(navigator.userAgent)) {
   }
   placePaperInHand();
 
-  let flight = null; // 날아가는 종이 { kind: 'burn' | 'shred', from, to, t, dur }
+  let flight = null; // 날아가는 종이 { kind: 'burn' | 'shred', from, to, t, dur, startScale }
+  let pull = null; // 주머니에서 꺼내는 중 { t, dur }
+  let crumple = null; // 태우기에서 종이를 구기는 중 { t, dur }
   let actionId = null;
   const tmpFrom = new THREE.Vector3();
+  const tmpHand = new THREE.Vector3();
+  const pocketPos = new THREE.Vector3(...POCKET.pos);
+  const pocketQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0)); // 세워서 앞(+z)을 향하게
+  const tmpHeld = new THREE.Vector3();
+  const tmpQuat = new THREE.Quaternion();
+  const tmpQuat2 = new THREE.Quaternion();
+  const heldQuat = new THREE.Quaternion();
+  const tmpEuler = new THREE.Euler();
 
   // 회전 단계의 대상 지점과 사정거리 계산.
-  const pointOf = (name) => (name === 'fire' ? FURNACE : name === 'stack' ? layout.paperStack : layout.shredder);
+  const pointOf = (name) => (name === 'fire' ? FURNACE : layout.shredder);
   const distTo = (t) => Math.hypot(player.position.x - t.x, player.position.z - t.z);
-  const RANGES = { fire: FIRE_RANGE, shredder: SHREDDER_RANGE, stack: STACK_RANGE };
-  // 태우기는 소각로와 종이 더미, 파쇄는 파쇄기와 종이 더미가 모두 사정거리 안일 때만 할 수 있다.
-  const inRangeFor = (id) => canPerform(id, { fire: distTo(FURNACE), shredder: distTo(layout.shredder), stack: distTo(layout.paperStack) }, RANGES);
+  const RANGES = { fire: FIRE_RANGE, shredder: SHREDDER_RANGE };
+  // 태우기는 소각로, 파쇄는 파쇄기가 사정거리 안일 때만 할 수 있다(어느 방향에서든).
+  const inRangeFor = (id) => canPerform(id, { fire: distTo(FURNACE), shredder: distTo(layout.shredder) }, RANGES);
 
-  // 러너의 단계 시작: 회전(제자리에서 대상 쪽으로, 대기 자세) 또는 클립 재생.
+  // 종이를 숨기고 손에 되돌려 놓는다(행동이 끝났거나 취소됐을 때).
+  function clearPaper() {
+    pull = null;
+    crumple = null;
+    flight = null;
+    placePaperInHand();
+    paper.visible = false;
+  }
+
+  // 러너의 단계 시작: 클립 재생 또는 회전(제자리에서 대상 쪽으로, 대기 자세).
   function onStep({ action, index, step }) {
     if (index === 0) {
       actionId = action;
@@ -188,13 +212,24 @@ if (isMobileUA(navigator.userAgent)) {
       } else {
         player.rotation.y = headingY(player.position, t);
       }
-    } else {
-      character?.playClip(step.name, speeds[action]);
+      return;
+    }
+    character?.playClip(step.name, speeds[step.name] ?? 1);
+    if (step.event === 'paperOut') {
+      // 재킷 가슴 주머니에서 작은 종이가 나와 paperOut 순간까지 손으로 올라온다.
+      pull = { t: 0, dur: step.seconds * step.eventAt };
+      handAttach.add(paper); // 손 기준으로 움직여 손에 닿을 때 튀지 않는다.
+      paper.scale.setScalar(POCKET_SCALE);
+      paper.visible = true;
+      updatePaper(0);
+    } else if (step.effect && action === 'burn') {
+      crumple = { t: 0, dur: step.seconds * CRUMPLE_FRACTION }; // 던지기 앞부분에서 종이를 구긴다
     }
   }
 
-  // 줍는 순간(pick-up 단계의 PICKUP_AT): 종이가 손에 나타난다. 효과 순간까지 들고 있다.
-  function onPickup() {
+  // 종이가 완전히 나왔다(pick-up 단계의 eventAt): 손에 쥔다.
+  function onPaperOut() {
+    pull = null;
     placePaperInHand();
     paper.visible = true;
   }
@@ -202,11 +237,12 @@ if (isMobileUA(navigator.userAgent)) {
   // 효과 순간: 지수 -ACTION_REDUCE, 그리고 행동별 연출(종이가 손을 떠난다).
   function onEffect(id) {
     applyReduction(ACTION_REDUCE);
-    // 종이를 손에서 떼어 씬으로 옮기고 목표로 날린다.
+    crumple = null;
     paper.visible = true;
     paper.getWorldPosition(tmpFrom);
+    const startScale = paper.scale.x;
     scene.attach(paper);
-    flight = { kind: id, from: tmpFrom.clone(), to: new THREE.Vector3(), t: 0, dur: id === 'burn' ? PAPER_FLIGHT_SEC : PAPER_SLIDE_SEC };
+    flight = { kind: id, from: tmpFrom.clone(), to: new THREE.Vector3(), t: 0, dur: id === 'burn' ? PAPER_FLIGHT_SEC : PAPER_SLIDE_SEC, startScale };
     if (id === 'burn') {
       flight.to.set(FURNACE.x, PAPER_FIRE_Y, FURNACE.z);
     } else {
@@ -218,18 +254,16 @@ if (isMobileUA(navigator.userAgent)) {
 
   function onDone() {
     character?.endAction();
-    if (!flight) paper.visible = false;
+    clearPaper();
     actionId = null;
   }
 
-  // 진행 중인 행동을 깨끗하게 취소한다(걷기·앉기·포춘 등): 손 종이와 날아가는 종이를 치우고 자세를 idle 로 되돌린다.
+  // 진행 중인 행동을 깨끗하게 취소한다(걷기·앉기·포춘 등): 종이를 치우고 자세를 idle 로 되돌린다.
   function abortAction() {
     if (!runner.isBusy() && actionId === null) return;
     runner.abort();
     character?.endAction();
-    flight = null;
-    placePaperInHand();
-    paper.visible = false;
+    clearPaper();
     actionId = null;
   }
 
@@ -237,7 +271,7 @@ if (isMobileUA(navigator.userAgent)) {
   function requestAction(id) {
     if (mode !== 'free' || runner.isBusy() || !ACTIONS[id] || !inRangeFor(id)) return false;
     stopWalking();
-    return runner.start(id); // 첫 단계(종이 더미 쪽으로 돌기)는 이 프레임의 update 에서 시작된다.
+    return runner.start(id); // 첫 단계(한숨)는 이 프레임의 update 에서 시작된다.
   }
 
   function toggleAuto() {
@@ -249,7 +283,30 @@ if (isMobileUA(navigator.userAgent)) {
     if (mode === 'free' && inRangeFor(runner.nextAutoAction())) runner.setAuto(true);
   }
 
-  function updateFlight(dt) {
+  // 종이 상태 갱신: 주머니에서 손으로 올라오기, 태우기의 구기기, 날아가기.
+  function updatePaper(dt) {
+    if (pull) {
+      pull.t += dt;
+      const e = easeInOut(pull.t / pull.dur);
+      // 주머니(캐릭터 기준 고정 지점)를 손 좌표로 바꿔서, 손에 든 위치까지 보간한다.
+      player.updateWorldMatrix(true, false);
+      handAttach.updateWorldMatrix(true, false);
+      tmpHand.copy(pocketPos);
+      player.localToWorld(tmpHand);
+      handAttach.worldToLocal(tmpHand);
+      paper.position.lerpVectors(tmpHand, tmpHeld.set(...PAPER_HAND.pos), e);
+      handAttach.getWorldQuaternion(tmpQuat);
+      player.getWorldQuaternion(tmpQuat2);
+      tmpQuat.invert().multiply(tmpQuat2).multiply(pocketQuat); // 주머니에서의 방향(세워서 앞을 향함)을 손 기준으로
+      paper.quaternion.copy(tmpQuat).slerp(heldQuat.setFromEuler(tmpEuler.set(...PAPER_HAND.rot)), e);
+      paper.scale.setScalar(POCKET_SCALE + (1 - POCKET_SCALE) * e);
+    }
+    if (crumple) {
+      crumple.t += dt;
+      const k = Math.min(1, crumple.t / crumple.dur);
+      paper.scale.setScalar(1 - (1 - CRUMPLE_SCALE) * easeInOut(k));
+      paper.rotation.y += CRUMPLE_SPIN * dt;
+    }
     if (!flight) return;
     flight.t += dt;
     const k = Math.min(1, flight.t / flight.dur);
@@ -258,15 +315,13 @@ if (isMobileUA(navigator.userAgent)) {
       paper.position.y += PAPER_ARC * Math.sin(Math.PI * k);
       paper.rotation.x += 14 * dt;
       paper.rotation.z += 9 * dt;
-      paper.scale.setScalar(1 - 0.5 * easeInOut(k));
+      paper.scale.setScalar(flight.startScale * (1 - 0.5 * easeInOut(k)));
     } else {
-      paper.scale.setScalar(1 - 0.9 * easeInOut(k));
+      paper.scale.setScalar(flight.startScale * (1 - 0.9 * easeInOut(k)));
     }
     if (k >= 1) {
       if (flight.kind === 'burn') fire.flare(); // 종이가 불에 닿는 순간
-      flight = null;
-      paper.visible = false;
-      placePaperInHand();
+      clearPaper();
     }
   }
 
@@ -276,11 +331,11 @@ if (isMobileUA(navigator.userAgent)) {
     if (runner.autoOn && (mode !== 'free' || moveTarget)) runner.cancelAuto();
     for (const e of runner.update(dt)) {
       if (e.type === 'step') onStep(e);
-      else if (e.type === 'pickup') onPickup();
+      else if (e.type === 'paperOut') onPaperOut();
       else if (e.type === 'effect') onEffect(e.action);
       else onDone();
     }
-    updateFlight(dt);
+    updatePaper(dt);
 
     const inZone = mode === 'free' && distTo(FURNACE) <= FIRE_ZONE_RADIUS;
     const meditating = mode === 'seated' && Boolean(seatItem) && Math.hypot(seatItem.x - FURNACE.x, seatItem.z - FURNACE.z) <= FIRE_ZONE_RADIUS;

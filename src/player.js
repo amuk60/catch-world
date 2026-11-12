@@ -4,7 +4,7 @@ import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { PLAYER_MODEL } from './config.js';
 import { clipNameForState, findClip, FADE_SECONDS } from './logic/animation.js';
 
-const ACTION_CLIPS = ['pick-up', 'attack-melee-right', 'attack-melee-left']; // 소각장 행동에 쓰는 클립
+const ACTION_CLIPS = ['emote-no', 'pick-up', 'attack-melee-right', 'attack-melee-left', 'emote-yes']; // 소각장 행동에 쓰는 클립
 const ACTION_FADE = 0.15; // 행동 클립으로 넘어갈 때 크로스페이드(초)
 const HAND_BONE = /arm[-_ ]?right|right[-_ ]?(hand|arm)|hand[-_ ]?r/i;
 
@@ -85,7 +85,7 @@ export function createPlayer(gltf) {
     group,
     setState,
     handBoneName: handBone?.name ?? null,
-    // 행동에 쓰는 클립의 원래 길이(초). 늘려 재생할 길이는 logic/actions.js 의 stretchDurations 가 계산한다.
+    // 행동에 쓰는 클립의 원래 길이(초). 늘려 재생할 길이는 logic/actions.js 의 fitDurations 가 계산한다.
     getRawClipDurations() {
       const out = {};
       for (const [name, shot] of Object.entries(oneShots)) out[name] = shot.raw;

@@ -208,16 +208,13 @@ export function buildPickables(scene, interactables) {
   });
 }
 
-// ---- 소각장 상시 소품: 파쇄기, 종이 더미, 손에 드는 종이와 막대 ----
+// ---- 소각장 상시 소품: 파쇄기와 손에 드는 종이 ----
 
 const STRIP_MAX = 8; // 동시에 살아 있는 파쇄 조각 최대 수
 const STRIP_LIFE = 0.6; // 조각이 사라지기까지(초)
 const STRIP_COUNT = 6; // 파쇄 한 번에 떨어지는 조각 수(<= STRIP_MAX)
 const WIGGLE_SEC = 0.08; // 파쇄기 흔들림 시간
 const SHREDDER_BODY = { w: 1.4, h: 1.0, d: 0.8 };
-const PAPER_SIZE = { w: 0.6, d: 0.8 }; // 종이 더미의 한 장 크기(월드 단위)
-const PAPER_SHEETS = 14;
-const PAPER_THICK = 0.02;
 
 // 불합격 통지서 무늬(384x512, 종이 비율 3:4): 연한 빨강 바탕, 위쪽 빨간 띠, 줄, 큰 라벨.
 function noticeTexture(label) {
@@ -332,32 +329,4 @@ export function buildShredder(scene, shredder) {
     },
     stripCount: () => strips.length,
   };
-}
-
-// 종이 더미: 나무 받침(팔레트) 위에 얇은 흰 상자들을 살짝 어긋나게 쌓는다. 어긋남은 장 번호로 정해 항상 같다.
-export function buildPaperStack(scene, stack) {
-  const group = new THREE.Group();
-  const palletH = 0.12;
-  const pallet = new THREE.Mesh(
-    new THREE.BoxGeometry(PAPER_SIZE.w + 0.3, palletH, PAPER_SIZE.d + 0.3),
-    new THREE.MeshStandardMaterial({ color: 0x9a6a3a }),
-  );
-  pallet.position.y = palletH / 2;
-  pallet.castShadow = true;
-  pallet.receiveShadow = true;
-  group.add(pallet);
-  const sheetMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x2a2a2a });
-  const sheetGeo = new THREE.BoxGeometry(PAPER_SIZE.w, PAPER_THICK, PAPER_SIZE.d);
-  for (let i = 0; i < PAPER_SHEETS; i++) {
-    const sheet = new THREE.Mesh(sheetGeo, sheetMat);
-    sheet.position.set(Math.sin(i * 12.9898) * 0.03, palletH + PAPER_THICK * (i + 0.5), Math.sin(i * 78.233) * 0.03);
-    sheet.rotation.y = Math.sin(i * 39.346) * 0.08;
-    sheet.castShadow = true;
-    sheet.receiveShadow = true;
-    group.add(sheet);
-  }
-  group.position.set(stack.x, 0, stack.z);
-  group.rotation.y = stack.rotY;
-  scene.add(group);
-  return { group, topY: palletH + PAPER_THICK * PAPER_SHEETS };
 }

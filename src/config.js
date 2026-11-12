@@ -76,22 +76,20 @@ export const INTERACT_RADIUS = 1.5;
 // FIRE_ZONE_RADIUS: 소각로 중심에서 이 거리 안에 있어야 행동 막대가 보인다.
 // FIRE_RANGE: 이 거리 안이면 태우기가 켜진다(소각로 중심 기준).
 // SHREDDER_RANGE: 파쇄기 중심에서 이 거리 안이면 파쇄가 켜진다. 두 범위가 겹치는 자리(소각로와 파쇄기 사이)에서 자동이 두 행동을 번갈아 한다.
-// STACK_RANGE: 종이 더미 중심에서 이 거리 안이어야 태우기·파쇄를 할 수 있다(종이를 집으러 돌아서야 하므로).
-// 행동 순서: 종이 더미 쪽으로 돈다(ACTION_TURN_SECONDS) -> 집는다(pick-up) -> 대상 쪽으로 돈다 -> 던진다/친다. 캐릭터는 걷지 않고 제자리에서 돈다.
-// ACTION_EFFECT_AT: 마지막 단계(던지기/치기) 길이 중 효과(종이가 불에 닿는 순간 등)가 일어나는 비율.
-// PICKUP_AT: pick-up 단계 길이 중 종이가 손에 나타나는 비율.
-// ACTION_EXTRA_SECONDS: 두 클립을 비례해서 천천히 재생해 클립 길이의 합보다 이만큼 더 길게 만든다(회전 시간은 따로 더해진다).
+// 행동 순서: 한숨(emote-no) -> 재킷 주머니에서 종이를 꺼낸다(pick-up) -> 대상 쪽으로 돈다(ACTION_TURN_SECONDS, 유일한 회전)
+// -> 던지기/치기 -> 후련(emote-yes). 캐릭터는 걷지 않고 제자리에서 돈다.
+// ACTION_EFFECT_AT: 던지기/치기 단계 길이 중 효과(종이가 불에 닿는 순간 등)가 일어나는 비율.
+// ACTION_TARGET_SECONDS: 행동 한 번의 총 길이 목표. 클립 합 + 회전이 이보다 짧으면 던지기/치기 클립만 천천히 재생해 맞춘다
+// (나머지는 원래 속도, 더 길면 늘리지 않는다).
 export const ACTION_REDUCE = 3;
 export const AUTO_GAP = 1;
 export const PASSIVE = { interval: 5, amount: 2 };
 export const FIRE_ZONE_RADIUS = 4.5;
 export const FIRE_RANGE = 4.0;
 export const SHREDDER_RANGE = 4.0;
-export const STACK_RANGE = 4.0;
 export const ACTION_TURN_SECONDS = 0.5;
 export const ACTION_EFFECT_AT = 0.45;
-export const PICKUP_AT = 0.6;
-export const ACTION_EXTRA_SECONDS = 3;
+export const ACTION_TARGET_SECONDS = 5;
 
 // 시드: 마당 배치를 항상 같게 만든다.
 export const SEED = 20261111;
