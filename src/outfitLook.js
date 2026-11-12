@@ -64,7 +64,8 @@ float sootFbm(vec3 p) { return 0.55 * sootNoise(p) + 0.3 * sootNoise(p * 2.1) + 
 `;
 
 // maskExpr: 바인드 포즈 좌표 sp 로 계산하는 0~1 마스크(GLSL 식). 몸은 허리 위로만 진하게, 머리는 얼굴에 몇 군데만.
-function sootMaterial(base, key, maskExpr, threshold, freq) {
+// strength: 그을음이 얼마나 진한가(0~1). 숯가루가 살짝 묻은 정도를 목표로 옅고 가장자리가 부드럽다.
+function sootMaterial(base, key, maskExpr, threshold, freq, strength) {
   const m = base.clone();
   m.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
@@ -80,14 +81,13 @@ function sootMaterial(base, key, maskExpr, threshold, freq) {
         float darkCloth = 1.0 - smoothstep(0.04, 0.2, lum);
         // 재: 어두운 천 위에 회갈색 먼지가 군데군데 앉는다(검은 얼룩이 보이도록 바탕을 밝힌다).
         float ash = smoothstep(0.26, 0.46, sootFbm(sp * ${(freq * 0.55).toFixed(1)} + 7.3));
-        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.29, 0.25, 0.19), ash * 0.9 * darkCloth * mask);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.29, 0.25, 0.19), ash * 0.35 * darkCloth * mask);
         // 흰 천과 맨살은 누렇게 꾀죄죄하게.
-        diffuseColor.rgb *= mix(vec3(1.0), vec3(0.80, 0.74, 0.64), (1.0 - darkCloth) * mask * 0.65);
-        // 검은 그을음: 덩어리 얼룩 + 아래로 번진 줄무늬.
-        float blot = smoothstep(${threshold.toFixed(2)}, ${(threshold + 0.07).toFixed(2)}, sootFbm(sp * ${freq.toFixed(1)}));
-        float streak = smoothstep(${(threshold + 0.04).toFixed(2)}, ${(threshold + 0.12).toFixed(2)}, sootFbm(vec3(sp.x * ${(freq * 2).toFixed(1)}, sp.y * ${(freq * 0.4).toFixed(1)}, sp.z * ${(freq * 2).toFixed(1)}) + 11.0));
-        float soot = clamp(max(blot, streak * 0.9) * mask, 0.0, 1.0);
-        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.010, 0.009, 0.008), soot * 0.94);
+        diffuseColor.rgb *= mix(vec3(1.0), vec3(0.80, 0.74, 0.64), (1.0 - darkCloth) * mask * 0.25);
+        // 그을음: 옅고 부드러운 숯가루 얼룩.
+        float blot = smoothstep(${threshold.toFixed(2)}, ${(threshold + 0.12).toFixed(2)}, sootFbm(sp * ${freq.toFixed(1)}));
+        float soot = clamp(blot * mask, 0.0, 1.0);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.07, 0.06, 0.05), soot * ${strength.toFixed(2)});
       }`);
   };
   m.customProgramCacheKey = () => `soot-${key}`;
@@ -118,7 +118,7 @@ export function createOutfitLook(root) {
       soot: {
         geometry: o.geometry,
         material: mats.length === 1
-          ? sootMaterial(mats[0], isHead ? 'head' : 'body', isHead ? 'smoothstep(0.05, 0.14, sp.z)' : 'mix(0.45, 1.0, smoothstep(0.12, 0.2, sp.y))', isHead ? 0.59 : 0.46, isHead ? 11.0 : 8.0)
+          ? sootMaterial(mats[0], isHead ? 'head' : 'body', isHead ? 'smoothstep(0.05, 0.14, sp.z)' : 'mix(0.45, 1.0, smoothstep(0.12, 0.2, sp.y))', isHead ? 0.54 : 0.50, isHead ? 11.0 : 8.0, isHead ? 0.6 : 0.4)
           : o.material,
       },
       tank: (() => { const geometry = tankGeometry(o); return geometry ? { geometry, material: mats.length === 1 ? tankMaterial(mats[0]) : o.material } : { geometry: o.geometry, material: o.material }; })(),
