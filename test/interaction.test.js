@@ -62,6 +62,21 @@ test('actionOf: 종류별 동작과 안내 문구', () => {
   assert.deepEqual(actionOf({ kind: 'seat' }), { type: 'seat', prompt: '앉기' });
 });
 
+test('actionOf: 건물(세탁소)은 E 동작이 없다(소각로처럼 호버 안내와 장애물일 뿐)', () => {
+  assert.equal(actionOf({ kind: 'building' }), null);
+});
+
+test('hoverLabel: 건물은 세탁소', () => {
+  assert.equal(hoverLabel({ id: 'laundry', label: '세탁소', kind: 'building' }), '세탁소');
+});
+
+test('nearestInRange: 건물은 건너뛴다(E 안내가 뜨지 않는다)', () => {
+  const building = { id: 'laundry', kind: 'building', x: 0, z: 0, interactRange: 3 };
+  const stump3 = { id: 's', kind: 'comfort', x: 2, z: 0, interactRange: 3 };
+  assert.equal(nearestInRange({ x: 0, z: 0 }, [building]), null);
+  assert.equal(nearestInRange({ x: 0, z: 0 }, [building, stump3]), stump3);
+});
+
 test('actionOf: 모르는 종류는 오류', () => {
   assert.throws(() => actionOf({ kind: 'door' }), /door/);
   assert.throws(() => actionOf({}), /undefined/);
@@ -80,4 +95,9 @@ test('옛 burn 동작 종류와 "소각 시작" 문구는 없다', () => {
     assert.notEqual(a.type, 'burn');
     assert.ok(!a.prompt.includes('소각'));
   }
+});
+
+test('interactTarget: walkTo 가 있으면 그 지점(건물은 문 앞)으로 간다', () => {
+  assert.deepEqual(interactTarget({ id: 'laundry', kind: 'building', x: 8.5, z: 5.5, walkTo: { x: 5.2, z: 3.7 } }), { x: 5.2, z: 3.7 });
+  assert.deepEqual(interactTarget({ x: 2, z: 3, walkTo: undefined }), { x: 2, z: 3 });
 });

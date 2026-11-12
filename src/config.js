@@ -87,6 +87,11 @@ export const PASSIVE = { interval: 5, amount: 2 };
 export const FIRE_ZONE_RADIUS = 4.5;
 export const FIRE_RANGE = 4.0;
 export const SHREDDER_RANGE = 4.0;
+// 세탁소 구역(세탁·널기): 구역 중심은 layout 의 세탁기 줄과 빨랫줄 사이(logic/zones.js)이고 이 반경 안에서 행동 막대가 보인다.
+// WASHER_RANGE: 가장 가까운 세탁기 중심에서 이 거리 안이면 세탁이 켜진다. CLOTHESLINE_RANGE: 빨랫줄 중심에서 이 거리 안이면 널기가 켜진다.
+export const LAUNDRY_ZONE_RADIUS = 4.5;
+export const WASHER_RANGE = 4.0;
+export const CLOTHESLINE_RANGE = 4.0;
 export const ACTION_TURN_SECONDS = 0.5;
 export const ACTION_EFFECT_AT = 0.45;
 export const ACTION_TARGET_SECONDS = 5;

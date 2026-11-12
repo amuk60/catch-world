@@ -1,20 +1,20 @@
-// 소각장 행동 정의와 실행기 (순수). 행동은 여러 단계(클립 재생, 제자리 회전)를 순서대로 하는 한 번짜리 동작이고,
+// 구역 행동(소각장: 태우기·파쇄 / 세탁소: 세탁·널기) 정의와 실행기 (순수). 행동은 여러 단계(클립 재생, 제자리 회전)를 순서대로 하는 한 번짜리 동작이고,
 // 실행기는 시간만 보고 단계 시작·단계 안의 표식 순간·효과 순간·끝을 알려 준다(렌더링·상태 변경은 main.js 가 한다).
-// 단계: 한숨(emote-no) -> 재킷 주머니에서 종이를 꺼낸다(pick-up, 60% 에 paperOut) -> 대상 쪽으로 돈다(유일한 회전)
-//       -> 던진다/친다(effect 표식: 효과 순간) -> 후련(emote-yes). 캐릭터는 걷지 않고 제자리에서 돈다.
+// 단계: 한숨(emote-no) -> 재킷 주머니에서 소품(종이·셔츠)을 꺼낸다(pick-up, 60% 에 paperOut) -> 대상 쪽으로 돈다(유일한 회전)
+//       -> 던진다/친다/팔을 든다(effect 표식: 효과 순간) -> 후련(emote-yes). 캐릭터는 걷지 않고 제자리에서 돈다.
+// 행동의 zone 은 그 행동이 속한 행동 구역(logic/zones.js)의 id 이고, 같은 구역 안에서 key 1 과 2 가 첫째·둘째 행동이다.
 // 단계 표식: event/eventAt = 그 단계의 eventAt(0~1) 지점에서 { type: event } 이벤트, effect = 이 단계의 effectAt 지점이 효과 순간.
 const SIGH = { kind: 'clip', name: 'emote-no' };
 const POCKET_PULL = { kind: 'clip', name: 'pick-up', event: 'paperOut', eventAt: 0.6 };
 const RELIEF = { kind: 'clip', name: 'emote-yes' };
+const turnTo = (target) => ({ kind: 'turn', target });
+const hit = (name) => ({ kind: 'clip', name, effect: true });
+const sequence = (target, effect) => [SIGH, POCKET_PULL, turnTo(target), effect, RELIEF].map((step) => ({ ...step }));
 export const ACTIONS = {
-  burn: {
-    id: 'burn', label: '태우기', key: '1', target: 'fire',
-    steps: [SIGH, POCKET_PULL, { kind: 'turn', target: 'fire' }, { kind: 'clip', name: 'attack-melee-right', effect: true }, RELIEF].map((s) => ({ ...s })),
-  },
-  shred: {
-    id: 'shred', label: '파쇄', key: '2', target: 'shredder',
-    steps: [SIGH, POCKET_PULL, { kind: 'turn', target: 'shredder' }, { kind: 'clip', name: 'attack-melee-right', effect: true }, RELIEF].map((s) => ({ ...s })),
-  },
+  burn: { id: 'burn', label: '태우기', key: '1', zone: 'incinerator', target: 'fire', steps: sequence('fire', hit('attack-melee-right')) },
+  shred: { id: 'shred', label: '파쇄', key: '2', zone: 'incinerator', target: 'shredder', steps: sequence('shredder', hit('attack-melee-right')) },
+  wash: { id: 'wash', label: '세탁', key: '1', zone: 'laundry', target: 'washer', steps: sequence('washer', hit('attack-melee-right')) },
+  hang: { id: 'hang', label: '널기', key: '2', zone: 'laundry', target: 'clothesline', steps: sequence('clothesline', hit('interact-right')) },
 };
 
 const EPS = 1e-9;
@@ -38,8 +38,8 @@ export function fitDurations(raw, turnSeconds, targetSeconds) {
   return { durations, speeds };
 }
 
-// 행동을 할 수 있는가: 대상(소각로/파쇄기)이 사정거리(경계 포함) 안.
-// dist: { fire, shredder } 플레이어까지의 거리, ranges: 같은 키의 사정거리.
+// 행동을 할 수 있는가: 대상(소각로/파쇄기/세탁기/빨랫줄)이 사정거리(경계 포함) 안.
+// dist: { fire, shredder, washer, clothesline } 플레이어까지의 거리, ranges: 같은 키의 사정거리.
 export function canPerform(actionId, dist, ranges) {
   const action = ACTIONS[actionId];
   if (!action) return false;
@@ -50,7 +50,10 @@ export function canPerform(actionId, dist, ranges) {
 // effectAt: effect 표식이 붙은 단계(던지기/치기) 길이 중 효과 순간의 비율.
 // autoGap: 자동 반복에서 행동이 끝난 뒤 다음 행동을 시작하기까지 쉬는 시간(초).
 // canStart(actionId): 자동이 다음 행동을 시작해도 되는지(사정거리 등). false 면 자동이 꺼진다. 수동 start 에는 쓰지 않는다.
-export function createRunner({ durations, turnSeconds = 0, effectAt, autoGap, canStart = () => true }) {
+// autoActions(): 지금 자동이 번갈아 할 구역의 행동 id [첫째, 둘째](호출할 때마다 현재 구역을 돌려준다). 구역이 없으면 [] 이고 자동은 꺼진다.
+export function createRunner({
+  durations, turnSeconds = 0, effectAt, autoGap, canStart = () => true, autoActions = () => ['burn', 'shred'],
+}) {
   // 행동의 단계(초 포함)와 이벤트 시간표를 만든다. 시간표: [{ t, type, index? }] 를 시각 -> 종류 순으로 정렬.
   function plan(id) {
     const steps = ACTIONS[id].steps.map((s) => ({ ...s, seconds: s.kind === 'turn' ? turnSeconds : (durations[s.name] ?? 0) }));
@@ -78,8 +81,12 @@ export function createRunner({ durations, turnSeconds = 0, effectAt, autoGap, ca
     // 행동의 단계 목록(초 포함).
     stepsOf: (id) => plan(id).steps,
 
-    // 자동이 다음에 할 행동: 기록이 없으면 태우기, 그 뒤로는 마지막 행동의 반대(태우기 <-> 파쇄).
-    nextAutoAction: () => (runner.lastActionId === 'burn' ? 'shred' : 'burn'),
+    // 자동이 다음에 할 행동: 구역의 첫째 행동, 마지막 행동이 첫째였으면 둘째(구역 안에서 번갈아). 구역이 없으면 null.
+    nextAutoAction() {
+      const [first, second] = autoActions();
+      if (first === undefined) return null;
+      return runner.lastActionId === first && second !== undefined ? second : first;
+    },
 
     // 한 번에 하나만. 바쁘거나 모르는 id 면 false. 첫 단계 이벤트는 다음 update 에서 나온다.
     start(actionId) {
@@ -123,7 +130,7 @@ export function createRunner({ durations, turnSeconds = 0, effectAt, autoGap, ca
         const wait = Math.max(0, autoGap - sinceDone);
         if (wait > left) { sinceDone += left; break; }
         const next = runner.nextAutoAction();
-        if (!canStart(next)) { runner.autoOn = false; sinceDone += left; break; }
+        if (next === null || !canStart(next)) { runner.autoOn = false; sinceDone += left; break; }
         left -= wait;
         sinceDone += wait;
         runner.start(next);

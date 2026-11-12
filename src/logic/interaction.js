@@ -1,8 +1,9 @@
 // 상호작용 대상 계산 (순수). 대상은 layout.interactables 의 항목이다.
 
-// 플레이어가 걸어갈 지점: 오브젝트 중심. 이동 코드가 장애물 가장자리로 밀어내므로 바로 앞에서 멈춘다.
+// 플레이어가 걸어갈 지점: walkTo 가 있으면 그 지점(건물: 문 앞), 아니면 오브젝트 중심. 이동 코드가 장애물 가장자리로 밀어내므로 바로 앞에서 멈춘다.
 export function interactTarget(item) {
-  return { x: item.x, z: item.z };
+  const to = item.walkTo ?? item;
+  return { x: to.x, z: to.z };
 }
 
 // x-z 평면 거리가 상호작용 범위 이내인가(경계 포함).
@@ -25,9 +26,10 @@ export function nearestInRange(playerPos, items) {
   return best;
 }
 
-// E 키 동작. null 은 E 동작이 없는 대상(소각로: 호버 안내와 장애물일 뿐, 행동은 행동 막대로 한다).
+// E 키 동작. null 은 E 동작이 없는 대상(소각로·건물: 호버 안내와 장애물일 뿐, 행동은 행동 막대로 한다).
 const ACTIONS = {
   furnace: null,
+  building: null,
   comfort: { type: 'comfort', prompt: '살펴보기' },
   fortune: { type: 'fortune', prompt: '포춘쿠키 열기' },
   seat: { type: 'seat', prompt: '앉기' },

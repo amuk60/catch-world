@@ -13,6 +13,15 @@ const BUILDING_SLOTS = [
   { id: 'laundry', x: 8.5, z: 5.5, width: 6, depth: 6 },
 ];
 
+// 세탁소(세탁소 터 안, 중심에서 offsetX 만큼 동쪽으로 붙인다: 기본 카메라(남동쪽)에서 서쪽 앞마당의 플레이어를 건물이 덜 가리게). 정면(문 쪽)은 서쪽(-x) = 건물 로컬 +z 이고 rotY 가 그 방향이다(three.js rotation.y: 로컬 +z -> (sin, cos), 로컬 +x -> (cos, -sin)).
+// width 는 정면 벽을 따른 길이(월드 z), depth 는 앞뒤 길이(월드 x). tile 은 판벽 조각(원본 1x1x1) 배율이고 문은 정면 벽의 북쪽 끝 칸이다.
+// 장애물 원은 벽 바깥선에서 OBSTACLE_INSET 안쪽을 따라 촘촘히 놓아 지나갈 수 없게 한다.
+const LAUNDRY = { id: 'laundry', tile: 1.8, width: 5.4, depth: 3.6, rotY: -Math.PI / 2, offsetX: 0.4, doorLocalX: -1.8, obstacleRadius: 0.65, inset: 0.3, spacing: 1.1, pickHeight: 3 };
+// 세탁기 줄: 문 앞(정면 방향) 거리 DOOR_GAP, 줄을 따라 ROW_STEP 간격. 서쪽(문 쪽)을 보고 서서 건물 정면과 나란하다. dryer 는 가운데가 아니라 끝에 둔다.
+const WASHER_ROW = { frontDistance: 2.1, firstZ: 5.2, step: 1.45, radius: 0.6, models: [['washer', 2.6], ['washer', 2.6], ['dryer', 2.2]] };
+// 빨랫줄: 세탁기 줄과 같은 x 에서 문 앞 북쪽 광장에 둔다(기둥 둘, 줄 높이 y, 걸 수 있는 칸 slots).
+const CLOTHESLINE = { z1: -0.7, z2: 2.7, y: 1.8, postHeight: 2.0, postRadius: 0.25, slots: 6 };
+
 const FALL_TREES = [
   'tree_oak_fall', 'tree_default_fall', 'tree_detailed_fall', 'tree_fat_fall', 'tree_tall_fall',
   'tree_plateau_fall', 'tree_small_fall', 'tree_simple_fall', 'tree_thin_fall', 'tree_blocks_fall',
@@ -216,8 +225,54 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
   const shredder = placeProp(SHREDDER);
   obstacles.push({ x: shredder.x, z: shredder.z, radius: shredder.radius });
 
+  // ---- 세탁소(기존 배치·난수 흐름 뒤에 덧붙인다: 위의 모든 배치는 그대로다) ----
+  const slot = BUILDING_SLOTS.find((b) => b.id === LAUNDRY.id);
+  const centre = { x: slot.x + LAUNDRY.offsetX, z: slot.z };
+  const toWorld = (lx, lz) => ({ // 건물 로컬 (lx: 정면 벽을 따라, lz: 앞쪽) -> 월드
+    x: centre.x + lx * Math.cos(LAUNDRY.rotY) + lz * Math.sin(LAUNDRY.rotY),
+    z: centre.z - lx * Math.sin(LAUNDRY.rotY) + lz * Math.cos(LAUNDRY.rotY),
+  });
+  const door = toWorld(LAUNDRY.doorLocalX, LAUNDRY.depth / 2);
+  const front = { x: Math.sin(LAUNDRY.rotY), z: Math.cos(LAUNDRY.rotY) };
+  const building = {
+    id: LAUNDRY.id, x: centre.x, z: centre.z, rotY: LAUNDRY.rotY, width: LAUNDRY.width, depth: LAUNDRY.depth, tile: LAUNDRY.tile,
+    door: { x: door.x, z: door.z }, obstacleRadius: LAUNDRY.obstacleRadius,
+  };
+  // 외곽선(벽 바깥선에서 inset 안쪽 직사각형)을 따라 spacing 이하 간격의 원을 놓는다.
+  const hw = LAUNDRY.width / 2 - LAUNDRY.inset;
+  const hd = LAUNDRY.depth / 2 - LAUNDRY.inset;
+  const corners = [[-hw, hd], [hw, hd], [hw, -hd], [-hw, -hd]];
+  corners.forEach(([ax, az], i) => {
+    const [bx, bz] = corners[(i + 1) % 4];
+    const parts = Math.ceil(Math.hypot(bx - ax, bz - az) / LAUNDRY.spacing);
+    for (let k = 0; k < parts; k++) {
+      const p = toWorld(ax + ((bx - ax) * k) / parts, az + ((bz - az) * k) / parts);
+      obstacles.push({ x: p.x, z: p.z, radius: LAUNDRY.obstacleRadius });
+    }
+  });
+  const washers = WASHER_ROW.models.map(([name, scale], i) => {
+    const p = { x: door.x + front.x * WASHER_ROW.frontDistance, z: WASHER_ROW.firstZ + i * WASHER_ROW.step };
+    obstacles.push({ x: p.x, z: p.z, radius: WASHER_ROW.radius });
+    return { pack: 'furniture', name, x: p.x, z: p.z, scale, rotY: LAUNDRY.rotY, radius: WASHER_ROW.radius }; // 서쪽을 본다(건물 정면과 같은 방향)
+  });
+  const lineX = washers[0].x;
+  const clothesline = {
+    x1: lineX, z1: CLOTHESLINE.z1, x2: lineX, z2: CLOTHESLINE.z2, y: CLOTHESLINE.y,
+    postHeight: CLOTHESLINE.postHeight, postRadius: CLOTHESLINE.postRadius, slots: CLOTHESLINE.slots,
+    centre: { x: lineX, z: (CLOTHESLINE.z1 + CLOTHESLINE.z2) / 2 },
+  };
+  obstacles.push({ x: clothesline.x1, z: clothesline.z1, radius: clothesline.postRadius }, { x: clothesline.x2, z: clothesline.z2, radius: clothesline.postRadius });
+  // 건물 호버/클릭 판정: 터 중심의 큰 원. 클릭하면 문 앞 1.5 지점으로 걸어간다. E 동작은 없다.
+  const hoverRadius = Math.min(LAUNDRY.width, LAUNDRY.depth) / 2 + 0.1;
+  interactables.push({
+    id: LAUNDRY.id, label: '세탁소', kind: 'building', x: centre.x, z: centre.z, radius: hoverRadius,
+    interactRange: hoverRadius + PLAYER.radius + INTERACT_MARGIN, pickHeight: LAUNDRY.pickHeight,
+    walkTo: { x: door.x + front.x * 1.5, z: door.z + front.z * 1.5 },
+  });
+
   return {
     trees, bushes, rocks, lanterns, furnaceItems, sign, interactables, shredder,
-    buildingSlots: BUILDING_SLOTS.map((s) => ({ ...s })), plaza: { ...PLAZA }, obstacles,
+    buildingSlots: BUILDING_SLOTS.map((b) => ({ ...b })), plaza: { ...PLAZA }, obstacles,
+    buildings: [building], washers, clothesline,
   };
 }

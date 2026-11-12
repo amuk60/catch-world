@@ -1,15 +1,11 @@
-// 브라우저 전용: 툴팁·말풍선·E 키 안내·포춘쿠키 모달·전역 스트레스 바·행동 막대·불멍 안내·감소량(-4) 팝업·측면 팝업(목표 달성)·가운데 팝업(지수 0)·캐치 칩(HTML). 컨테이너(#game) 안에 절대 위치로 놓는다.
+// 브라우저 전용: 툴팁·말풍선·E 키 안내·포춘쿠키 모달·전역 스트레스 바·행동 막대(구역마다 버튼이 바뀐다)·불멍 안내·감소량(-4) 팝업·측면 팝업(목표 달성)·가운데 팝업(지수 0)·캐치 칩(HTML). 컨테이너(#game) 안에 절대 위치로 놓는다.
 import { barRatio } from './logic/burn.js';
 import { emptyMessage, goalMessage } from './logic/cta.js';
 
 const BUBBLE_MS = 3000;
 const CRACK_MS = 400; // index.html 의 crack 애니메이션 길이와 같게 둔다.
 const DELTA_MS = 800; // index.html 의 delta-rise 애니메이션 길이와 같게 둔다.
-const ACTION_BUTTONS = [
-  { id: 'burn', key: '1', label: '태우기' },
-  { id: 'shred', key: '2', label: '파쇄' },
-  { id: 'auto', key: 'R', label: '자동' },
-];
+const AUTO_BUTTON = { id: 'auto', key: 'R', label: '자동' };
 const TOO_FAR = '더 가까이 가세요';
 
 // onCrack: 쿠키를 클릭했을 때, onClose: ✕ 를 눌렀을 때 (main.js 가 상태를 결정한다).
@@ -49,19 +45,20 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
     <div class="stress-bar"><div class="stress-fill"></div></div>`;
   const stressValue = stress.querySelector('b');
   const stressFill = stress.querySelector('.stress-fill');
-  // 행동 막대(하단 중앙): [1] 태우기 [2] 파쇄 [R] 자동. 사용할 수 없는 버튼은 회색(aria-disabled)이고 눌러도 아무 일 없다.
+  // 행동 막대(하단 중앙): 지금 구역의 [1] 첫째 행동 [2] 둘째 행동 [R] 자동(소각장: 태우기·파쇄, 세탁소: 세탁·널기).
+  // 사용할 수 없는 버튼은 회색(aria-disabled)이고 눌러도 아무 일 없다. 구역이 바뀔 때만 버튼을 다시 만든다.
   const actionBar = document.createElement('div');
   actionBar.id = 'action-bar';
-  const barButtons = {};
-  for (const b of ACTION_BUTTONS) {
+  let barButtons = {};
+  let barZone = null;
+  const makeButton = (b) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.dataset.action = b.id;
     button.innerHTML = `<span class="keycap">${b.key}</span><span class="label">${b.label}</span>`;
     button.addEventListener('pointerdown', (e) => e.preventDefault()); // 포커스를 가져가지 않는다(스페이스·엔터로 다시 눌리지 않게)
-    barButtons[b.id] = button;
-    actionBar.append(button);
-  }
+    return button;
+  };
   let barHandlers = { onAction: () => {}, onToggleAuto: () => {} };
   actionBar.addEventListener('click', (e) => {
     const button = e.target.closest('button');
@@ -198,16 +195,23 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
       stressValue.textContent = Math.round(value);
       stressFill.style.width = `${barRatio(value, stressStart) * 100}%`;
     },
-    // 행동 막대. showActionBar 로 보이게 하고 handlers 를 등록, updateActionBar 로 버튼 상태를 갱신(매 프레임 불러도 된다).
-    showActionBar({ onAction = () => {}, onToggleAuto = () => {} } = {}) {
+    // 행동 막대. showActionBar 로 구역의 버튼(buttons: [{ id, key, label }])을 만들어 보이게 하고 handlers 를 등록, updateActionBar 로 버튼 상태를 갱신(매 프레임 불러도 된다).
+    showActionBar({ zoneId = null, buttons = [], onAction = () => {}, onToggleAuto = () => {} } = {}) {
       barHandlers = { onAction, onToggleAuto };
+      barZone = zoneId;
+      barButtons = {};
+      actionBar.replaceChildren();
+      for (const b of [...buttons, AUTO_BUTTON]) {
+        barButtons[b.id] = makeButton(b);
+        actionBar.append(barButtons[b.id]);
+      }
       actionBar.classList.add('visible');
     },
-    // state: { burn, shred: 사용 가능 여부, auto: 켜짐 여부, busy: 행동 진행 중(버튼을 잠깐 흐리게) }
+    // state: { <행동 id>: 사용 가능 여부, auto: 켜짐 여부, busy: 행동 진행 중(버튼을 잠깐 흐리게) }
     updateActionBar(state) {
-      for (const id of ['burn', 'shred']) {
+      for (const [id, button] of Object.entries(barButtons)) {
+        if (id === 'auto') continue;
         const enabled = Boolean(state[id]);
-        const button = barButtons[id];
         button.setAttribute('aria-disabled', enabled ? 'false' : 'true');
         button.title = enabled ? '' : TOO_FAR;
       }
@@ -217,8 +221,10 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
     },
     hideActionBar() {
       actionBar.classList.remove('visible');
+      barZone = null;
     },
     isActionBarVisible: () => actionBar.classList.contains('visible'),
+    actionBarZone: () => barZone,
     showMeditate() {
       meditate.classList.add('visible');
     },

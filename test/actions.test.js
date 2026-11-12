@@ -29,28 +29,41 @@ const BURN_STEPS = [
   { kind: 'clip', name: 'emote-yes' },
 ];
 
-test('ACTIONS: 두 행동(태우기, 파쇄). 한숨 -> 주머니에서 꺼내기 -> 대상 쪽으로 돌기 -> 던지기/치기(효과) -> 후련', () => {
+const SIGH = { kind: 'clip', name: 'emote-no' };
+const PULL = { kind: 'clip', name: 'pick-up', event: 'paperOut', eventAt: 0.6 };
+const RELIEF = { kind: 'clip', name: 'emote-yes' };
+
+test('ACTIONS: 네 행동(태우기·파쇄·세탁·널기). 한숨 -> 주머니에서 꺼내기 -> 대상 쪽으로 돌기 -> 던지기/치기/팔 들기(효과) -> 후련', () => {
   assert.deepEqual(ACTIONS, {
-    burn: { id: 'burn', label: '태우기', key: '1', target: 'fire', steps: BURN_STEPS },
+    burn: { id: 'burn', label: '태우기', key: '1', zone: 'incinerator', target: 'fire', steps: BURN_STEPS },
     shred: {
-      id: 'shred', label: '파쇄', key: '2', target: 'shredder',
-      steps: [
-        { kind: 'clip', name: 'emote-no' },
-        { kind: 'clip', name: 'pick-up', event: 'paperOut', eventAt: 0.6 },
-        { kind: 'turn', target: 'shredder' },
-        { kind: 'clip', name: 'attack-melee-right', effect: true },
-        { kind: 'clip', name: 'emote-yes' },
-      ],
+      id: 'shred', label: '파쇄', key: '2', zone: 'incinerator', target: 'shredder',
+      steps: [SIGH, PULL, { kind: 'turn', target: 'shredder' }, { kind: 'clip', name: 'attack-melee-right', effect: true }, RELIEF],
+    },
+    wash: {
+      id: 'wash', label: '세탁', key: '1', zone: 'laundry', target: 'washer',
+      steps: [SIGH, PULL, { kind: 'turn', target: 'washer' }, { kind: 'clip', name: 'attack-melee-right', effect: true }, RELIEF],
+    },
+    hang: {
+      id: 'hang', label: '널기', key: '2', zone: 'laundry', target: 'clothesline',
+      steps: [SIGH, PULL, { kind: 'turn', target: 'clothesline' }, { kind: 'clip', name: 'interact-right', effect: true }, RELIEF],
     },
   });
   assert.equal(ACTIONS.poke, undefined);
 });
 
-test('종이를 든 손(오른손)으로 휘두른다: 두 행동 모두 attack-melee-right, 왼손 클립은 쓰지 않는다', () => {
+test('구역마다 행동 둘: 소각장은 태우기·파쇄(키 1·2), 세탁소는 세탁·널기(키 1·2)', () => {
+  const byZone = {};
+  for (const a of Object.values(ACTIONS)) (byZone[a.zone] ??= []).push(`${a.key}:${a.id}`);
+  assert.deepEqual(byZone, { incinerator: ['1:burn', '2:shred'], laundry: ['1:wash', '2:hang'] });
+});
+
+test('오른손으로 동작한다: 태우기·파쇄·세탁은 attack-melee-right, 널기는 interact-right(팔 올리기), 왼손 클립은 쓰지 않는다', () => {
+  const expected = { burn: 'attack-melee-right', shred: 'attack-melee-right', wash: 'attack-melee-right', hang: 'interact-right' };
   for (const a of Object.values(ACTIONS)) {
     const hit = a.steps.find((s) => s.effect);
-    assert.equal(hit.name, 'attack-melee-right', a.id);
-    assert.ok(!a.steps.some((s) => s.name === 'attack-melee-left'), a.id);
+    assert.equal(hit.name, expected[a.id], a.id);
+    assert.ok(!a.steps.some((s) => /left/.test(s.name ?? '')), a.id);
   }
 });
 

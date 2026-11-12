@@ -199,9 +199,10 @@ export function buildCity(scene, layout) {
 export function buildPickables(scene, interactables) {
   return interactables.map((it) => {
     const r = it.radius * 1.4;
-    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 2.2), new THREE.MeshBasicMaterial());
+    const h = it.pickHeight ?? 2.2; // 건물처럼 키가 큰 대상은 pickHeight 로 높인다
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h), new THREE.MeshBasicMaterial());
     mesh.material.visible = false;
-    mesh.position.set(it.x, 1.1, it.z);
+    mesh.position.set(it.x, h / 2, it.z);
     mesh.userData.interactId = it.id;
     scene.add(mesh);
     return mesh;
