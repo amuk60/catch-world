@@ -56,6 +56,10 @@
       background: rgba(255, 255, 255, 0.18); }
     .stress-fill { height: 100%; width: 100%; border-radius: 7px; background: #e2483d; transition: width 0.3s; }
     .stress-goal { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: #fff; }
+    #shred-hint { position: absolute; left: 0; top: 0; padding: 8px 14px; border-radius: 999px; background: #fff; color: #c2410c;
+      font-size: 16px; font-weight: 700; white-space: nowrap; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3); pointer-events: none;
+      transform: translate(-50%, -100%); margin-top: -8px; opacity: 0; transition: opacity 0.15s; z-index: 2; }
+    #shred-hint.visible { opacity: 1; }
     #exit-burn { position: absolute; left: 14px; top: 14px; display: none; padding: 8px 16px; border: 0; border-radius: 999px;
       background: rgba(18, 18, 31, 0.8); color: #fff; font: inherit; font-size: 15px; cursor: pointer; z-index: 2; }
     #exit-burn.visible { display: block; }

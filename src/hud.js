@@ -1,4 +1,4 @@
-// 브라우저 전용: 툴팁·말풍선·E 키 안내·포춘쿠키 모달·소각 미니게임 스트레스 바와 나가기 버튼(HTML). 컨테이너(#game) 안에 절대 위치로 놓는다.
+// 브라우저 전용: 툴팁·말풍선·E 키 안내·포춘쿠키 모달·전역 스트레스 바·소각 미니게임 나가기 버튼과 파쇄 안내(HTML). 컨테이너(#game) 안에 절대 위치로 놓는다.
 import { barRatio, goalRatio } from './logic/burn.js';
 
 const BUBBLE_MS = 3000;
@@ -33,7 +33,7 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
     </div>`;
   const cookieButton = fortune.querySelector('.cookie');
   const fortuneText = fortune.querySelector('.fortune-text');
-  // 소각 미니게임: 스트레스 바(상단 중앙)와 나가기 버튼(상단 좌측).
+  // 전역 스트레스 바(상단 중앙)와 소각 미니게임 나가기 버튼(상단 좌측).
   const stress = document.createElement('div');
   stress.id = 'stress';
   stress.innerHTML = `
@@ -46,7 +46,9 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
   exitButton.id = 'exit-burn';
   exitButton.type = 'button';
   exitButton.textContent = '나가기';
-  container.append(tooltip, bubble, prompt, fortune, stress, exitButton);
+  const shredHint = document.createElement('div');
+  shredHint.id = 'shred-hint';
+  container.append(tooltip, bubble, prompt, fortune, stress, exitButton, shredHint);
   let stressStart = 100;
   let exitHandler = () => {};
   exitButton.addEventListener('click', () => exitHandler());
@@ -112,6 +114,7 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
       clearTimeout(crackTimer);
       setStage(null);
     },
+    // 전역 스트레스 바: 월드와 소각장에서 항상 보인다. 처음 한 번 만들고 값이 바뀔 때마다 update.
     showStressBar(value, start, goal) {
       stressStart = start;
       stressGoal.style.left = `${goalRatio(goal, start) * 100}%`;
@@ -122,8 +125,17 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
       stressValue.textContent = Math.round(value);
       stressFill.style.width = `${barRatio(value, stressStart) * 100}%`;
     },
-    hideStressBar() {
-      stress.classList.remove('visible');
+    // 파쇄기 위 안내(HTML). 위치는 파쇄기 월드 점을 투영한 화면 좌표.
+    showShredHint(text) {
+      shredHint.textContent = text;
+      shredHint.classList.add('visible');
+    },
+    positionShredHint(screenX, screenY) {
+      shredHint.style.left = `${screenX}px`;
+      shredHint.style.top = `${screenY}px`;
+    },
+    hideShredHint() {
+      shredHint.classList.remove('visible');
     },
     showExit(onClick) {
       exitHandler = onClick;

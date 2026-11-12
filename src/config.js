@@ -74,13 +74,16 @@ export const INTERACT_RADIUS = 1.5;
 // 소각 미니게임(월드 단위). 위치는 소각로(FURNACE) 기준 오프셋.
 // camOffset/lookOffset: 고정 카메라 위치와 바라보는 점. fireRadius: 이 반경 안에 놓으면 소각.
 // paperY: 종이가 뜨는 높이. burnSec/flare/flareSec/shakeSec/shakeAmp: 소각 연출.
+// shredZoneRadius: 파쇄기 중심에서 이 수평 거리 안에 자소서를 놓으면 파쇄기에 들어간다. loadSec: 슬롯으로 빨려 드는 시간.
+// returnSec: 잘못 놓은 종이가 트레이로 돌아가는 시간. nextPaperSec: 한 장을 끝낸 뒤 다음 종이가 나오기까지.
+// wiggleSec: 파쇄기 탭 흔들림. clearExitSec: 클리어 후 소각장을 나가기까지.
 export const BURN = {
   glideSec: 0.6,
   camOffset: [5.4, 6.0, 6.6], lookOffset: [0, 0.6, 0],
   fireRadius: 1.3,
   shredderOffset: [-2.7, 0, 0.4], trayOffset: [2.2, 0, 2.0],
   paperY: 1.0, burnSec: 0.25, flare: 1.35, flareSec: 0.2, shakeSec: 0.15, shakeAmp: 0.08,
-  item: { type: 'resume', label: '이력서', reduce: 5 },
+  shredZoneRadius: 1.1, loadSec: 0.3, returnSec: 0.35, nextPaperSec: 0.8, wiggleSec: 0.08, clearExitSec: 0.7,
 };
 
 // 시드: 마당 배치를 항상 같게 만든다.

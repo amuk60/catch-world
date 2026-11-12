@@ -13,7 +13,9 @@ import { nextMode, showPrompt as promptAllowed } from './logic/playerMode.js';
 import { pickFortune } from './logic/fortune.js';
 import { createControls } from './controls.js';
 import { createBurnGame } from './burnGame.js';
-import { ORBIT, YARD, PLAYER, PLAYER_MODEL, FURNACE, SPAWN, SEED, COMFORT_MESSAGES, FORTUNES } from './config.js';
+import { createGameState } from './logic/gameState.js';
+import { buildQueue } from './logic/paperQueue.js';
+import { ORBIT, YARD, PLAYER, PLAYER_MODEL, FURNACE, STRESS, BURN, SPAWN, SEED, COMFORT_MESSAGES, FORTUNES } from './config.js';
 import { applyDrag, applyZoom, orbitPosition } from './logic/orbit.js';
 import { clampToYard, stepToward, pushOutOfCircle, headingY } from './logic/movement.js';
 
@@ -81,15 +83,27 @@ if (isMobileUA(navigator.userAgent)) {
   const raycaster = new THREE.Raycaster();
   const bubblePoint = new THREE.Vector3();
 
+  // 게임 전체에서 하나뿐인 상태: 스트레스 지수와 종이 큐 진행. 미니게임을 나갔다 들어와도 유지되고 reset() 으로만 초기화된다.
+  const gameState = createGameState({ ...STRESS, queue: buildQueue() });
+  // 전역 목표 표시이므로 월드 화면에서도 처음부터 보인다.
+  hud.showStressBar(gameState.stress.value, gameState.stress.start, gameState.stress.goal);
+
+  // 지수가 처음 목표치 이하가 되면(어느 미니게임이든) 잠시 뒤 소각장에서 나온다. gameState.cleared 가 전역에 기억된다.
+  function onClear() {
+    // 단계 7에서 종료 화면(CTA)을 연결
+    setTimeout(() => { if (mode === 'burn') dispatch('close'); }, BURN.clearExitSec * 1000);
+  }
+
   // 소각 미니게임. 나갈 때 돌아갈 곳은 지금의 월드 궤도 카메라 자세다.
   const returnPose = { position: new THREE.Vector3(), target: targetPos };
   const burn = createBurnGame({
-    scene, camera, renderer, hud, furnace: FURNACE,
+    scene, camera, renderer, hud, furnace: FURNACE, gameState,
     getReturnPose: () => {
       returnPose.position.set(...orbitPosition(targetPos.toArray(), orbit));
       return returnPose;
     },
     onExit: () => dispatch('close'),
+    onClear,
   });
 
   // 장애물 밖으로 밀어낸 목표 지점으로 이동을 시작한다.
