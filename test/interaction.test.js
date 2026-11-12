@@ -114,3 +114,7 @@ test('interactTarget: walkTo 가 있으면 그 지점(건물은 문 앞)으로 �
   assert.deepEqual(interactTarget({ id: 'laundry', kind: 'building', x: 8.5, z: 5.5, walkTo: { x: 5.2, z: 3.7 } }), { x: 5.2, z: 3.7 });
   assert.deepEqual(interactTarget({ x: 2, z: 3, walkTo: undefined }), { x: 2, z: 3 });
 });
+
+test('actionOf: 빨랫줄은 새 셔츠 입기(wear)', () => {
+  assert.deepEqual(actionOf({ kind: 'clothesline' }), { type: 'wear', prompt: '새 셔츠 입기' });
+});

@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { PLAYER_MODEL } from './config.js';
 import { clipNameForState, findClip, FADE_SECONDS } from './logic/animation.js';
+import { createOutfitLook } from './outfitLook.js';
 
 const ACTION_CLIPS = ['emote-no', 'pick-up', 'attack-melee-right', 'interact-right', 'emote-yes']; // 구역 행동(소각장·세탁소)에 쓰는 클립
 const ACTION_FADE = 0.15; // 행동 클립으로 넘어갈 때 크로스페이드(초)
@@ -18,6 +19,7 @@ export function createPlayer(gltf) {
     if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; }
   });
   group.add(model);
+  const look = createOutfitLook(model);
 
   const mixer = new THREE.AnimationMixer(model);
   const actions = {};
@@ -85,6 +87,9 @@ export function createPlayer(gltf) {
     group,
     setState,
     handBoneName: handBone?.name ?? null,
+    // 옷 상태('clean' | 'dirty' | 'tank' | 'drying' | 'dry')에 맞춰 겉모습을 바꾼다(정장 / 그을음 / 흰 나시).
+    applyOutfit: (state) => look.apply(state),
+    getAppearance: () => look.appearance,
     // 행동에 쓰는 클립의 원래 길이(초). 늘려 재생할 길이는 logic/actions.js 의 fitDurations 가 계산한다.
     getRawClipDurations() {
       const out = {};

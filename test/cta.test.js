@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ctaMessage, emptyMessage, goalMessage, resultPlan, shareLines, shareFilename, shareUrl } from '../src/logic/cta.js';
+import { ctaMessage, emptyMessage, goalMessage, readyMessage, resultPlan, shareLines, shareFilename, shareUrl } from '../src/logic/cta.js';
 
 test('ctaMessage: 제목과 두 줄 문구', () => {
   assert.deepEqual(ctaMessage(19), {
@@ -61,4 +61,14 @@ test('resultPlan: 0 이 우선(modal), 목표만이면 side, 둘 다 아니면 n
   assert.equal(resultPlan({ justGoal: true, justEmpty: false }), 'side');
   assert.equal(resultPlan({ justGoal: false, justEmpty: true }), 'modal');
   assert.equal(resultPlan({ justGoal: true, justEmpty: true }), 'modal');
+});
+
+test('readyMessage: 면접 준비 완료 팝업 문구', () => {
+  assert.deepEqual(readyMessage(), {
+    title: '면접 갈 준비 완료!',
+    line1: '빳빳한 새 와이셔츠로 갈아입었어요.',
+    line2: '이제 진짜 지원서를 낼 차례예요. 캐치에서 나에게 맞는 공고를 찾아볼까요?',
+    cta: '캐치에서 공고 보기',
+    later: '더 쉬다 가기',
+  });
 });
