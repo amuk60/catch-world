@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { activeZone, zoneActions, buildZones } from '../src/logic/zones.js';
 import { buildLayout } from '../src/logic/layout.js';
+import { buildLaundryInterior } from '../src/logic/interiors.js';
 import { FURNACE, FIRE_ZONE_RADIUS, SEED, SPAWN } from '../src/config.js';
 import { ACTIONS } from '../src/logic/actions.js';
 
@@ -40,19 +41,45 @@ test('zoneActions: 구역의 행동 id 두 개(복사본), 구역이 없으면 �
   assert.deepEqual(zoneActions(null), []);
 });
 
-test('buildZones: 소각장(소각로 중심, FIRE_ZONE_RADIUS, 태우기·파쇄)과 세탁소(세탁·널기)', () => {
+test('buildZones: 마당의 소각장(소각로 중심, FIRE_ZONE_RADIUS, 태우기·파쇄)과 실내 세탁소(세탁·널기)', () => {
   const L = buildLayout(SEED);
+  const I = buildLaundryInterior();
   const zones = buildZones(L);
   assert.deepEqual(zones.map((z) => z.id), ['incinerator', 'laundry']);
   const [inc, laundry] = zones;
-  assert.deepEqual(inc, { id: 'incinerator', center: { x: FURNACE.x, z: FURNACE.z }, radius: FIRE_ZONE_RADIUS, actions: ['burn', 'shred'] });
+  assert.deepEqual(inc, { id: 'incinerator', space: 'yard', center: { x: FURNACE.x, z: FURNACE.z }, radius: FIRE_ZONE_RADIUS, actions: ['burn', 'shred'] });
+  assert.equal(laundry.space, 'laundry');
   assert.deepEqual(laundry.actions, ['wash', 'hang']);
   assert.equal(laundry.radius, 4.5);
-  // 세탁소 구역 중심은 세탁기 줄과 빨랫줄 사이.
-  const cx = L.washers.reduce((s, w) => s + w.x, 0) / L.washers.length;
-  const cz = L.washers.reduce((s, w) => s + w.z, 0) / L.washers.length;
-  assert.ok(Math.abs(laundry.center.x - (cx + L.clothesline.centre.x) / 2) < 1e-9);
-  assert.ok(Math.abs(laundry.center.z - (cz + L.clothesline.centre.z) / 2) < 1e-9);
+  // 세탁소 구역 중심은 실내 세탁기 줄과 빨랫줄 사이.
+  const cx = I.washers.reduce((s, w) => s + w.x, 0) / I.washers.length;
+  const cz = I.washers.reduce((s, w) => s + w.z, 0) / I.washers.length;
+  assert.ok(Math.abs(laundry.center.x - (cx + I.clothesline.centre.x) / 2) < 1e-9);
+  assert.ok(Math.abs(laundry.center.z - (cz + I.clothesline.centre.z) / 2) < 1e-9);
+  assert.ok(laundry.center.x > 200, '실내 좌표');
+  assert.deepEqual(buildZones(L, I), zones); // 실내 데이터를 직접 넘겨도 같다
+});
+
+test('activeZone: 공간을 주면 그 공간의 구역만 본다(같은 좌표에 다른 공간 구역이 있어도 무시)', () => {
+  const Y = { id: 'y', space: 'yard', center: { x: 0, z: 0 }, radius: 5, actions: ['a', 'b'] };
+  const R = { id: 'r', space: 'room', center: { x: 0, z: 0 }, radius: 5, actions: ['c', 'd'] };
+  assert.equal(activeZone({ x: 1, z: 1 }, [Y, R], 'yard'), Y);
+  assert.equal(activeZone({ x: 1, z: 1 }, [Y, R], 'room'), R);
+  assert.equal(activeZone({ x: 1, z: 1 }, [R, Y], 'yard'), Y);
+  assert.equal(activeZone({ x: 1, z: 1 }, [Y], 'room'), null);
+  assert.equal(activeZone({ x: 1, z: 1 }, [Y, R], 'nowhere'), null);
+  assert.equal(activeZone({ x: 1, z: 1 }, [Y, R]), Y); // 공간을 주지 않으면 모든 구역(가까운 쪽, 같으면 먼저)
+});
+
+test('마당 한가운데 어디서도 실내 세탁소 구역은 활성화되지 않고, 실내에서 소각장은 활성화되지 않는다', () => {
+  const L = buildLayout(SEED);
+  const zones = buildZones(L);
+  const I = buildLaundryInterior();
+  assert.equal(activeZone(I.standingSpot, zones, 'laundry').id, 'laundry');
+  assert.equal(activeZone(I.standingSpot, zones, 'yard'), null);
+  assert.equal(activeZone({ x: FURNACE.x + 2, z: FURNACE.z }, zones, 'yard').id, 'incinerator');
+  assert.equal(activeZone({ x: FURNACE.x + 2, z: FURNACE.z }, zones, 'laundry'), null);
+  assert.equal(activeZone(I.arrival, zones, 'laundry'), null); // 들어오자마자는 구역 밖(걸어 들어가야 행동 막대가 뜬다)
 });
 
 test('구역의 행동은 모두 ACTIONS 에 있고 그 구역 소속이며, 키 1/2 순서로 정의된다', () => {
@@ -70,9 +97,10 @@ test('스폰 지점은 어느 구역에도 속하지 않는다', () => {
   assert.equal(activeZone(SPAWN, buildZones(buildLayout(SEED))), null);
 });
 
-test('소각로 가까이는 소각장, 세탁기 가까이는 세탁소 구역', () => {
+test('소각로 가까이는 소각장, 실내 세탁기 가까이는 세탁소 구역', () => {
   const L = buildLayout(SEED);
+  const I = buildLaundryInterior();
   const zones = buildZones(L);
   assert.equal(activeZone({ x: FURNACE.x + 2, z: FURNACE.z }, zones).id, 'incinerator');
-  assert.equal(activeZone({ x: L.washers[0].x - 1.5, z: L.washers[0].z }, zones).id, 'laundry');
+  assert.equal(activeZone({ x: I.washers[2].x, z: I.washers[2].z + 1.5 }, zones, 'laundry').id, 'laundry');
 });

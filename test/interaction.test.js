@@ -77,8 +77,21 @@ test('nearestInRange: 건물은 건너뛴다(E 안내가 뜨지 않는다)', () 
   assert.equal(nearestInRange({ x: 0, z: 0 }, [building, stump3]), stump3);
 });
 
+test('actionOf: 문은 들어가기/나가기(to 가 yard 면 나가기, 아니면 들어가기)', () => {
+  assert.deepEqual(actionOf({ kind: 'door', to: 'laundry' }), { type: 'enter', prompt: '들어가기' });
+  assert.deepEqual(actionOf({ kind: 'door', to: 'yard' }), { type: 'exit', prompt: '나가기' });
+  assert.deepEqual(actionOf({ kind: 'door' }), { type: 'enter', prompt: '들어가기' });
+});
+
+test('nearestInRange: 문은 E 동작이 있는 대상이라 범위 안이면 잡힌다(건물보다 우선)', () => {
+  const building = { id: 'laundry', kind: 'building', x: 0, z: 0, interactRange: 5 };
+  const door = { id: 'laundry-door', kind: 'door', to: 'laundry', x: 3, z: 0, interactRange: 1.6 };
+  assert.equal(nearestInRange({ x: 2.5, z: 0 }, [building, door]), door);
+  assert.equal(nearestInRange({ x: 0, z: 0 }, [building, door]), null);
+});
+
 test('actionOf: 모르는 종류는 오류', () => {
-  assert.throws(() => actionOf({ kind: 'door' }), /door/);
+  assert.throws(() => actionOf({ kind: 'portal' }), /portal/);
   assert.throws(() => actionOf({}), /undefined/);
 });
 

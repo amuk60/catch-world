@@ -20,7 +20,12 @@ import { createGameState } from './logic/gameState.js';
 import { ACTIONS, createRunner, fitDurations, canPerform } from './logic/actions.js';
 import { buildZones, activeZone, zoneActions } from './logic/zones.js';
 import { nearestIndex } from './logic/laundry.js';
-import { buildLaundry, buildCleanShirt, buildCrumpledShirt, LAUNDRY_MODEL_ITEMS } from './laundry.js';
+import { buildLaundryBuilding, buildCleanShirt, buildCrumpledShirt, LAUNDRY_MODEL_ITEMS } from './laundry.js';
+import { buildInteriorLaundry, INTERIOR_MODEL_ITEMS } from './interiorLaundry.js';
+import { createSpaces } from './spaces.js';
+import { buildLaundryInterior } from './logic/interiors.js';
+import { arrivalPoint, clampToSpace } from './logic/spaces.js';
+import { createTransition } from './logic/transition.js';
 import { createPassive } from './logic/passive.js';
 import { createOnce } from './logic/once.js';
 import { shareLines, shareFilename, shareUrl, resultPlan } from './logic/cta.js';
@@ -28,12 +33,12 @@ import { initAnalytics, track } from './analytics.js';
 import { renderShareCard, saveShareCard, copyText } from './share.js';
 import { easeInOut } from './logic/burn.js';
 import {
-  ORBIT, YARD, PLAYER, PLAYER_MODEL, FURNACE, STRESS, SPAWN, SEED, COMFORT_MESSAGES, FORTUNES,
+  ORBIT, TRANSITION, PLAYER, PLAYER_MODEL, FURNACE, STRESS, SPAWN, SEED, COMFORT_MESSAGES, FORTUNES,
   ACTION_REDUCE, ACTION_EFFECT_AT, ACTION_TARGET_SECONDS, ACTION_TURN_SECONDS, AUTO_GAP, PASSIVE,
   FIRE_RANGE, SHREDDER_RANGE, WASHER_RANGE, CLOTHESLINE_RANGE, FIRE_ZONE_RADIUS, CATCH_URL, GA_MEASUREMENT_ID,
 } from './config.js';
 import { applyDrag, applyZoom, orbitPosition } from './logic/orbit.js';
-import { clampToYard, stepToward, pushOutOfCircle, headingY } from './logic/movement.js';
+import { stepToward, pushOutOfCircle, headingY } from './logic/movement.js';
 
 const MAX_DT = 0.1; // 한 프레임에 진행하는 최대 시간(초). 탭이 멈췄다 돌아와도 행동·애니메이션이 한꺼번에 튀지 않게 한다.
 const FALLBACK_RAW_DURATIONS = { 'emote-no': 0.667, 'pick-up': 0.333, 'attack-melee-right': 0.417, 'interact-right': 0.667, 'emote-yes': 0.667 }; // 캐릭터 모델이 없을 때(모델의 실제 클립 길이)
@@ -61,33 +66,37 @@ if (isMobileUA(navigator.userAgent)) {
   initAnalytics(GA_MEASUREMENT_ID);
   const { scene, camera, renderer, onFrame } = createStage(document.getElementById('game'));
   const layout = buildLayout(SEED);
-  const obstacles = [FURNACE, ...layout.obstacles];
+  const interior = buildLaundryInterior(); // 세탁소 실내 데이터(마당에서 멀리 떨어진 좌표)
   const loading = document.getElementById('loading');
 
   let models = new Map();
   let characterGltf = null;
   try {
-    const all = [...Object.values(layout).filter(Array.isArray).flat(), ...layout.interactables.map((i) => i.item), ...LAUNDRY_MODEL_ITEMS].filter((it) => it?.pack);
+    const all = [...Object.values(layout).filter(Array.isArray).flat(), ...layout.interactables.map((i) => i.item), ...LAUNDRY_MODEL_ITEMS, ...INTERIOR_MODEL_ITEMS].filter((it) => it?.pack);
     [models, characterGltf] = await Promise.all([loadModels(all), loadGltf('characters', PLAYER_MODEL.name)]);
   } catch (err) {
     console.warn('모델 로딩 중 오류. 도형 대체물을 사용합니다.', err);
   }
-  applyAtmosphere(scene, renderer);
-  const ground = buildGround(scene);
-  buildCity(scene, layout);
-  const laundry = buildLaundry(scene, layout, models);
-  const zones = buildZones(layout);
-  const { updateTreeOcclusion } = buildDecor(scene, layout, models);
-  buildSign(scene, layout.sign);
+  // 공간: 마당은 yardRoot 한 그룹(하늘·해·불 포함)에 모아 실내로 들어가면 통째로 숨긴다. 실내는 멀리 떨어진 별도 그룹이다.
+  const yardRoot = new THREE.Group();
+  yardRoot.name = 'yard';
+  scene.add(yardRoot);
+  const { fog: yardFog } = applyAtmosphere(scene, renderer, yardRoot);
+  const ground = buildGround(yardRoot);
+  buildCity(yardRoot, layout);
+  buildLaundryBuilding(yardRoot, layout, models);
+  const inside = buildInteriorLaundry(scene, interior, models);
+  const laundry = { washers: inside.washers, clothesline: inside.clothesline, update: (dt) => inside.update(dt) };
+  const zones = buildZones(layout, interior);
+  const { updateTreeOcclusion } = buildDecor(yardRoot, layout, models);
+  buildSign(yardRoot, layout.sign);
   // 모델이 없으면 도형 대체물.
-  if (!models.get('nature/campfire_stones')) buildFurnace(scene);
+  if (!models.get('nature/campfire_stones')) buildFurnace(yardRoot);
   const treeCount = [...models.keys()].filter((k) => k.startsWith('nature/tree_') && models.get(k)).length;
-  if (treeCount < 5) buildBoundary(scene);
+  if (treeCount < 5) buildBoundary(yardRoot);
   // 소각로 곁의 상시 소품: 불, 파쇄기.
-  const fire = createFire(scene, FURNACE);
-  const shredder = buildShredder(scene, layout.shredder);
-  loading.classList.add('hidden');
-  setTimeout(() => { loading.style.display = 'none'; }, 500); // 페이드가 끝난 뒤 완전히 제거
+  const fire = createFire(yardRoot, FURNACE);
+  const shredder = buildShredder(yardRoot, layout.shredder);
   // 캐릭터 모델이 없으면 상자 플레이어. 이동/회전은 항상 group 이 맡는다.
   let character = null;
   let player;
@@ -100,16 +109,34 @@ if (isMobileUA(navigator.userAgent)) {
     player = buildPlayer(scene);
   }
   const marker = buildMarker(scene);
-  const pickables = buildPickables(scene, layout.interactables);
   const hud = createHud(document.getElementById('game'), {
     onCrack: () => hud.crackFortune(),
     onClose: () => dispatch('close'),
   });
 
-  // 여러 장애물이 가까울 때도 자리 잡도록 몇 번 반복해서 밀어낸다.
+  // 공간별 데이터: 클릭 레이캐스트 바닥, 클릭/호버 판정 부피, 상호작용 대상, 장애물. 이동·클릭·E 안내는 항상 지금 공간의 것을 쓴다.
+  const spaceData = {
+    yard: { ground, pickables: buildPickables(yardRoot, layout.interactables), interactables: layout.interactables, obstacles: [FURNACE, ...layout.obstacles] },
+    laundry: { ground: inside.ground, pickables: inside.pickables, interactables: interior.interactables, obstacles: interior.obstacles },
+  };
+  const spaces = createSpaces({
+    scene,
+    spaces: { yard: { root: yardRoot, fog: yardFog, background: null }, laundry: { root: inside.root, fog: inside.fog, background: inside.background } },
+  });
+  let spaceId = 'yard';
+  const here = () => spaceData[spaceId];
+  // 첫 전환에서 셰이더가 새로 컴파일되어 멈칫하지 않도록 두 공간의 조명 상태로 미리 컴파일해 둔다.
+  for (const id of ['laundry', 'yard']) {
+    spaces.apply(id);
+    try { renderer.compile(scene, camera); } catch (err) { console.warn('셰이더 미리 컴파일 실패', err); }
+  }
+  loading.classList.add('hidden');
+  setTimeout(() => { loading.style.display = 'none'; }, 500); // 페이드가 끝난 뒤 완전히 제거
+
+  // 여러 장애물이 가까울 때도 자리 잡도록 몇 번 반복해서 밀어낸다(지금 공간의 장애물).
   function pushOut(p) {
     for (let pass = 0; pass < 3; pass++) {
-      for (const o of obstacles) p = pushOutOfCircle(p, PLAYER.radius, o);
+      for (const o of here().obstacles) p = pushOutOfCircle(p, PLAYER.radius, o);
     }
     return p;
   }
@@ -118,7 +145,9 @@ if (isMobileUA(navigator.userAgent)) {
   const targetPos = new THREE.Vector3(player.position.x, ORBIT.targetHeight, player.position.z);
   const desired = new THREE.Vector3();
   let moveTarget = null;
-  let mode = 'free'; // 'free' | 'seated' | 'fortune' | 'result' (전이는 logic/playerMode.js)
+  let mode = 'free'; // 'free' | 'seated' | 'fortune' | 'result' | 'transition' (전이는 logic/playerMode.js)
+  const transition = createTransition(TRANSITION); // 공간 전환(차원문) 상태 기계
+  let transitionTarget = null; // 전환이 끝나면 가 있을 공간 id
   let seatItem = null; // 앉아 있는 벤치(layout.interactables 의 항목)
   let lastFortune = -1;
   let promptText = null;
@@ -225,14 +254,14 @@ if (isMobileUA(navigator.userAgent)) {
 
   // 회전 단계의 대상 지점과 사정거리 계산. 세탁은 가장 가까운 세탁기, 널기는 빨랫줄 가운데가 대상이다.
   const distTo = (t) => Math.hypot(player.position.x - t.x, player.position.z - t.z);
-  const nearestWasher = () => layout.washers[Math.max(0, nearestIndex(player.position, layout.washers))];
+  const nearestWasher = () => interior.washers[Math.max(0, nearestIndex(player.position, interior.washers))];
   const pointOf = (name) => ({
-    fire: FURNACE, shredder: layout.shredder, washer: nearestWasher(), clothesline: layout.clothesline.centre,
+    fire: FURNACE, shredder: layout.shredder, washer: nearestWasher(), clothesline: interior.clothesline.centre,
   })[name];
   const RANGES = { fire: FIRE_RANGE, shredder: SHREDDER_RANGE, washer: WASHER_RANGE, clothesline: CLOTHESLINE_RANGE };
   // 각 행동은 대상(소각로·파쇄기·세탁기·빨랫줄)이 사정거리 안일 때만 할 수 있다(어느 방향에서든).
   const inRangeFor = (id) => canPerform(id, {
-    fire: distTo(FURNACE), shredder: distTo(layout.shredder), washer: distTo(nearestWasher()), clothesline: distTo(layout.clothesline.centre),
+    fire: distTo(FURNACE), shredder: distTo(layout.shredder), washer: distTo(nearestWasher()), clothesline: distTo(interior.clothesline.centre),
   }, RANGES);
 
   // 소품을 숨기고 손에 되돌려 놓는다(행동이 끝났거나 취소됐을 때).
@@ -255,7 +284,7 @@ if (isMobileUA(navigator.userAgent)) {
     }
     if (step.kind === 'turn') {
       const t = pointOf(step.target);
-      if (step.target === 'washer') washIndex = layout.washers.indexOf(t);
+      if (step.target === 'washer') washIndex = interior.washers.indexOf(t);
       if (character) {
         character.idleInPlace();
         character.turnToward(t.x, t.z, step.seconds);
@@ -397,7 +426,7 @@ if (isMobileUA(navigator.userAgent)) {
   // 매 프레임: AUTO 유효성 확인 -> 러너 진행(효과/끝 처리) -> 손 소품·날아가는 종이 -> 행동 막대·불멍 안내·불멍 감소.
   function updateActions(dt) {
     // 지금 있는 행동 구역(가장 가까운 구역 안, 없으면 null). 걷는 중에도 구역이 바뀌면 행동 막대가 바뀐다.
-    currentZone = mode === 'free' ? activeZone(player.position, zones) : null;
+    currentZone = mode === 'free' ? activeZone(player.position, zones, spaceId) : null;
     // AUTO 해제 조건: 걷기 시작·앉기·포춘·구역 밖(진행 중인 행동은 끝까지 한다). 다음 행동의 사정거리 밖이면 러너가 canStart 로 끈다.
     if (runner.autoOn && (mode !== 'free' || moveTarget || !currentZone)) runner.cancelAuto();
     for (const e of runner.update(dt)) {
@@ -412,7 +441,7 @@ if (isMobileUA(navigator.userAgent)) {
     const relief = passive.update(dt, meditating);
     if (meditating && once('game_start')) track('game_start');
     if (relief > 0) applyReduction(relief, false); // 불멍은 소각 횟수에 넣지 않는다
-    if (pending && !runner.isBusy() && (pending.kind === 'side' || mode !== 'fortune')) {
+    if (pending && !runner.isBusy() && (pending.kind === 'side' || (mode !== 'fortune' && mode !== 'transition'))) {
       pending.wait -= dt;
       if (pending.wait <= 0) {
         const { kind, info } = pending;
@@ -442,7 +471,7 @@ if (isMobileUA(navigator.userAgent)) {
   // 장애물 밖으로 밀어낸 목표 지점으로 이동을 시작한다.
   function walkTo(point) {
     abortAction();
-    const p = pushOut(clampToYard(point, YARD, PLAYER.radius + 0.5));
+    const p = pushOut(clampToSpace(point, spaceId, PLAYER.radius + 0.5));
     moveTarget = p;
     marker.position.set(p.x, MARKER_Y, p.z);
     marker.visible = true;
@@ -540,6 +569,36 @@ if (isMobileUA(navigator.userAgent)) {
     });
   }
 
+  // ---- 공간 전환(차원문) ----
+  // 문에서 E: 모드를 'transition' 으로 잠그고(이동·클릭·E·행동 모두 무시, 자동 해제) 닫는 구간을 시작한다. 중간(화면이 덮인 순간)에 swapSpace 가 공간을 바꾼다.
+  function startSpaceChange(toId) {
+    if (toId === spaceId || !spaceData[toId] || transition.active) return false;
+    if (!dispatch('transition:start')) return false; // free 에서만(앉아 있으면 먼저 일어나야 한다)
+    stopWalking();
+    runner.cancelAuto();
+    renderer.domElement.style.cursor = '';
+    hud.hideTooltip();
+    hud.hideBubble();
+    transitionTarget = toId;
+    transition.start();
+    return true;
+  }
+
+  // 화면이 완전히 덮인 순간: 공간을 바꾸고 도착 지점에 세운다. 카메라 추적 대상을 새 위치로 곧장 옮긴다(긴 미끄러짐 없음).
+  function swapSpace(toId) {
+    const from = spaceId;
+    spaceId = toId;
+    spaces.apply(toId);
+    const arrival = arrivalPoint(toId, from);
+    player.position.set(arrival.x, 0, arrival.z);
+    player.rotation.y = arrival.rotY;
+    stopWalking();
+    runner.cancelAuto();
+    targetPos.set(player.position.x, ORBIT.targetHeight, player.position.z);
+    if (toId === 'yard') track('exit_space', { space: from });
+    else track('enter_space', { space: toId });
+  }
+
   // E 키: 포춘 모달이면 깨기/닫기, 앉은 상태면 일어나기, 아니면 가장 가까운 대상의 동작(소각로는 E 동작이 없다).
   function onInteractKey() {
     if (mode === 'fortune') {
@@ -548,12 +607,13 @@ if (isMobileUA(navigator.userAgent)) {
       else if (stage === 'card') dispatch('close');
       return;
     }
-    if (runner.isBusy()) return; // 행동 중에는 E 동작을 하지 않는다.
+    if (runner.isBusy() || mode === 'transition') return; // 행동·전환 중에는 E 동작을 하지 않는다.
     if (mode === 'seated') { dispatch('interact'); return; }
-    const item = nearestInRange(player.position, layout.interactables);
+    const item = nearestInRange(player.position, here().interactables);
     if (!item) return;
     const { type } = actionOf(item);
-    if (type === 'comfort') hud.showBubble(COMFORT_MESSAGES[item.messageIndex]);
+    if (type === 'enter' || type === 'exit') startSpaceChange(item.to);
+    else if (type === 'comfort') hud.showBubble(COMFORT_MESSAGES[item.messageIndex]);
     else if (type === 'seat') {
       if (!dispatch('interact:seat')) return;
       stopWalking();
@@ -570,6 +630,7 @@ if (isMobileUA(navigator.userAgent)) {
   // 숫자 키 1·2 는 지금 구역의 첫째·둘째 행동(구역 밖이면 아무 일도 없다).
   const ACTION_KEYS = { Digit1: 0, Numpad1: 0, Digit2: 1, Numpad2: 1 };
   window.addEventListener('keydown', (e) => {
+    if (mode === 'transition') return; // 전환 중에는 모든 키를 무시한다.
     if (mode === 'result') { // 종료 화면 중에는 Esc(계속 둘러보기)만 받는다.
       if (e.code === 'Escape') closeResult();
       return;
@@ -588,26 +649,27 @@ if (isMobileUA(navigator.userAgent)) {
   // 화면 좌표(ndc)에 보이는 상호작용 대상(없으면 null).
   function pickInteractable(ndc) {
     raycaster.setFromCamera(new THREE.Vector2(ndc.x, ndc.y), camera);
-    const hit = raycaster.intersectObjects(pickables, false)[0];
-    return hit ? layout.interactables.find((i) => i.id === hit.object.userData.interactId) : null;
+    const hit = raycaster.intersectObjects(here().pickables, false)[0];
+    return hit ? here().interactables.find((i) => i.id === hit.object.userData.interactId) : null;
   }
 
   const controls = createControls(renderer.domElement, {
     onDrag: (dx, dy) => {
+      if (mode === 'transition') return;
       orbit = applyDrag(orbit, dx, dy, ORBIT.rotateSpeed, ORBIT);
       renderer.domElement.style.cursor = '';
       hud.hideTooltip();
     },
-    onWheel: (deltaY) => { orbit = applyZoom(orbit, deltaY, ORBIT.zoomStep, ORBIT); },
+    onWheel: (deltaY) => { if (mode !== 'transition') orbit = applyZoom(orbit, deltaY, ORBIT.zoomStep, ORBIT); },
     // 클릭하면 그 지점/오브젝트로 걸어간다(도착해도 아무 일도 일어나지 않는다. 동작은 E 키). 앉아 있으면 먼저 일어난다.
     // 행동 중에는 이동 클릭을 무시하고, 쉬는 중의 이동 클릭은 자동을 끈다.
     onClick: (ndc) => {
-      if (mode === 'fortune' || runner.isBusy()) return;
+      if (mode === 'fortune' || mode === 'transition' || runner.isBusy()) return;
       const item = pickInteractable(ndc);
       let target = item && interactTarget(item);
       if (!target) {
         raycaster.setFromCamera(new THREE.Vector2(ndc.x, ndc.y), camera);
-        const hit = raycaster.intersectObject(ground)[0];
+        const hit = raycaster.intersectObject(here().ground)[0];
         if (!hit) return;
         target = { x: hit.point.x, z: hit.point.z };
       }
@@ -616,7 +678,7 @@ if (isMobileUA(navigator.userAgent)) {
       walkTo(target);
     },
     onHover: (ndc, clientX, clientY) => {
-      const item = ndc && pickInteractable(ndc);
+      const item = ndc && mode !== 'transition' && pickInteractable(ndc);
       if (item) {
         renderer.domElement.style.cursor = 'pointer';
         hud.showTooltip(hoverLabel(item), clientX, clientY);
@@ -631,6 +693,13 @@ if (isMobileUA(navigator.userAgent)) {
   onFrame((rawDt) => {
     const dt = Math.min(rawDt, MAX_DT);
     time += dt;
+    if (transition.active) {
+      for (const ev of transition.update(dt)) {
+        if (ev === 'mid') swapSpace(transitionTarget);
+        else dispatch('transition:end');
+      }
+      hud.setPortal(transition.radius());
+    }
     if (moveTarget) {
       const cur = { x: player.position.x, z: player.position.z };
       const next = stepToward(cur, moveTarget, PLAYER.speed, dt);
@@ -668,7 +737,7 @@ if (isMobileUA(navigator.userAgent)) {
     if (promptAllowed(mode)) {
       if (mode === 'seated') nextPrompt = '일어나기';
       else {
-        const near = nearestInRange(player.position, layout.interactables);
+        const near = nearestInRange(player.position, here().interactables);
         nextPrompt = near ? actionOf(near).prompt : null;
       }
     }
@@ -685,6 +754,7 @@ if (isMobileUA(navigator.userAgent)) {
     targetPos.lerp(desired, k);
     camera.position.set(...orbitPosition(targetPos.toArray(), orbit));
     camera.lookAt(targetPos);
-    updateTreeOcclusion(camera.position, targetPos, dt);
+    if (spaceId === 'yard') updateTreeOcclusion(camera.position, targetPos, dt); // 나무 가림 축소는 마당에서만
+    else inside.updateWalls(camera.position); // 실내: 카메라 쪽 벽을 숨긴다
   });
 }

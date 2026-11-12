@@ -1,4 +1,4 @@
-// 브라우저 전용: 툴팁·말풍선·E 키 안내·포춘쿠키 모달·전역 스트레스 바·행동 막대(구역마다 버튼이 바뀐다)·불멍 안내·감소량(-4) 팝업·측면 팝업(목표 달성)·가운데 팝업(지수 0)·캐치 칩(HTML). 컨테이너(#game) 안에 절대 위치로 놓는다.
+// 브라우저 전용: 공간 전환 오버레이(차원문)·툴팁·말풍선·E 키 안내·포춘쿠키 모달·전역 스트레스 바·행동 막대(구역마다 버튼이 바뀐다)·불멍 안내·감소량(-4) 팝업·측면 팝업(목표 달성)·가운데 팝업(지수 0)·캐치 칩(HTML). 컨테이너(#game) 안에 절대 위치로 놓는다.
 import { barRatio } from './logic/burn.js';
 import { emptyMessage, goalMessage } from './logic/cta.js';
 
@@ -7,6 +7,7 @@ const CRACK_MS = 400; // index.html 의 crack 애니메이션 길이와 같게 �
 const DELTA_MS = 800; // index.html 의 delta-rise 애니메이션 길이와 같게 둔다.
 const AUTO_BUTTON = { id: 'auto', key: 'R', label: '자동' };
 const TOO_FAR = '더 가까이 가세요';
+const PORTAL_OPEN_PERCENT = 112; // 구멍이 완전히 열렸을 때의 반지름(%): 가장 먼 모서리(100%)와 빛의 띠가 화면 밖으로 나가는 값
 
 // onCrack: 쿠키를 클릭했을 때, onClose: ✕ 를 눌렀을 때 (main.js 가 상태를 결정한다).
 export function createHud(container, { onCrack = () => {}, onClose = () => {} } = {}) {
@@ -121,7 +122,10 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
   ctaChip.addEventListener('pointerdown', (e) => e.preventDefault()); // 포커스를 가져가지 않는다(스페이스·엔터로 다시 눌리지 않게)
   let chipHandler = () => {};
   ctaChip.addEventListener('click', () => chipHandler());
-  container.append(tooltip, bubble, prompt, fortune, stress, actionBar, meditate, ctaChip, side, result);
+  // 공간 전환 오버레이(차원문): 화면 가장자리에서 가운데로 닫히는 빛의 원. --r 은 구멍 반지름(가장 먼 모서리 거리의 %).
+  const portal = document.createElement('div');
+  portal.id = 'portal';
+  container.append(tooltip, bubble, prompt, fortune, stress, actionBar, meditate, ctaChip, side, result, portal);
   let stressStart = 100;
 
   cookieButton.addEventListener('click', () => onCrack());
@@ -138,6 +142,13 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
   }
 
   return {
+    // 전환 오버레이: radius 1 = 활짝(보이지 않음), 0 = 화면 전체가 덮임. 전환 중에만 켜진다.
+    setPortal(radius) {
+      const open = radius >= 1;
+      portal.classList.toggle('active', !open);
+      if (!open) portal.style.setProperty('--r', (radius * PORTAL_OPEN_PERCENT).toFixed(2));
+    },
+    isPortalActive: () => portal.classList.contains('active'),
     showTooltip(text, clientX, clientY) {
       const rect = container.getBoundingClientRect();
       tooltip.textContent = text;

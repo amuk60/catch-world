@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import {
   PASTELS, nearestIndex, hangSlot, shirtColor, slotPoint, wobbleAmount, WOBBLE_SECONDS, foamBubble, FOAM_COUNT, FOAM_SECONDS, swingAngle, SWING_SECONDS,
 } from '../src/logic/laundry.js';
-import { buildLayout } from '../src/logic/layout.js';
-import { SEED } from '../src/config.js';
+import { buildLaundryInterior } from '../src/logic/interiors.js';
 
-const line = buildLayout(SEED).clothesline;
+const interior = buildLaundryInterior();
+const line = interior.clothesline;
 
 test('hangSlot: 칸을 차례로 쓰고 가득 차면 가장 오래된 칸(0)부터 바꾼다', () => {
   assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 7, 11, 12].map((n) => hangSlot(n, 6)), [0, 1, 2, 3, 4, 5, 0, 1, 5, 0]);
@@ -110,6 +110,6 @@ test('nearestIndex: 가장 가까운 항목의 번호, 같으면 앞쪽, 빈 목
   assert.equal(nearestIndex({ x: 7, z: 3 }, items), 2);
   assert.equal(nearestIndex({ x: 2, z: 0 }, items), 0); // 거리가 같으면 앞쪽
   assert.equal(nearestIndex({ x: 0, z: 0 }, []), -1);
-  const w = buildLayout(SEED).washers;
-  assert.equal(nearestIndex({ x: w[2].x - 1, z: w[2].z }, w), 2);
+  const w = interior.washers;
+  assert.equal(nearestIndex({ x: w[2].x - 0.3, z: w[2].z + 1 }, w), 2);
 });

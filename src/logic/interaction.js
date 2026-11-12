@@ -33,12 +33,14 @@ const ACTIONS = {
   comfort: { type: 'comfort', prompt: '살펴보기' },
   fortune: { type: 'fortune', prompt: '포춘쿠키 열기' },
   seat: { type: 'seat', prompt: '앉기' },
+  door: { type: 'enter', prompt: '들어가기' }, // 나가는 문(to: 'yard')은 아래 actionOf 가 exit/나가기로 바꾼다.
 };
 
 // E 키를 눌렀을 때의 동작 종류와 안내 문구. E 동작이 없는 종류는 null.
 export function actionOf(item) {
   if (!(item.kind in ACTIONS)) throw new Error(`알 수 없는 상호작용 종류: ${item.kind}`);
   const action = ACTIONS[item.kind];
+  if (item.kind === 'door' && item.to === 'yard') return { type: 'exit', prompt: '나가기' };
   return action && { ...action };
 }
 

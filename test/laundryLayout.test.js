@@ -2,9 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { buildLayout } from '../src/logic/layout.js';
-import { FURNACE, PLAYER, SEED, SPAWN, YARD, WASHER_RANGE, CLOTHESLINE_RANGE } from '../src/config.js';
+import { FURNACE, PLAYER, SEED, SPAWN, YARD } from '../src/config.js';
 import { stepToward, pushOutOfCircle, clampToYard } from '../src/logic/movement.js';
-import { interactTarget } from '../src/logic/interaction.js';
+import { interactTarget, nearestInRange, actionOf } from '../src/logic/interaction.js';
+import { arrivalPoint } from '../src/logic/spaces.js';
 
 const L = buildLayout(SEED);
 const d = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
@@ -23,24 +24,21 @@ const world = (b, lx, lz) => ({
 });
 const circlesOf = (r) => L.obstacles.filter((o) => o.radius === r);
 const buildingCircles = circlesOf(laundry.obstacleRadius);
-const washerCircles = L.washers.map((w) => ({ x: w.x, z: w.z, radius: w.radius }));
 
 // ---- 기존 배치는 그대로 ----
-test('세탁소를 추가해도 기존 배치(나무·덤불·바위·랜턴·통나무·간판·파쇄기·상호작용·장애물 24개)는 기본 시드에서 그대로다', () => {
+test('세탁소를 추가해도 기존 배치(나무·덤불·바위·랜턴·통나무·간판·파쇄기·상호작용·장애물 24개)는 기본 시드에서 그대로다(세탁기·빨랫줄은 실내로 옮겼다)', () => {
   const before = {
     trees: L.trees, bushes: L.bushes, rocks: L.rocks, lanterns: L.lanterns, furnaceItems: L.furnaceItems, sign: L.sign, shredder: L.shredder,
     interactables: L.interactables.slice(0, 6), obstacles: L.obstacles.slice(0, 24), buildingSlots: L.buildingSlots, plaza: L.plaza,
   };
   assert.equal(createHash('sha1').update(JSON.stringify(before)).digest('hex'), '73346e91207bcfc8d2af940b6d98fb3f57dcbc1f');
-  assert.equal(L.interactables.length, 7);
+  assert.equal(L.interactables.length, 8); // 세탁소 문이 추가됐다(앞의 6개는 그대로)
 });
 
 test('여러 시드에서도 세탁소는 같은 자리이고(시드 무관), 면접장 터는 비어 있다', () => {
   for (const seed of [1, 2, 42, 777]) {
     const l = buildLayout(seed);
     assert.deepEqual(l.buildings, L.buildings);
-    assert.deepEqual(l.washers, L.washers);
-    assert.deepEqual(l.clothesline, L.clothesline);
   }
   assert.deepEqual(L.buildings.map((b) => b.id), ['laundry']); // 면접장은 세우지 않는다
   assert.ok(!L.buildings.some((b) => b.id === 'interview'));
@@ -48,8 +46,6 @@ test('여러 시드에서도 세탁소는 같은 자리이고(시드 무관), �
 
 test('세탁소 배치는 결정적이다', () => {
   assert.deepEqual(buildLayout(SEED).buildings, L.buildings);
-  assert.deepEqual(buildLayout(SEED).washers, L.washers);
-  assert.deepEqual(buildLayout(SEED).clothesline, L.clothesline);
   assert.deepEqual(buildLayout(SEED), L);
 });
 
@@ -117,120 +113,43 @@ test('건물 상호작용: kind building, 라벨 세탁소, 반경·범위 규�
   assert.equal(b.radius >= Math.min(laundry.width, laundry.depth) / 2, true); // 호버 판정이 건물 크기를 덮는다
 });
 
-// ---- 세탁기 ----
-test('세탁기 3대(washer 2 + dryer 1): 문 앞 1.2~2.4, 서로 0.2 이상, 서쪽(문 쪽)을 향함(앞면 +z 기준 rotY)', () => {
-  assert.equal(L.washers.length, 3);
-  assert.deepEqual(L.washers.map((w) => w.name).sort(), ['dryer', 'washer', 'washer']);
+// ---- 입구(문) ----
+const doorItem = L.interactables.find((i) => i.id === 'laundry-door');
+
+test('세탁기·빨랫줄은 마당(외부)에 없다: 레이아웃에 washers/clothesline 이 없고, 건물 외곽 원 말고는 문 주변에 장애물이 없다', () => {
+  assert.equal(L.washers, undefined);
+  assert.equal(L.clothesline, undefined);
+  assert.equal(L.obstacles.filter((o) => o.radius === 0.6).length, 0); // 세탁기 원
+  assert.equal(L.obstacles.filter((o) => o.radius === 0.25).length, 0); // 빨랫줄 기둥
   const n = front(laundry.rotY);
-  for (const w of L.washers) {
-    assert.equal(w.pack, 'furniture');
-    assert.ok(w.scale > 0 && Number.isFinite(w.rotY) && w.radius > 0);
-    assert.ok(w.radius >= 0.55 && w.radius <= 0.65);
-    // 문 앞(문에서 건물 밖으로)으로 1.2~2.4 떨어진 줄.
-    const along = (w.x - laundry.door.x) * n.x + (w.z - laundry.door.z) * n.z;
-    assert.ok(along >= 1.2 && along <= 2.4, `in front ${along}`);
-    // 건물 앞면(폭) 앞에 있다.
-    assert.ok(Math.abs(w.z - laundry.z) <= laundry.width / 2, `lateral ${w.z}`);
-    // 서쪽을 향한다.
-    const f = front(w.rotY);
-    assert.ok(Math.abs(f.x + 1) < 1e-9 && Math.abs(f.z) < 1e-9, JSON.stringify(f));
-  }
-  // 줄은 건물 앞면과 평행하다(같은 x).
-  const xs = L.washers.map((w) => w.x);
-  assert.ok(Math.max(...xs) - Math.min(...xs) < 1e-9);
-  for (let i = 0; i < L.washers.length; i++) {
-    for (let j = i + 1; j < L.washers.length; j++) {
-      const a = L.washers[i];
-      const b = L.washers[j];
-      assert.ok(d(a, b) - (a.radius + b.radius) >= 0.2 - 1e-9, `gap ${i}-${j}`);
-    }
+  for (const dist of [1.0, 1.5, 2.0, 2.6, 3.5]) {
+    const p = { x: laundry.door.x + n.x * dist, z: laundry.door.z + n.z * dist };
+    assert.ok(free(p), `문 앞 ${dist}`);
+    if (dist >= 1.5) assert.ok(L.obstacles.every((o) => d(o, p) >= o.radius + PLAYER.radius + 0.3), `문 앞 ${dist} 에 여유`);
   }
 });
 
-test('세탁기는 장애물(원)로 등록되어 있다', () => {
-  for (const w of L.washers) {
-    assert.ok(L.obstacles.some((o) => o.x === w.x && o.z === w.z && o.radius === w.radius), JSON.stringify(w));
-  }
-  assert.equal(washerCircles.length, 3);
+test('세탁소 문 상호작용: kind door, to laundry, 문 앞(건물 밖)에 있고 범위 규칙을 지키며 E 동작은 들어가기', () => {
+  assert.ok(doorItem);
+  assert.equal(doorItem.kind, 'door');
+  assert.equal(doorItem.to, 'laundry');
+  assert.ok(doorItem.label.includes('문'));
+  const n = front(laundry.rotY);
+  const along = (doorItem.x - laundry.door.x) * n.x + (doorItem.z - laundry.door.z) * n.z;
+  assert.ok(along > 0.3 && along < 1.5, `문에서 바깥으로 ${along}`);
+  assert.ok(Math.abs((doorItem.x - laundry.door.x) * n.z - (doorItem.z - laundry.door.z) * n.x) < 1e-9, '문과 같은 줄');
+  assert.ok(doorItem.interactRange >= doorItem.radius + PLAYER.radius + 0.8 - 1e-9);
+  assert.equal(doorItem.item, undefined);
+  assert.deepEqual(actionOf(doorItem), { type: 'enter', prompt: '들어가기' });
 });
 
-// ---- 빨랫줄 ----
-test('빨랫줄: 기둥 두 개 ~3.4 떨어져 높이 ~1.8 줄, 중심은 두 기둥 가운데, 기둥은 장애물(반경 0.25)', () => {
-  const c = L.clothesline;
-  assert.ok(Math.abs(c.centre.x - (c.x1 + c.x2) / 2) < 1e-9 && Math.abs(c.centre.z - (c.z1 + c.z2) / 2) < 1e-9);
-  const len = Math.hypot(c.x2 - c.x1, c.z2 - c.z1);
-  assert.ok(Math.abs(len - 3.4) < 0.05, `${len}`);
-  assert.ok(c.y >= 1.6 && c.y <= 2.0, `${c.y}`);
-  assert.ok(c.postHeight >= 1.9 && c.postHeight <= 2.1 && c.postRadius > 0 && c.slots === 6);
-  const posts = circlesOf(0.25);
-  assert.equal(posts.length, 2);
-  for (const [x, z] of [[c.x1, c.z1], [c.x2, c.z2]]) assert.ok(posts.some((o) => o.x === x && o.z === z), `${x},${z}`);
-  // 광장 안, 면접장 터 밖.
-  for (const [x, z] of [[c.x1, c.z1], [c.x2, c.z2]]) {
-    assert.ok(x > L.plaza.x1 && x < L.plaza.x2 && z > L.plaza.z1 && z < L.plaza.z2);
-    const iv = L.buildingSlots.find((s) => s.id === 'interview');
-    assert.ok(!(Math.abs(x - iv.x) < iv.width / 2 && Math.abs(z - iv.z) < iv.depth / 2));
-  }
-});
-
-// ---- 겹침 규칙 ----
-test('세탁소 물체들은 랜턴(과 그 장애물)·위로 오브젝트·스폰·서로와 겹치지 않는다', () => {
-  const mine = [...buildingCircles, ...washerCircles, ...circlesOf(0.25)];
-  const others = L.obstacles.filter((o) => !mine.includes(o) && !washerCircles.some((w) => w.x === o.x && w.z === o.z));
-  assert.equal(others.length, 24);
-  for (const m of mine) {
-    for (const o of others) assert.ok(d(m, o) >= m.radius + o.radius + 0.2, `${JSON.stringify(m)} vs ${JSON.stringify(o)}`);
-    assert.ok(d(m, SPAWN) >= m.radius + PLAYER.radius);
-  }
-  for (const lt of L.lanterns) {
-    for (const m of mine) assert.ok(d(m, lt) >= m.radius + 0.3 + 0.2, `lantern ${lt.x},${lt.z} vs ${JSON.stringify(m)}`);
-  }
-  const lantern6 = L.lanterns.find((l) => l.x === 3.2 && l.z === 6);
-  assert.ok(lantern6);
-  for (const w of L.washers) assert.ok(d(w, lantern6) >= w.radius + 0.3 + 0.2);
-  // 세탁기끼리·기둥과 세탁기는 겹치지 않는다(건물 원과도).
-  for (const w of washerCircles) {
-    for (const o of [...buildingCircles, ...circlesOf(0.25)]) assert.ok(d(w, o) >= w.radius + o.radius + 0.1);
-  }
-});
-
-test('스폰 지점은 여전히 비어 있다', () => {
-  assert.ok(free(SPAWN));
-  for (const o of L.obstacles) assert.ok(d(o, SPAWN) >= o.radius + PLAYER.radius, JSON.stringify(o));
-});
-
-test('모든 장애물 값이 유효하고 마당 + 2 안에 있다', () => {
-  for (const o of L.obstacles) {
-    assert.ok(Number.isFinite(o.x) && Number.isFinite(o.z) && o.radius > 0);
-    assert.ok(Math.abs(o.x) <= YARD.width / 2 + 2 && Math.abs(o.z) <= YARD.depth / 2 + 2);
-  }
-});
-
-// ---- 서 있을 자리 ----
-test('서 있을 수 있는 자리: 장애물 밖에서 세탁기(4.0)와 빨랫줄 중심(4.0) 사정거리를 모두 만족하는 점이 넉넉히 있다', () => {
-  let both = 0;
-  let washOnly = 0;
-  let hangOnly = 0;
-  for (let x = 0; x <= 12; x += 0.1) {
-    for (let z = -4; z <= 11; z += 0.1) {
-      const p = { x, z };
-      if (!free(p)) continue;
-      const wash = L.washers.some((w) => d(p, w) <= WASHER_RANGE);
-      const hang = d(p, L.clothesline.centre) <= CLOTHESLINE_RANGE;
-      if (wash && hang) both++;
-      else if (wash) washOnly++;
-      else if (hang) hangOnly++;
-    }
-  }
-  assert.ok(both > 100, `both ${both}`); // 약 1 단위^2 이상(0.1 격자 100칸)
-  assert.ok(washOnly > 20 && hangOnly >= 0, `${washOnly}/${hangOnly}`);
-});
-
-test('세탁기 앞(서쪽)에서 걸어서 갈 수 있다: 세탁기 서쪽 0.9 떨어진 점과 빨랫줄 옆 점이 장애물 밖', () => {
-  for (const w of L.washers) assert.ok(free({ x: w.x - 1.2, z: w.z }), `west of ${w.z}`);
-  const c = L.clothesline;
-  assert.ok(free({ x: c.centre.x - 1.2, z: c.centre.z }));
-  assert.ok(free({ x: c.centre.x + 1.2, z: c.centre.z }));
+test('문 앞에 서면(클릭해서 도착하는 문 앞 1.5 지점) E 안내가 뜨고, 도착 지점(마당으로 나왔을 때)과 먼 곳에서는 뜨지 않는다', () => {
+  const click = interactTarget(L.interactables.find((i) => i.id === 'laundry'));
+  assert.equal(nearestInRange(click, L.interactables), doorItem);
+  assert.deepEqual(interactTarget(doorItem), click); // 문을 클릭해도 같은 곳으로 걸어간다(자동 진입 없음)
+  const a = arrivalPoint('yard', 'laundry');
+  assert.equal(nearestInRange(a, L.interactables), null);
+  assert.equal(nearestInRange(SPAWN, L.interactables), null);
 });
 
 // ---- 실제 이동 규칙(main.js 와 같은 방식)으로 걸어 보기 ----
@@ -259,6 +178,36 @@ const insideFootprint = (p) => {
   return Math.abs(lx) < laundry.width / 2 && Math.abs(lz) < laundry.depth / 2;
 };
 
+test('건물 상호작용(호버/클릭)은 그대로 E 동작이 없다', () => {
+  assert.equal(actionOf(L.interactables.find((i) => i.id === 'laundry')), null);
+});
+
+test('세탁소 외관 물체들은 랜턴(과 그 장애물)·위로 오브젝트·스폰과 겹치지 않는다', () => {
+  const mine = buildingCircles;
+  const others = L.obstacles.filter((o) => !mine.includes(o));
+  assert.equal(others.length, 24);
+  for (const m of mine) {
+    for (const o of others) assert.ok(d(m, o) >= m.radius + o.radius + 0.2, `${JSON.stringify(m)} vs ${JSON.stringify(o)}`);
+    assert.ok(d(m, SPAWN) >= m.radius + PLAYER.radius);
+  }
+  for (const lt of L.lanterns) {
+    for (const m of mine) assert.ok(d(m, lt) >= m.radius + 0.3 + 0.2, `lantern ${lt.x},${lt.z} vs ${JSON.stringify(m)}`);
+  }
+});
+
+test('스폰 지점은 여전히 비어 있다', () => {
+  assert.ok(free(SPAWN));
+  for (const o of L.obstacles) assert.ok(d(o, SPAWN) >= o.radius + PLAYER.radius, JSON.stringify(o));
+});
+
+test('모든 장애물 값이 유효하고 마당 + 2 안에 있다', () => {
+  for (const o of L.obstacles) {
+    assert.ok(Number.isFinite(o.x) && Number.isFinite(o.z) && o.radius > 0);
+    assert.ok(Math.abs(o.x) <= YARD.width / 2 + 2 && Math.abs(o.z) <= YARD.depth / 2 + 2);
+  }
+});
+
+// ---- 서 있을 자리 ----
 test('걸어서 건물을 통과할 수 없다: 정면·북쪽·남쪽·동쪽에서 건물 안쪽으로 걸어도 벽에서 멈춘다', () => {
   const c = { x: laundry.x, z: laundry.z };
   const starts = [
@@ -272,15 +221,6 @@ test('걸어서 건물을 통과할 수 없다: 정면·북쪽·남쪽·동쪽�
     for (const p of path) assert.ok(!insideFootprint(p), `inside from ${JSON.stringify(from)} at ${JSON.stringify(p)}`);
     const end = path[path.length - 1];
     assert.ok(d(end, c) > 1.5, `end ${JSON.stringify(end)}`); // 목표(건물 가운데)에 닿지 못하고 벽에서 멈춘다
-  }
-});
-
-test('걸어서 세탁기를 통과할 수 없다(서쪽에서 세탁기 중심으로)', () => {
-  for (const w of L.washers) {
-    const path = walk({ x: 3.4, z: w.z }, w);
-    const end = path[path.length - 1];
-    for (const p of path) assert.ok(d(p, w) >= w.radius + PLAYER.radius - 1e-6, `${w.name} ${JSON.stringify(p)}`);
-    assert.ok(d(end, w) >= w.radius + PLAYER.radius - 1e-6);
   }
 });
 

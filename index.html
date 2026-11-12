@@ -114,6 +114,16 @@
       box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35); z-index: 2; }
     #cta-chip:hover { background: #f0913f; }
     #cta-chip.visible { display: block; }
+    /* 공간 전환 오버레이(차원문): 가운데가 뚫린 원이 가장자리에서 조여 오며 흰빛 띠 → 연보라로 화면을 덮는다(구멍 반지름 --r 은 JS 가 매 프레임 지정). */
+    #portal { position: absolute; inset: 0; display: none; z-index: 6; pointer-events: none; --r: 112;
+      background: radial-gradient(circle farthest-corner at 50% 50%,
+        rgba(255, 255, 255, 0) calc(var(--r) * 1% - 5%),
+        rgba(255, 255, 255, 1) calc(var(--r) * 1%),
+        #ece4ff calc(var(--r) * 1% + 7%),
+        #c9b8fb calc(var(--r) * 1% + 28%),
+        #a58cf0 calc(var(--r) * 1% + 70%),
+        #8f72e6 calc(var(--r) * 1% + 100%)); }
+    #portal.active { display: block; }
     footer { font-size: 12px; text-align: center; padding: 6px 8px; background: #12121f; }
     #loading { position: fixed; inset: 0; background: rgba(18, 18, 31, 0.85); display: flex;
       align-items: center; justify-content: center; font-size: 20px; z-index: 5;

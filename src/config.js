@@ -89,7 +89,7 @@ export const FIRE_RANGE = 4.0;
 export const SHREDDER_RANGE = 4.0;
 // 세탁소 구역(세탁·널기): 구역 중심은 layout 의 세탁기 줄과 빨랫줄 사이(logic/zones.js)이고 이 반경 안에서 행동 막대가 보인다.
 // WASHER_RANGE: 가장 가까운 세탁기 중심에서 이 거리 안이면 세탁이 켜진다. CLOTHESLINE_RANGE: 빨랫줄 중심에서 이 거리 안이면 널기가 켜진다.
-export const LAUNDRY_ZONE_RADIUS = 4.5;
+export const LAUNDRY_ZONE_RADIUS = 4.5; // 구역 중심은 실내 세탁기 줄과 빨랫줄 사이(logic/zones.js)
 export const WASHER_RANGE = 4.0;
 export const CLOTHESLINE_RANGE = 4.0;
 export const ACTION_TURN_SECONDS = 0.5;
@@ -117,3 +117,15 @@ export const FOG = { near: 22, far: 75 };
 
 // 조명: 해(방향광) 세기, 하늘빛(반구광) 세기, 해 위치, 그림자 범위(단위).
 export const LIGHT = { sun: 1.5, hemi: 0.95, sunPosition: [-9, 14, 7], shadowExtent: 24 };
+
+// ---- 공간 전환(차원문)과 세탁소 실내 ----
+// 전환: 닫는 구간 -> (화면이 완전히 덮인 순간 공간 교체) -> 여는 구간. 합쳐 약 1초.
+export const TRANSITION = { outSeconds: 0.45, inSeconds: 0.45 };
+// 세탁소 실내는 마당에서 멀리 떨어진 같은 씬 안의 별도 공간이다(origin: 실내 중심). width 는 x, depth 는 z 방향 길이(안쪽 면 기준).
+export const LAUNDRY_INTERIOR = { origin: { x: 300, z: 0 }, width: 12, depth: 10, wallHeight: 2.58 };
+// 실내에서 쓰는 배경색(따뜻한 베이지)과 조명.
+// hemi: 반구광 세기, lamp*: 천장 램프 점광(색·세기·닿는 거리), sun: 그림자용 방향광 세기.
+export const INTERIOR_LOOK = {
+  background: 0xf3e6d0, hemiSky: 0xfff4e0, hemiGround: 0xb59a78, hemi: 0.6,
+  lamp: 0xffd9a0, lampIntensity: 9, lampDistance: 12, sun: 0.55,
+};

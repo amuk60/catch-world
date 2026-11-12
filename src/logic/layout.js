@@ -17,10 +17,9 @@ const BUILDING_SLOTS = [
 // width 는 정면 벽을 따른 길이(월드 z), depth 는 앞뒤 길이(월드 x). tile 은 판벽 조각(원본 1x1x1) 배율이고 문은 정면 벽의 북쪽 끝 칸이다.
 // 장애물 원은 벽 바깥선에서 OBSTACLE_INSET 안쪽을 따라 촘촘히 놓아 지나갈 수 없게 한다.
 const LAUNDRY = { id: 'laundry', tile: 1.8, width: 5.4, depth: 3.6, rotY: -Math.PI / 2, offsetX: 0.4, doorLocalX: -1.8, obstacleRadius: 0.65, inset: 0.3, spacing: 1.1, pickHeight: 3 };
-// 세탁기 줄: 문 앞(정면 방향) 거리 DOOR_GAP, 줄을 따라 ROW_STEP 간격. 서쪽(문 쪽)을 보고 서서 건물 정면과 나란하다. dryer 는 가운데가 아니라 끝에 둔다.
-const WASHER_ROW = { frontDistance: 2.1, firstZ: 5.2, step: 1.45, radius: 0.6, models: [['washer', 2.6], ['washer', 2.6], ['dryer', 2.2]] };
-// 빨랫줄: 세탁기 줄과 같은 x 에서 문 앞 북쪽 광장에 둔다(기둥 둘, 줄 높이 y, 걸 수 있는 칸 slots).
-const CLOTHESLINE = { z1: -0.7, z2: 2.7, y: 1.8, postHeight: 2.0, postRadius: 0.25, slots: 6 };
+// 세탁소 문(입구) 상호작용: 문 앞 DOOR_ITEM_DISTANCE 지점에 작은 원을 둔다. 세탁기·빨랫줄은 실내(logic/interiors.js)로 옮겼다.
+// 마당으로 나왔을 때의 도착 지점은 문 앞 ARRIVAL_DISTANCE(상호작용 범위 밖이라 나오자마자 E 안내가 뜨지 않는다).
+const DOOR_ITEM = { distance: 0.8, radius: 0.4, walkDistance: 1.5, arrivalDistance: 2.6 };
 
 const FALL_TREES = [
   'tree_oak_fall', 'tree_default_fall', 'tree_detailed_fall', 'tree_fat_fall', 'tree_tall_fall',
@@ -78,6 +77,24 @@ function squarePoint(d, r) {
 }
 
 const insidePlaza = (x, z) => x > PLAZA.x1 && x < PLAZA.x2 && z > PLAZA.z1 && z < PLAZA.z2;
+
+// 세탁소 건물 정면 계산(시드와 무관한 고정 자리). 건물 데이터, 문 위치, 정면(바깥) 방향, 문 앞 도착 지점(마당으로 나왔을 때).
+export function laundryFacade() {
+  const slot = BUILDING_SLOTS.find((b) => b.id === LAUNDRY.id);
+  const centre = { x: slot.x + LAUNDRY.offsetX, z: slot.z };
+  const toWorld = (lx, lz) => ({ // 건물 로컬 (lx: 정면 벽을 따라, lz: 앞쪽) -> 월드
+    x: centre.x + lx * Math.cos(LAUNDRY.rotY) + lz * Math.sin(LAUNDRY.rotY),
+    z: centre.z - lx * Math.sin(LAUNDRY.rotY) + lz * Math.cos(LAUNDRY.rotY),
+  });
+  const door = toWorld(LAUNDRY.doorLocalX, LAUNDRY.depth / 2);
+  const front = { x: Math.sin(LAUNDRY.rotY), z: Math.cos(LAUNDRY.rotY) };
+  const building = {
+    id: LAUNDRY.id, x: centre.x, z: centre.z, rotY: LAUNDRY.rotY, width: LAUNDRY.width, depth: LAUNDRY.depth, tile: LAUNDRY.tile,
+    door: { x: door.x, z: door.z }, obstacleRadius: LAUNDRY.obstacleRadius,
+  };
+  const arrival = { x: door.x + front.x * DOOR_ITEM.arrivalDistance, z: door.z + front.z * DOOR_ITEM.arrivalDistance, rotY: LAUNDRY.rotY }; // 건물을 등지고 선다
+  return { centre, toWorld, door, front, building, arrival };
+}
 
 export function buildLayout(seed, params = DEFAULT_PARAMS) {
   const rng = mulberry32(seed);
@@ -225,19 +242,8 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
   const shredder = placeProp(SHREDDER);
   obstacles.push({ x: shredder.x, z: shredder.z, radius: shredder.radius });
 
-  // ---- 세탁소(기존 배치·난수 흐름 뒤에 덧붙인다: 위의 모든 배치는 그대로다) ----
-  const slot = BUILDING_SLOTS.find((b) => b.id === LAUNDRY.id);
-  const centre = { x: slot.x + LAUNDRY.offsetX, z: slot.z };
-  const toWorld = (lx, lz) => ({ // 건물 로컬 (lx: 정면 벽을 따라, lz: 앞쪽) -> 월드
-    x: centre.x + lx * Math.cos(LAUNDRY.rotY) + lz * Math.sin(LAUNDRY.rotY),
-    z: centre.z - lx * Math.sin(LAUNDRY.rotY) + lz * Math.cos(LAUNDRY.rotY),
-  });
-  const door = toWorld(LAUNDRY.doorLocalX, LAUNDRY.depth / 2);
-  const front = { x: Math.sin(LAUNDRY.rotY), z: Math.cos(LAUNDRY.rotY) };
-  const building = {
-    id: LAUNDRY.id, x: centre.x, z: centre.z, rotY: LAUNDRY.rotY, width: LAUNDRY.width, depth: LAUNDRY.depth, tile: LAUNDRY.tile,
-    door: { x: door.x, z: door.z }, obstacleRadius: LAUNDRY.obstacleRadius,
-  };
+  // ---- 세탁소 외관(기존 배치·난수 흐름 뒤에 덧붙인다: 위의 모든 배치는 그대로다). 세탁·널기는 실내에서 한다. ----
+  const { centre, toWorld, door, front, building } = laundryFacade();
   // 외곽선(벽 바깥선에서 inset 안쪽 직사각형)을 따라 spacing 이하 간격의 원을 놓는다.
   const hw = LAUNDRY.width / 2 - LAUNDRY.inset;
   const hd = LAUNDRY.depth / 2 - LAUNDRY.inset;
@@ -250,29 +256,24 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
       obstacles.push({ x: p.x, z: p.z, radius: LAUNDRY.obstacleRadius });
     }
   });
-  const washers = WASHER_ROW.models.map(([name, scale], i) => {
-    const p = { x: door.x + front.x * WASHER_ROW.frontDistance, z: WASHER_ROW.firstZ + i * WASHER_ROW.step };
-    obstacles.push({ x: p.x, z: p.z, radius: WASHER_ROW.radius });
-    return { pack: 'furniture', name, x: p.x, z: p.z, scale, rotY: LAUNDRY.rotY, radius: WASHER_ROW.radius }; // 서쪽을 본다(건물 정면과 같은 방향)
-  });
-  const lineX = washers[0].x;
-  const clothesline = {
-    x1: lineX, z1: CLOTHESLINE.z1, x2: lineX, z2: CLOTHESLINE.z2, y: CLOTHESLINE.y,
-    postHeight: CLOTHESLINE.postHeight, postRadius: CLOTHESLINE.postRadius, slots: CLOTHESLINE.slots,
-    centre: { x: lineX, z: (CLOTHESLINE.z1 + CLOTHESLINE.z2) / 2 },
-  };
-  obstacles.push({ x: clothesline.x1, z: clothesline.z1, radius: clothesline.postRadius }, { x: clothesline.x2, z: clothesline.z2, radius: clothesline.postRadius });
-  // 건물 호버/클릭 판정: 터 중심의 큰 원. 클릭하면 문 앞 1.5 지점으로 걸어간다. E 동작은 없다.
+  // 건물 호버/클릭 판정: 터 중심의 큰 원. 클릭하면 문 앞 1.5 지점으로 걸어간다. E 동작은 없다(들어가기는 아래 문 대상).
   const hoverRadius = Math.min(LAUNDRY.width, LAUNDRY.depth) / 2 + 0.1;
   interactables.push({
     id: LAUNDRY.id, label: '세탁소', kind: 'building', x: centre.x, z: centre.z, radius: hoverRadius,
     interactRange: hoverRadius + PLAYER.radius + INTERACT_MARGIN, pickHeight: LAUNDRY.pickHeight,
-    walkTo: { x: door.x + front.x * 1.5, z: door.z + front.z * 1.5 },
+    walkTo: { x: door.x + front.x * DOOR_ITEM.walkDistance, z: door.z + front.z * DOOR_ITEM.walkDistance },
+  });
+  // 세탁소 문: 문 앞에서 E 로 들어간다(kind door, to: 공간 id). 클릭하면 문 앞 1.5 지점까지 걸어가고 자동으로 들어가지는 않는다.
+  interactables.push({
+    id: 'laundry-door', label: '세탁소 문', kind: 'door', to: 'laundry',
+    x: door.x + front.x * DOOR_ITEM.distance, z: door.z + front.z * DOOR_ITEM.distance, radius: DOOR_ITEM.radius,
+    interactRange: DOOR_ITEM.radius + PLAYER.radius + INTERACT_MARGIN,
+    walkTo: { x: door.x + front.x * DOOR_ITEM.walkDistance, z: door.z + front.z * DOOR_ITEM.walkDistance },
   });
 
   return {
     trees, bushes, rocks, lanterns, furnaceItems, sign, interactables, shredder,
     buildingSlots: BUILDING_SLOTS.map((b) => ({ ...b })), plaza: { ...PLAZA }, obstacles,
-    buildings: [building], washers, clothesline,
+    buildings: [building],
   };
 }

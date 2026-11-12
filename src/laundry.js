@@ -1,5 +1,5 @@
-// 브라우저 전용: 세탁소 건물(Fantasy Town 판벽·지붕 조립 + 간판), 세탁기 줄, 빨랫줄과 널린 빨래, 손에 드는 셔츠.
-// 위치·크기는 layout(logic/layout.js)의 buildings / washers / clothesline 데이터에서 온다.
+// 브라우저 전용: 세탁소 건물 외관(Fantasy Town 판벽·지붕 조립 + 간판), 세탁기 줄, 빨랫줄과 널린 빨래, 손에 드는 셔츠.
+// 건물은 layout(logic/layout.js)의 buildings 에서, 세탁기·빨랫줄은 실내 데이터(logic/interiors.js)에서 온다(실내는 interiorLaundry.js 가 이 모듈의 buildWashers/buildClothesline 을 쓴다).
 import * as THREE from 'three';
 import {
   hangSlot, shirtColor, slotPoint, wobbleAmount, WOBBLE_SECONDS, foamBubble, FOAM_COUNT, FOAM_SECONDS, swingAngle, SWING_SECONDS,
@@ -46,7 +46,7 @@ function piece(models, name, receive = true) {
 }
 
 // 나무 간판 글씨 판(world.js 의 'Catch World' 팻말과 같은 밝은 나무판·어두운 글씨).
-function signTexture(text) {
+export function signTexture(text) {
   const canvas = document.createElement('canvas');
   canvas.width = 768;
   canvas.height = 256;
@@ -225,7 +225,7 @@ export function buildCrumpledShirt() {
 }
 
 // ---- 세탁기 줄 ----
-function buildWashers(scene, washers, models) {
+export function buildWashers(scene, washers, models) {
   const unit = new THREE.Vector3();
   const items = washers.map((w) => {
     const wrapper = new THREE.Group();
@@ -303,7 +303,7 @@ function buildWashers(scene, washers, models) {
 }
 
 // ---- 빨랫줄 ----
-function buildClothesline(scene, line) {
+export function buildClothesline(scene, line) {
   const group = new THREE.Group();
   const postMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2f });
   for (const [x, z] of [[line.x1, line.z1], [line.x2, line.z2]]) {
@@ -371,16 +371,7 @@ function buildClothesline(scene, line) {
   };
 }
 
-// 세탁소 전체를 씬에 올린다. models: loadModels 결과(없는 조각은 색 상자로 대체).
-export function buildLaundry(scene, layout, models) {
-  const building = buildBuilding(scene, layout.buildings.find((b) => b.id === 'laundry'), models);
-  const washers = buildWashers(scene, layout.washers, models);
-  const clothesline = buildClothesline(scene, layout.clothesline);
-  return {
-    building, washers, clothesline,
-    update(dt) {
-      washers.update(dt);
-      clothesline.update(dt);
-    },
-  };
+// 세탁소 건물 외관을 씬에 올린다. models: loadModels 결과(없는 조각은 색 상자로 대체).
+export function buildLaundryBuilding(scene, layout, models) {
+  return buildBuilding(scene, layout.buildings.find((b) => b.id === 'laundry'), models);
 }
