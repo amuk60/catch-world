@@ -55,3 +55,20 @@ test('y 는 무시하고 수평 투영만 쓴다', () => {
 test('퇴화(카메라가 수평으로 타깃 바로 위): 멀리 있는 나무는 1', () => {
   assert.equal(occlusionTarget({ x: 0, y: 9, z: 0 }, tgt, { x: 5, z: 5 }, P), 1);
 });
+
+import { roofTarget } from '../src/logic/occlusion.js';
+import { ROOF_FADE } from '../src/config.js';
+
+test('지붕: 가까우면 minScale, 멀면 1, 사이는 단조 증가', () => {
+  const P2 = { near: 4, far: 7, minScale: 0.04 };
+  assert.equal(roofTarget(0, P2), 0.04);
+  assert.equal(roofTarget(4, P2), 0.04);
+  assert.equal(roofTarget(7, P2), 1);
+  assert.equal(roofTarget(20, P2), 1);
+  const a = roofTarget(5, P2), b = roofTarget(6, P2);
+  assert.ok(a > 0.04 && b > a && b < 1);
+});
+
+test('ROOF_FADE 가 config 에 있다', () => {
+  assert.ok(ROOF_FADE.near < ROOF_FADE.far && ROOF_FADE.minScale > 0 && ROOF_FADE.minScale < 1);
+});

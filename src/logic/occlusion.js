@@ -14,3 +14,11 @@ export function occlusionTarget(camera, target, tree, { radius, minT, maxT, minS
   const u = (dist - radius * 0.5) / (radius * 0.5);
   return minScale + (1 - minScale) * u * u * (3 - 2 * u);
 }
+
+// 건물 지붕의 목표 높이 배율. 플레이어가 건물 중심에서 near 이하면 minScale, far 이상이면 1, 사이는 부드럽게 보간한다.
+export function roofTarget(dist, { near, far, minScale }) {
+  if (dist <= near) return minScale;
+  if (dist >= far) return 1;
+  const u = (dist - near) / (far - near);
+  return minScale + (1 - minScale) * u * u * (3 - 2 * u);
+}

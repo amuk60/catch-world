@@ -84,7 +84,7 @@ if (isMobileUA(navigator.userAgent)) {
   const { fog: yardFog } = applyAtmosphere(scene, renderer, yardRoot);
   const ground = buildGround(yardRoot);
   buildCity(yardRoot, layout);
-  buildLaundryBuilding(yardRoot, layout, models);
+  const laundryBuilding = buildLaundryBuilding(yardRoot, layout, models);
   const inside = buildInteriorLaundry(scene, interior, models);
   const laundry = { washers: inside.washers, clothesline: inside.clothesline, update: (dt) => inside.update(dt) };
   const zones = buildZones(layout, interior);
@@ -754,7 +754,10 @@ if (isMobileUA(navigator.userAgent)) {
     targetPos.lerp(desired, k);
     camera.position.set(...orbitPosition(targetPos.toArray(), orbit));
     camera.lookAt(targetPos);
-    if (spaceId === 'yard') updateTreeOcclusion(camera.position, targetPos, dt); // 나무 가림 축소는 마당에서만
+    if (spaceId === 'yard') {
+      updateTreeOcclusion(camera.position, targetPos, dt); // 나무 가림 축소는 마당에서만
+      laundryBuilding.updateRoof(player.position, dt); // 건물 가까이 가면 지붕이 낮아진다
+    }
     else inside.updateWalls(camera.position); // 실내: 카메라 쪽 벽을 숨긴다
   });
 }

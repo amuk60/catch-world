@@ -12,7 +12,6 @@ export const INTERIOR_MODEL_ITEMS = [
   'lampRoundFloor', 'rugRectangle',
 ].map((name) => ({ pack: 'furniture', name }));
 
-const LAMP_RADIUS = 0.16; // 천장 램프(은은히 빛나는 구)
 const FALLBACK_SIZE = { wall: [2, 2.58, 0.1], wallWindow: [2, 2.58, 0.1], wallDoorwayWide: [2, 2.58, 0.1] }; // 모델이 없을 때 도형 대체물(폭, 높이, 두께)
 const WALL_COLOR = 0xe9dcc4;
 
@@ -107,14 +106,7 @@ export function buildInteriorLaundry(scene, interior, models) {
 
   // 가구와 러그, 천장 램프.
   for (const f of interior.furniture) root.add(placed(models, f.name, f, f.name !== 'rugRectangle'));
-  // 천장 램프 눈에 보이는 부분: 따뜻하게 빛나는 구(천장은 그리지 않으므로 줄 없이 떠 있는 전구처럼 보인다).
-  const bulbMat = new THREE.MeshBasicMaterial({ color: 0xffe2b0, toneMapped: false });
-  const bulbGeo = new THREE.SphereGeometry(LAMP_RADIUS, 14, 10);
-  for (const l of interior.lamps) {
-    const bulb = new THREE.Mesh(bulbGeo, bulbMat);
-    bulb.position.set(l.x, l.y, l.z);
-    root.add(bulb);
-  }
+  // 천장은 그리지 않으므로 램프는 눈에 보이는 물체 없이 빛(아래 점광)만 낸다(허공에 떠 있는 전구가 어색해 뺐다).
 
   // 세탁기 줄과 빨랫줄(널린 빨래·세탁기 흔들림·거품은 기존 코드 그대로: 월드 좌표 데이터라 위치만 다르다).
   const washers = buildWashers(root, interior.washers, models);

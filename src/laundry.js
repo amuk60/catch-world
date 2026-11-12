@@ -4,6 +4,8 @@ import * as THREE from 'three';
 import {
   hangSlot, shirtColor, slotPoint, wobbleAmount, WOBBLE_SECONDS, foamBubble, FOAM_COUNT, FOAM_SECONDS, swingAngle, SWING_SECONDS,
 } from './logic/laundry.js';
+import { roofTarget } from './logic/occlusion.js';
+import { ROOF_FADE } from './config.js';
 
 // 건물 조립에 쓰는 Fantasy Town 조각(main 이 미리 불러온다).
 export const LAUNDRY_MODEL_ITEMS = ['wall', 'wall-door', 'wall-window-glass', 'wall-window-shutters', 'wall-window-small', 'roof-gable', 'roof-gable-end']
@@ -14,6 +16,7 @@ const WALL_HEIGHT_TILES = 1; // 판벽 조각 하나의 높이(원본 단위)
 // 지붕: 원본(높이 0.57)에 곱하는 높이 배율, 벽 위에 띄우는 높이(그 띠는 회반죽으로 채워 간판 자리가 된다), 앞뒤 처마 내밀기, 폭 방향 처마(양쪽 합) 여유
 const ROOF = { scaleY: 1.5, lift: 0.45, overhang: 0.15, crossExtra: 0.5 };
 const SIGN_TEXT = '세탁소';
+const WALL_MIN_SCALE = 0.3; // 플레이어가 가까이 갔을 때 벽이 낮아지는 최소 배율
 
 // 로컬(정면 +z) 기준 벽 조각 배치. side: 어느 벽인지, 바깥을 향하는 방향각 yaw(원본 +x 면이 바깥).
 const SIDES = {
@@ -79,6 +82,8 @@ function buildBuilding(scene, b, models) {
   const hw = b.width / 2;
   const hd = b.depth / 2;
   const missing = ['wall', 'wall-door', 'roof-gable'].some((n) => !models.get(`fantasy/${n}`));
+  // 지붕(박공 두 조각과 앞뒤 삼각형)은 벽 윗면을 축으로 세로로 줄어든다(플레이어가 가까이 가면 캐릭터가 가려지지 않게).
+  const roofGroup = new THREE.Group();
 
   const plaster = new THREE.MeshStandardMaterial({ color: PLASTER, roughness: 0.9 });
   if (missing) {
@@ -111,13 +116,15 @@ function buildBuilding(scene, b, models) {
     const roofLen = b.depth + 2 * ROOF.overhang;
     const roofSpan = b.width + ROOF.crossExtra;
     const wallTop = T * WALL_HEIGHT_TILES;
-    const base = wallTop + ROOF.lift;
+    const base = ROOF.lift; // roofGroup 기준(roofGroup 은 벽 윗면 높이)
+    roofGroup.position.y = wallTop;
+    group.add(roofGroup);
     for (const k of [0, 1]) {
       const r = piece(models, 'roof-gable');
       r.rotation.y = -Math.PI / 2; // 원본 +x(용마루) -> 로컬 +z
       r.scale.set(roofLen / 2 / 1.1, ROOF.scaleY, roofSpan / 1.08); // 회전 전 기준 (x: 용마루 방향, y: 높이, z: 폭)
       r.position.set(0, base, -roofLen / 4 + k * (roofLen / 2));
-      group.add(r);
+      roofGroup.add(r);
     }
     // 앞뒤 박공 삼각형 채움(회반죽).
     const rise = 0.57 * ROOF.scaleY; // 지붕 높이
@@ -131,7 +138,7 @@ function buildBuilding(scene, b, models) {
       const fill = new THREE.Mesh(triGeo, plaster);
       fill.position.set(0, base, sz > 0 ? hd - 0.2 : -hd + 0.02);
       fill.castShadow = true;
-      group.add(fill);
+      roofGroup.add(fill);
     }
     // 벽 위 띠(둘레 전체): 지붕을 ROOF.lift 만큼 띄운 틈을 회반죽으로 채운다. 앞쪽 띠가 간판 자리다.
     const band = ROOF.lift + 0.02;
@@ -164,7 +171,7 @@ function buildBuilding(scene, b, models) {
   group.position.set(b.x, 0, b.z);
   group.rotation.y = b.rotY;
   scene.add(group);
-  return { group, sign };
+  return { group, sign, roofGroup };
 }
 
 // ---- 셔츠 ----
@@ -373,5 +380,18 @@ export function buildClothesline(scene, line) {
 
 // 세탁소 건물 외관을 씬에 올린다. models: loadModels 결과(없는 조각은 색 상자로 대체).
 export function buildLaundryBuilding(scene, layout, models) {
-  return buildBuilding(scene, layout.buildings.find((b) => b.id === 'laundry'), models);
+  const building = buildBuilding(scene, layout.buildings.find((b) => b.id === 'laundry'), models);
+  let roofScale = 1;
+  // 플레이어가 건물 근처면 지붕을 낮춘다(부드럽게).
+  building.updateRoof = (playerPos, dt) => {
+    const d = Math.hypot(playerPos.x - building.group.position.x, playerPos.z - building.group.position.z);
+    const target = roofTarget(d, ROOF_FADE);
+    roofScale += (target - roofScale) * (1 - Math.exp(-8 * dt));
+    // 벽도 같이 낮아지되(최소 WALL_MIN_SCALE) 지붕은 전체 기준으로 roofScale 배가 되도록 더 줄인다.
+    const wallScale = Math.max(roofScale, WALL_MIN_SCALE);
+    building.group.scale.y = wallScale;
+    building.roofGroup.scale.y = roofScale / wallScale;
+    building.roofGroup.visible = roofScale > 0.06;
+  };
+  return building;
 }
