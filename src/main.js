@@ -29,7 +29,7 @@ import { applyDrag, applyZoom, orbitPosition } from './logic/orbit.js';
 import { clampToYard, stepToward, pushOutOfCircle, headingY } from './logic/movement.js';
 
 const MAX_DT = 0.1; // 한 프레임에 진행하는 최대 시간(초). 탭이 멈췄다 돌아와도 행동·애니메이션이 한꺼번에 튀지 않게 한다.
-const FALLBACK_RAW_DURATIONS = { 'emote-no': 0.667, 'pick-up': 0.333, 'attack-melee-right': 0.417, 'attack-melee-left': 0.417, 'emote-yes': 0.667 }; // 캐릭터 모델이 없을 때(모델의 실제 클립 길이)
+const FALLBACK_RAW_DURATIONS = { 'emote-no': 0.667, 'pick-up': 0.333, 'attack-melee-right': 0.417, 'emote-yes': 0.667 }; // 캐릭터 모델이 없을 때(모델의 실제 클립 길이)
 const PAPER_FLIGHT_SEC = 0.35; // 던진 종이가 불까지 날아가는 시간
 const PAPER_SLIDE_SEC = 0.2; // 파쇄기 투입구로 들어가는 시간
 const PAPER_ARC = 0.6; // 던질 때 포물선이 올라가는 높이

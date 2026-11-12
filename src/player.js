@@ -4,7 +4,7 @@ import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { PLAYER_MODEL } from './config.js';
 import { clipNameForState, findClip, FADE_SECONDS } from './logic/animation.js';
 
-const ACTION_CLIPS = ['emote-no', 'pick-up', 'attack-melee-right', 'attack-melee-left', 'emote-yes']; // 소각장 행동에 쓰는 클립
+const ACTION_CLIPS = ['emote-no', 'pick-up', 'attack-melee-right', 'emote-yes']; // 소각장 행동에 쓰는 클립
 const ACTION_FADE = 0.15; // 행동 클립으로 넘어갈 때 크로스페이드(초)
 const HAND_BONE = /arm[-_ ]?right|right[-_ ]?(hand|arm)|hand[-_ ]?r/i;
 

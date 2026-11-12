@@ -13,7 +13,7 @@ export const ACTIONS = {
   },
   shred: {
     id: 'shred', label: '파쇄', key: '2', target: 'shredder',
-    steps: [SIGH, POCKET_PULL, { kind: 'turn', target: 'shredder' }, { kind: 'clip', name: 'attack-melee-left', effect: true }, RELIEF].map((s) => ({ ...s })),
+    steps: [SIGH, POCKET_PULL, { kind: 'turn', target: 'shredder' }, { kind: 'clip', name: 'attack-melee-right', effect: true }, RELIEF].map((s) => ({ ...s })),
   },
 };
 
