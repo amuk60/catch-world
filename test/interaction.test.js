@@ -56,7 +56,7 @@ test('nearestInRange: 거리가 같으면 먼저 나온 대상, y 는 무시', (
 });
 
 test('actionOf: 종류별 동작과 안내 문구', () => {
-  assert.deepEqual(actionOf({ kind: 'furnace' }), { type: 'burn', prompt: '소각 시작' });
+  assert.equal(actionOf({ kind: 'furnace' }), null); // 소각로는 E 동작이 없다(행동 막대로 한다).
   assert.deepEqual(actionOf({ kind: 'comfort' }), { type: 'comfort', prompt: '살펴보기' });
   assert.deepEqual(actionOf({ kind: 'fortune' }), { type: 'fortune', prompt: '포춘쿠키 열기' });
   assert.deepEqual(actionOf({ kind: 'seat' }), { type: 'seat', prompt: '앉기' });
@@ -65,4 +65,19 @@ test('actionOf: 종류별 동작과 안내 문구', () => {
 test('actionOf: 모르는 종류는 오류', () => {
   assert.throws(() => actionOf({ kind: 'door' }), /door/);
   assert.throws(() => actionOf({}), /undefined/);
+});
+
+test('nearestInRange: E 동작이 없는 종류(소각로)는 건너뛴다', () => {
+  const stump2 = { id: 's', kind: 'comfort', x: 3, z: 0, interactRange: 3 };
+  const fur = { id: 'f', kind: 'furnace', x: 0, z: 0, interactRange: 3 };
+  assert.equal(nearestInRange({ x: 0, z: 0 }, [fur, stump2]), stump2);
+  assert.equal(nearestInRange({ x: 0, z: 0 }, [fur]), null);
+});
+
+test('옛 burn 동작 종류와 "소각 시작" 문구는 없다', () => {
+  for (const kind of ['comfort', 'fortune', 'seat']) {
+    const a = actionOf({ kind });
+    assert.notEqual(a.type, 'burn');
+    assert.ok(!a.prompt.includes('소각'));
+  }
 });

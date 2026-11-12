@@ -5,8 +5,6 @@ export const CATCH_URL = 'https://www.catch.co.kr';
 export const GA_MEASUREMENT_ID = '';
 
 export const STRESS = { start: 100, goal: 20 };
-export const SPAWN_INTERVAL_MS = 3500;
-export const SHREDDER_TAPS = 8;
 
 // 초안 문구. 팀이 자유롭게 수정한다.
 export const COMFORT_MESSAGES = [
@@ -71,20 +69,23 @@ export const ZONES = { forestMaxX: -1.5, cityMinX: 2.5 };
 // 상호작용 반경(단위). 이후 단계에서 사용한다.
 export const INTERACT_RADIUS = 1.5;
 
-// 소각 미니게임(월드 단위). 위치는 소각로(FURNACE) 기준 오프셋.
-// camOffset/lookOffset: 고정 카메라 위치와 바라보는 점. fireRadius: 이 반경 안에 놓으면 소각.
-// paperY: 종이가 뜨는 높이. burnSec/flare/flareSec/shakeSec/shakeAmp: 소각 연출.
-// shredZoneRadius: 파쇄기 중심에서 이 수평 거리 안에 자소서를 놓으면 파쇄기에 들어간다. loadSec: 슬롯으로 빨려 드는 시간.
-// returnSec: 잘못 놓은 종이가 트레이로 돌아가는 시간. nextPaperSec: 한 장을 끝낸 뒤 다음 종이가 나오기까지.
-// wiggleSec: 파쇄기 탭 흔들림. clearExitSec: 클리어 후 소각장을 나가기까지.
-export const BURN = {
-  glideSec: 0.6,
-  camOffset: [5.4, 6.0, 6.6], lookOffset: [0, 0.6, 0],
-  fireRadius: 1.3,
-  shredderOffset: [-2.7, 0, 0.4], trayOffset: [2.2, 0, 2.0],
-  paperY: 1.0, burnSec: 0.25, flare: 1.35, flareSec: 0.2, shakeSec: 0.15, shakeAmp: 0.08,
-  shredZoneRadius: 1.1, loadSec: 0.3, returnSec: 0.35, nextPaperSec: 0.8, wiggleSec: 0.08, clearExitSec: 0.7,
-};
+// 소각장 행동(태우기·파쇄)과 불멍. 거리는 월드 단위, 시간은 초.
+// ACTION_REDUCE: 행동 하나가 효과 순간에 줄이는 스트레스 지수.
+// AUTO_GAP: 자동 버튼이 행동을 끝낸 뒤 다음 행동(태우기 -> 파쇄 -> 태우기 ...)을 시작하기까지 쉬는 시간.
+// PASSIVE: 불멍(소각로 옆 벤치에 앉아 있기)으로 interval 초마다 amount 씩 자동으로 줄어든다.
+// FIRE_ZONE_RADIUS: 소각로 중심에서 이 거리 안에 있어야 행동 막대가 보인다.
+// FIRE_RANGE: 이 거리 안이면 태우기가 켜진다(소각로 중심 기준).
+// SHREDDER_RANGE: 파쇄기 중심에서 이 거리 안이면 파쇄가 켜진다. 두 범위가 겹치는 자리(소각로와 파쇄기 사이)에서 자동이 두 행동을 번갈아 한다.
+// ACTION_EFFECT_AT: 행동 전체 길이 중 효과(종이가 불에 닿는 순간 등)가 일어나는 비율.
+// ACTION_EXTRA_SECONDS: 행동 클립을 천천히 재생해 클립 길이의 합보다 이만큼 더 길게 만든다(동작이 읽히도록).
+export const ACTION_REDUCE = 3;
+export const AUTO_GAP = 1;
+export const PASSIVE = { interval: 5, amount: 4 };
+export const FIRE_ZONE_RADIUS = 4.5;
+export const FIRE_RANGE = 4.0;
+export const SHREDDER_RANGE = 4.0;
+export const ACTION_EFFECT_AT = 0.68;
+export const ACTION_EXTRA_SECONDS = 3;
 
 // 시드: 마당 배치를 항상 같게 만든다.
 export const SEED = 20261111;

@@ -1,8 +1,15 @@
-// 브라우저 전용: 툴팁·말풍선·E 키 안내·포춘쿠키 모달·전역 스트레스 바·소각 미니게임 나가기 버튼과 파쇄 안내(HTML). 컨테이너(#game) 안에 절대 위치로 놓는다.
+// 브라우저 전용: 툴팁·말풍선·E 키 안내·포춘쿠키 모달·전역 스트레스 바·행동 막대·불멍 안내·감소량(-4) 팝업(HTML). 컨테이너(#game) 안에 절대 위치로 놓는다.
 import { barRatio, goalRatio } from './logic/burn.js';
 
 const BUBBLE_MS = 3000;
 const CRACK_MS = 400; // index.html 의 crack 애니메이션 길이와 같게 둔다.
+const DELTA_MS = 800; // index.html 의 delta-rise 애니메이션 길이와 같게 둔다.
+const ACTION_BUTTONS = [
+  { id: 'burn', key: '1', label: '태우기' },
+  { id: 'shred', key: '2', label: '파쇄' },
+  { id: 'auto', key: 'R', label: '자동' },
+];
+const TOO_FAR = '더 가까이 가세요';
 
 // onCrack: 쿠키를 클릭했을 때, onClose: ✕ 를 눌렀을 때 (main.js 가 상태를 결정한다).
 export function createHud(container, { onCrack = () => {}, onClose = () => {} } = {}) {
@@ -33,7 +40,7 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
     </div>`;
   const cookieButton = fortune.querySelector('.cookie');
   const fortuneText = fortune.querySelector('.fortune-text');
-  // 전역 스트레스 바(상단 중앙)와 소각 미니게임 나가기 버튼(상단 좌측).
+  // 전역 스트레스 바(상단 중앙).
   const stress = document.createElement('div');
   stress.id = 'stress';
   stress.innerHTML = `
@@ -42,16 +49,32 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
   const stressValue = stress.querySelector('b');
   const stressFill = stress.querySelector('.stress-fill');
   const stressGoal = stress.querySelector('.stress-goal');
-  const exitButton = document.createElement('button');
-  exitButton.id = 'exit-burn';
-  exitButton.type = 'button';
-  exitButton.textContent = '나가기';
-  const shredHint = document.createElement('div');
-  shredHint.id = 'shred-hint';
-  container.append(tooltip, bubble, prompt, fortune, stress, exitButton, shredHint);
+  // 행동 막대(하단 중앙): [1] 태우기 [2] 파쇄 [R] 자동. 사용할 수 없는 버튼은 회색(aria-disabled)이고 눌러도 아무 일 없다.
+  const actionBar = document.createElement('div');
+  actionBar.id = 'action-bar';
+  const barButtons = {};
+  for (const b of ACTION_BUTTONS) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.action = b.id;
+    button.innerHTML = `<span class="keycap">${b.key}</span><span class="label">${b.label}</span>`;
+    button.addEventListener('pointerdown', (e) => e.preventDefault()); // 포커스를 가져가지 않는다(스페이스·엔터로 다시 눌리지 않게)
+    barButtons[b.id] = button;
+    actionBar.append(button);
+  }
+  let barHandlers = { onAction: () => {}, onToggleAuto: () => {} };
+  actionBar.addEventListener('click', (e) => {
+    const button = e.target.closest('button');
+    if (!button || button.getAttribute('aria-disabled') === 'true') return;
+    if (button.dataset.action === 'auto') barHandlers.onToggleAuto();
+    else barHandlers.onAction(button.dataset.action);
+  });
+  // 불멍 안내(벤치에 앉아 소각로를 보는 동안, 행동 막대 자리에 뜬다).
+  const meditate = document.createElement('div');
+  meditate.id = 'meditate';
+  meditate.textContent = '불멍 중… 가만히 있어도 지수가 줄어요';
+  container.append(tooltip, bubble, prompt, fortune, stress, actionBar, meditate);
   let stressStart = 100;
-  let exitHandler = () => {};
-  exitButton.addEventListener('click', () => exitHandler());
 
   cookieButton.addEventListener('click', () => onCrack());
   fortune.querySelector('.fortune-close').addEventListener('click', () => onClose());
@@ -114,7 +137,7 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
       clearTimeout(crackTimer);
       setStage(null);
     },
-    // 전역 스트레스 바: 월드와 소각장에서 항상 보인다. 처음 한 번 만들고 값이 바뀔 때마다 update.
+    // 전역 스트레스 바: 항상 보인다. 처음 한 번 만들고 값이 바뀔 때마다 update.
     showStressBar(value, start, goal) {
       stressStart = start;
       stressGoal.style.left = `${goalRatio(goal, start) * 100}%`;
@@ -125,25 +148,42 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
       stressValue.textContent = Math.round(value);
       stressFill.style.width = `${barRatio(value, stressStart) * 100}%`;
     },
-    // 파쇄기 위 안내(HTML). 위치는 파쇄기 월드 점을 투영한 화면 좌표.
-    showShredHint(text) {
-      shredHint.textContent = text;
-      shredHint.classList.add('visible');
+    // 행동 막대. showActionBar 로 보이게 하고 handlers 를 등록, updateActionBar 로 버튼 상태를 갱신(매 프레임 불러도 된다).
+    showActionBar({ onAction = () => {}, onToggleAuto = () => {} } = {}) {
+      barHandlers = { onAction, onToggleAuto };
+      actionBar.classList.add('visible');
     },
-    positionShredHint(screenX, screenY) {
-      shredHint.style.left = `${screenX}px`;
-      shredHint.style.top = `${screenY}px`;
+    // state: { burn, shred: 사용 가능 여부, auto: 켜짐 여부, busy: 행동 진행 중(버튼을 잠깐 흐리게) }
+    updateActionBar(state) {
+      for (const id of ['burn', 'shred']) {
+        const enabled = Boolean(state[id]);
+        const button = barButtons[id];
+        button.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+        button.title = enabled ? '' : TOO_FAR;
+      }
+      barButtons.auto.classList.toggle('on', Boolean(state.auto));
+      barButtons.auto.setAttribute('aria-pressed', state.auto ? 'true' : 'false');
+      actionBar.classList.toggle('busy', Boolean(state.busy));
     },
-    hideShredHint() {
-      shredHint.classList.remove('visible');
+    hideActionBar() {
+      actionBar.classList.remove('visible');
     },
-    showExit(onClick) {
-      exitHandler = onClick;
-      exitButton.classList.add('visible');
+    isActionBarVisible: () => actionBar.classList.contains('visible'),
+    showMeditate() {
+      meditate.classList.add('visible');
     },
-    hideExit() {
-      exitButton.classList.remove('visible');
-      exitHandler = () => {};
+    hideMeditate() {
+      meditate.classList.remove('visible');
+    },
+    // 감소량 같은 짧은 글자를 화면 좌표에 띄운다(약 40px 올라가며 0.8초에 걸쳐 사라진다). 여러 개가 겹쳐도 된다.
+    popDelta(text, screenX, screenY) {
+      const el = document.createElement('div');
+      el.className = 'delta';
+      el.textContent = text;
+      el.style.left = `${screenX}px`;
+      el.style.top = `${screenY}px`;
+      container.append(el);
+      setTimeout(() => el.remove(), DELTA_MS + 100);
     },
     isFortuneOpen: () => stage !== null,
     fortuneStage: () => stage,

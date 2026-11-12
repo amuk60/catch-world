@@ -10,12 +10,12 @@ export function inRange(playerPos, item) {
   return Math.hypot(playerPos.x - item.x, playerPos.z - item.z) <= item.interactRange;
 }
 
-// 범위 안에서 가장 가까운 대상(거리가 같으면 먼저 나온 것). 없으면 null.
+// 범위 안에서 E 동작이 있는 가장 가까운 대상(거리가 같으면 먼저 나온 것). 없으면 null.
 export function nearestInRange(playerPos, items) {
   let best = null;
   let bestDist = Infinity;
   for (const item of items) {
-    if (!inRange(playerPos, item)) continue;
+    if (ACTIONS[item.kind] === null || !inRange(playerPos, item)) continue;
     const dist = Math.hypot(playerPos.x - item.x, playerPos.z - item.z);
     if (dist < bestDist) {
       best = item;
@@ -25,18 +25,19 @@ export function nearestInRange(playerPos, items) {
   return best;
 }
 
+// E 키 동작. null 은 E 동작이 없는 대상(소각로: 호버 안내와 장애물일 뿐, 행동은 행동 막대로 한다).
 const ACTIONS = {
-  furnace: { type: 'burn', prompt: '소각 시작' },
+  furnace: null,
   comfort: { type: 'comfort', prompt: '살펴보기' },
   fortune: { type: 'fortune', prompt: '포춘쿠키 열기' },
   seat: { type: 'seat', prompt: '앉기' },
 };
 
-// E 키를 눌렀을 때의 동작 종류와 안내 문구.
+// E 키를 눌렀을 때의 동작 종류와 안내 문구. E 동작이 없는 종류는 null.
 export function actionOf(item) {
+  if (!(item.kind in ACTIONS)) throw new Error(`알 수 없는 상호작용 종류: ${item.kind}`);
   const action = ACTIONS[item.kind];
-  if (!action) throw new Error(`알 수 없는 상호작용 종류: ${item.kind}`);
-  return { ...action };
+  return action && { ...action };
 }
 
 export function hoverLabel(item) {

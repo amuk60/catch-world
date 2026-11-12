@@ -207,3 +207,157 @@ export function buildPickables(scene, interactables) {
     return mesh;
   });
 }
+
+// ---- 소각장 상시 소품: 파쇄기, 종이 더미, 손에 드는 종이와 막대 ----
+
+const STRIP_MAX = 8; // 동시에 살아 있는 파쇄 조각 최대 수
+const STRIP_LIFE = 0.6; // 조각이 사라지기까지(초)
+const STRIP_COUNT = 6; // 파쇄 한 번에 떨어지는 조각 수(<= STRIP_MAX)
+const WIGGLE_SEC = 0.08; // 파쇄기 흔들림 시간
+const SHREDDER_BODY = { w: 1.4, h: 1.0, d: 0.8 };
+const PAPER_SIZE = { w: 0.6, d: 0.8 }; // 종이 더미의 한 장 크기(월드 단위)
+const PAPER_SHEETS = 14;
+const PAPER_THICK = 0.02;
+
+// 불합격 통지서 무늬(384x512, 종이 비율 3:4): 연한 빨강 바탕, 위쪽 빨간 띠, 줄, 큰 라벨.
+function noticeTexture(label) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 384;
+  canvas.height = 512;
+  const g = canvas.getContext('2d');
+  g.fillStyle = '#ffdcd8';
+  g.fillRect(0, 0, canvas.width, canvas.height);
+  g.fillStyle = '#d9463b';
+  g.fillRect(0, 0, canvas.width, 64);
+  g.fillStyle = '#e0aaa4';
+  for (let i = 0; i < 8; i++) g.fillRect(40, 200 + i * 38, i % 2 ? 240 : 304, 12);
+  g.fillStyle = '#22223a';
+  g.font = 'bold 64px "Malgun Gothic", sans-serif';
+  const fit = Math.min(1, (canvas.width - 40) / g.measureText(label).width); // 긴 라벨은 종이 폭에 맞춰 줄인다
+  if (fit < 1) g.font = `bold ${Math.floor(64 * fit)}px "Malgun Gothic", sans-serif`;
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(label, canvas.width / 2, 128);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+// 손에 드는 종이 한 장(불합격 통지서). width x depth 는 월드 단위 크기, 두께는 얇게.
+export function buildPaper(width = 0.3, depth = 0.4) {
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(width, 0.015, depth),
+    [0, 1, 2, 3, 4, 5].map((i) => (i === 2
+      ? new THREE.MeshStandardMaterial({ map: noticeTexture('불합격 통지서'), emissive: 0x553333 }) // 윗면(+y)에 글씨
+      : new THREE.MeshStandardMaterial({ color: 0xffdcd8, emissive: 0x553333 }))),
+  );
+  mesh.castShadow = true;
+  return mesh;
+}
+
+// 파쇄기: 회색 상자 + 어두운 투입구. 바닥 y=0, 앞(+z)이 소각로를 향한다. wiggle() 로 흔들리고 spawnStrips() 로 조각이 떨어진다.
+// 흔들림과 조각 애니메이션은 매 프레임 update(dt) 가 진행한다.
+export function buildShredder(scene, shredder) {
+  const group = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(SHREDDER_BODY.w, SHREDDER_BODY.h, SHREDDER_BODY.d),
+    new THREE.MeshStandardMaterial({ color: 0x777788, emissive: 0x2a2a36 }),
+  );
+  body.position.y = SHREDDER_BODY.h / 2;
+  body.castShadow = true;
+  body.receiveShadow = true;
+  const slot = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.04, 0.14), new THREE.MeshStandardMaterial({ color: 0x15151f }));
+  slot.position.y = SHREDDER_BODY.h + 0.01;
+  slot.receiveShadow = true;
+  group.add(body, slot);
+  group.position.set(shredder.x, 0, shredder.z);
+  group.rotation.y = shredder.rotY;
+  scene.add(group);
+
+  const stripGeo = new THREE.BoxGeometry(0.05, 0.012, 0.3);
+  const strips = []; // { mesh, vel, age }
+  let wiggleT = -1;
+  let wiggleSign = 1;
+
+  function removeStrip(i) {
+    const [s] = strips.splice(i, 1);
+    scene.remove(s.mesh);
+    s.mesh.material.dispose();
+  }
+
+  return {
+    group,
+    // 투입구의 월드 좌표(종이가 들어가는 곳).
+    slotWorld(target = new THREE.Vector3()) {
+      group.updateWorldMatrix(true, false);
+      return group.localToWorld(target.set(0, SHREDDER_BODY.h + 0.05, 0));
+    },
+    wiggle() {
+      wiggleT = 0;
+      wiggleSign = -wiggleSign;
+    },
+    // 하얀 가는 조각 몇 개를 투입구 아래로 떨어뜨린다(동시에 최대 STRIP_MAX 개, STRIP_LIFE 초 뒤 사라진다).
+    spawnStrips() {
+      const yaw = group.rotation.y;
+      group.updateWorldMatrix(true, false);
+      for (let i = 0; i < STRIP_COUNT; i++) {
+        if (strips.length >= STRIP_MAX) removeStrip(0);
+        const mesh = new THREE.Mesh(stripGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true }));
+        group.localToWorld(mesh.position.set((Math.random() - 0.5) * 0.8, SHREDDER_BODY.h, 0.1));
+        mesh.rotation.y = yaw + (Math.random() - 0.5) * 0.6;
+        scene.add(mesh);
+        // 슬롯 위로 살짝 튀었다가 앞(소각로 쪽)으로 떨어진다.
+        const vel = new THREE.Vector3((Math.random() - 0.5) * 0.8, 1.0 + Math.random() * 0.8, 0.5 + Math.random() * 0.8);
+        vel.applyAxisAngle(THREE.Object3D.DEFAULT_UP, yaw);
+        strips.push({ mesh, vel, age: 0 });
+      }
+    },
+    update(dt) {
+      if (wiggleT >= 0) {
+        wiggleT += dt;
+        const k = Math.min(1, wiggleT / WIGGLE_SEC);
+        const pulse = Math.sin(Math.PI * k);
+        group.scale.setScalar(1 + 0.1 * pulse);
+        group.rotation.z = 0.07 * pulse * wiggleSign;
+        if (k >= 1) wiggleT = -1;
+      }
+      for (let i = strips.length - 1; i >= 0; i--) {
+        const s = strips[i];
+        s.age += dt;
+        if (s.age >= STRIP_LIFE) { removeStrip(i); continue; }
+        s.vel.y -= 9 * dt;
+        s.mesh.position.addScaledVector(s.vel, dt);
+        s.mesh.material.opacity = 1 - (s.age / STRIP_LIFE) ** 2;
+      }
+    },
+    stripCount: () => strips.length,
+  };
+}
+
+// 종이 더미: 나무 받침(팔레트) 위에 얇은 흰 상자들을 살짝 어긋나게 쌓는다. 어긋남은 장 번호로 정해 항상 같다.
+export function buildPaperStack(scene, stack) {
+  const group = new THREE.Group();
+  const palletH = 0.12;
+  const pallet = new THREE.Mesh(
+    new THREE.BoxGeometry(PAPER_SIZE.w + 0.3, palletH, PAPER_SIZE.d + 0.3),
+    new THREE.MeshStandardMaterial({ color: 0x9a6a3a }),
+  );
+  pallet.position.y = palletH / 2;
+  pallet.castShadow = true;
+  pallet.receiveShadow = true;
+  group.add(pallet);
+  const sheetMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x2a2a2a });
+  const sheetGeo = new THREE.BoxGeometry(PAPER_SIZE.w, PAPER_THICK, PAPER_SIZE.d);
+  for (let i = 0; i < PAPER_SHEETS; i++) {
+    const sheet = new THREE.Mesh(sheetGeo, sheetMat);
+    sheet.position.set(Math.sin(i * 12.9898) * 0.03, palletH + PAPER_THICK * (i + 0.5), Math.sin(i * 78.233) * 0.03);
+    sheet.rotation.y = Math.sin(i * 39.346) * 0.08;
+    sheet.castShadow = true;
+    sheet.receiveShadow = true;
+    group.add(sheet);
+  }
+  group.position.set(stack.x, 0, stack.z);
+  group.rotation.y = stack.rotY;
+  scene.add(group);
+  return { group, topY: palletH + PAPER_THICK * PAPER_SHEETS };
+}
