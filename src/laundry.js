@@ -22,15 +22,16 @@ function shadowAll(root, receive = true) {
   });
 }
 
-// 나무 간판 글씨 판(world.js 의 'Catch World' 팻말과 같은 밝은 나무판·어두운 글씨).
-export function signTexture(text) {
+// 간판 글씨 판. 기본은 나무 간판(world.js 의 'Catch World' 팻말과 같은 밝은 나무판·어두운 글씨), style 로 다른 색(면접장 남색 판)을 쓴다.
+const SIGN_STYLE = { bg: '#d9b27c', border: '#8a5f3a', text: '#4a2f1a' };
+export function signTexture(text, style = SIGN_STYLE) {
   const canvas = document.createElement('canvas');
   canvas.width = 768;
   canvas.height = 256;
   const g = canvas.getContext('2d');
-  g.fillStyle = '#d9b27c';
+  g.fillStyle = style.bg;
   g.fillRect(0, 0, canvas.width, canvas.height);
-  g.strokeStyle = '#8a5f3a';
+  g.strokeStyle = style.border;
   g.lineWidth = 14;
   g.strokeRect(7, 7, canvas.width - 14, canvas.height - 14);
   let size = 150;
@@ -40,7 +41,7 @@ export function signTexture(text) {
     size -= 4;
     g.font = font(size);
   }
-  g.fillStyle = '#4a2f1a';
+  g.fillStyle = style.text;
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   g.fillText(text, canvas.width / 2, canvas.height / 2 + 6);

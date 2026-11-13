@@ -129,11 +129,47 @@ export const LIGHT = { sun: 1.5, hemi: 0.95, sunPosition: [-9, 14, 7], shadowExt
 export const TRANSITION = { outSeconds: 0.45, inSeconds: 0.45 };
 // 세탁소 실내는 마당에서 멀리 떨어진 같은 씬 안의 별도 공간이다(origin: 실내 중심). width 는 x, depth 는 z 방향 길이(안쪽 면 기준).
 export const LAUNDRY_INTERIOR = { origin: { x: 300, z: 0 }, width: 12, depth: 10, wallHeight: 2.58 };
-// 실내에서 쓰는 배경색(따뜻한 베이지)과 조명.
-// hemi: 반구광 세기, lamp*: 천장 램프 점광(색·세기·닿는 거리), sun: 그림자용 방향광 세기.
+// 실내에서 쓰는 배경색(따뜻한 베이지)과 조명, 바닥·걸레받이·간판 모양. 세탁소 실내가 쓰는 기본값이다(면접장은 아래 INTERVIEW_LOOK).
+// hemi: 반구광 세기, lamp*: 천장 램프 점광(색·세기·닿는 거리), sun/sunColor: 그림자용 방향광 세기·색.
+// floor: 바닥 타일 두 색(a, b)과 줄눈 색(line), speckle 이 true 면 카펫 같은 잔 얼룩. baseboard: 걸레받이 색.
+// sign: 간판 판 색(board)과 글씨판 색(bg 바탕, border 테두리, text 글씨). materials: 모델 재질 덮어쓰기(없으면 모델 그대로, 아래 INTERVIEW_LOOK 참고).
 export const INTERIOR_LOOK = {
   background: 0xf3e6d0, hemiSky: 0xfff4e0, hemiGround: 0xb59a78, hemi: 0.6,
-  lamp: 0xffd9a0, lampIntensity: 9, lampDistance: 12, sun: 0.55,
+  lamp: 0xffd9a0, lampIntensity: 9, lampDistance: 12, sun: 0.55, sunColor: 0xfff0d8,
+  floor: { a: '#ead9b8', b: '#d7c19a', line: 'rgba(120, 95, 60, 0.25)', speckle: false },
+  baseboard: 0x8a6a48,
+  sign: { board: 0xb98a56, bg: '#d9b27c', border: '#8a5f3a', text: '#4a2f1a' },
+  materials: {},
+};
+
+// 면접장 실내: 따뜻한 우드톤 대신 차갑고 딱딱한 사무실 느낌(쿨 화이트·회색 벽, 청회색 카펫 타일 바닥, 남색 포인트, 흰 형광등 빛).
+// 필드 의미는 INTERIOR_LOOK 와 같다. 모든 색은 파랑 성분이 빨강 이상이다(test/interviewLook.test.js 가 확인).
+// materials: 모델 이름 -> { 재질 이름: 색(0xRRGGBB) 또는 { color, roughness, opacity } }. '*' 는 모든 모델에 먼저 깔리는 기본값이다.
+// Furniture Kit 모델의 재질(wood·metal·carpet 등)을 이 공간에서만 복제해 덮어쓰므로 세탁소·마당의 같은 모델은 그대로다.
+export const INTERVIEW_LOOK = {
+  background: 0xdde3ea, hemiSky: 0xf0f5ff, hemiGround: 0x9aa4b2, hemi: 1.0,
+  lamp: 0xeef5ff, lampIntensity: 9, lampDistance: 12, sun: 0.5, sunColor: 0xe6eeff,
+  floor: { a: '#a8b1bc', b: '#9ba5b1', line: 'rgba(40, 52, 70, 0.28)', speckle: true },
+  baseboard: 0x4a525d,
+  sign: { board: 0x14213d, bg: '#1d3157', border: '#c8d2e0', text: '#ffffff' },
+  materials: {
+    '*': { wood: 0x8c97a4, woodDark: 0x6d7886, metal: 0xb9c1cb, metalMedium: 0x59636f, metalDark: 0x3a424c, _defaultMat: 0xe4e9ee },
+    wall: { wood: 0x8c97a4, _defaultMat: 0xf1f4f7, metalDark: 0x3a424c },
+    wallWindow: { wood: 0x8c97a4, _defaultMat: 0xf1f4f7, metalDark: 0x3a424c, glass: { color: 0x9cc3e8, opacity: 0.42 } },
+    wallDoorwayWide: { wood: 0x8c97a4, _defaultMat: 0xf1f4f7, metalDark: 0x3a424c },
+    desk: { wood: 0xd9dee4, metal: 0x2b323b },
+    chairDesk: { metalMedium: 0x15181d, carpet: 0x262b33 },
+    chairModernCushion: { metal: 0x8d98a5, carpetBlue: 0x33496b },
+    bookcaseOpenLow: { wood: 0x9aa4af },
+    coatRackStanding: { wood: 0x2f353d },
+    lampRoundFloor: { metal: 0x59636f, lamp: 0xf2f6ff },
+    pottedPlant: { wood: 0xd5dae0, woodDark: 0xaab3bd },
+    plantSmall1: { wood: 0xd5dae0 },
+    rugRectangle: { carpet: 0x2c3c58, carpetDarker: 0x1f2c44 },
+    trashcan: { metal: 0x8d98a5, metalDark: 0x3a424c },
+    books: { carpetDarker: 0x1f3a66, carpetWhite: 0xeef1f5, plant: 0x5a7fb0, metal: 0x9aa4af },
+    laptop: { metal: 0xb9c1cb, metalMedium: 0x59636f, metalDark: 0x2b323b },
+  },
 };
 
 // ---- 면접장(압박 질문 받아치기) ----

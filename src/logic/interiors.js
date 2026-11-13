@@ -115,7 +115,8 @@ export function buildLaundryInterior() {
 
 // ---- 면접장 실내 ----
 // 안쪽 면 기준 12(x) x 10(z). 북쪽(뒷) 벽 앞에 긴 면접관 책상 + 책상 뒤 면접관 3명(팀장 가운데, 인사담당 서쪽, 예비 사수 동쪽), 책상 앞에 지원자 의자.
-// 서쪽 벽에 출입문과 칠판, 북쪽 벽에 간판 "면접장"·벽시계·창. 책상 양끝은 낮은 책장으로 막아 면접관 자리에는 들어갈 수 없다.
+// 서쪽 벽에 출입문과 화이트보드·안내판, 북쪽 벽에 간판 "면접장"·벽시계·창(블라인드). 책상 양끝은 낮은 책장으로 막아 면접관 자리에는 들어갈 수 없다.
+// 차가운 사무실 꾸밈(색·재질)은 config 의 INTERVIEW_LOOK 가 정하고, 여기는 위치·방향 데이터만 둔다(서류함·정수기는 모델이 없어 그리는 쪽이 도형으로 만든다: props).
 const INTERVIEW_EXIT = { z: 2 };
 const INTERVIEW_WALL_PIECES = {
   north: ['wallWindow', 'wall', 'wall', 'wall', 'wall', 'wallWindow'],
@@ -123,10 +124,12 @@ const INTERVIEW_WALL_PIECES = {
   west: ['wall', 'wall', 'wall', 'wallDoorwayWide', 'wall'],
   east: ['wall', 'wall', 'wall', 'wall', 'wall'],
 };
-const DESK = { z: -2.0, scale: 1.9, xs: [-1.4, 0, 1.4], top: 0.72, radius: 0.6, circleXs: [-1.8, -0.9, 0, 0.9, 1.8] }; // 책상 3개를 이어 4.2 길이의 긴 책상으로(면접관이 서면 상체가 보이게 낮게)
+// 책상 3개를 이어 4.2 길이의 긴 책상으로(면접관이 서면 상체가 보이게 낮게). 모델의 앞(+z)이 앉는 사람 쪽이라 서랍이 그쪽에 열린다: rotY=PI 로 서랍(앞)을 면접관(북쪽)에게, 매끈한 뒷면을 지원자(남쪽)에게 둔다.
+const DESK = { z: -2.0, scale: 1.9, xs: [-1.4, 0, 1.4], top: 0.72, radius: 0.6, circleXs: [-1.8, -0.9, 0, 0.9, 1.8], rotY: Math.PI };
+const LAPTOP_ROT_Y = Math.PI; // 노트북 화면이 면접관(북쪽)을 본다(모델의 앞(+z)이 사용자 쪽, 화면은 모델 뒤쪽)
 const SEAT = { z: -3.0, y: 0.22, chair: { name: 'chairDesk', scale: 1.9 } }; // 면접관 의자(책상 뒤). y 는 앉은 캐릭터 모델 원점 높이(앉는 동작이 몸을 낮춘다)
 const SEAT_ORDER = [['hr', -1.4], ['leader', 0], ['mentor', 1.4]];
-const GUEST_CHAIR = { x: 0, z: 0.3, scale: 2.6, radius: 0.4, seatY: 0.5, seatForward: 0.06, interactRange: 2.0 }; // 지원자 의자(북쪽을 본다). seatY: 앉은 캐릭터 모델 원점 높이, seatForward: 등받이에 안 파묻히게 책상 쪽으로 앉는 거리(둘 다 화면으로 맞춘 값)
+const GUEST_CHAIR = { model: 'chairModernCushion', x: 0, z: 0.3, scale: 2.6, radius: 0.4, seatY: 0.5, seatForward: 0.06, interactRange: 2.0 }; // 지원자 의자(북쪽을 본다). seatY: 앉은 캐릭터 모델 원점 높이, seatForward: 등받이에 안 파묻히게 책상 쪽으로 앉는 거리(둘 다 화면으로 맞춘 값)
 const GUEST_SEAT_ID = 'interview-chair';
 const GUEST_SPOT = { x: 0, z: 1.9 }; // 지원자가 서는 자리(의자 남쪽)
 
@@ -145,10 +148,10 @@ export function buildInterviewInterior() {
     for (const [dx, dz, r] of circles) circle(id, p.x + dx, p.z + dz, r);
   };
 
-  // 긴 책상(앞면이 남쪽) + 책상 위 소품.
-  for (const rx of DESK.xs) piece('desk-piece', 'desk', rx, DESK.z, DESK.scale, 0);
+  // 긴 책상(서랍이 있는 앞면이 북쪽=면접관 쪽) + 책상 위 소품.
+  for (const rx of DESK.xs) piece('desk-piece', 'desk', rx, DESK.z, DESK.scale, DESK.rotY);
   for (const rx of DESK.circleXs) circle('desk', origin.x + rx, origin.z + DESK.z, DESK.radius);
-  piece('laptop', 'laptop', -1.4, DESK.z + 0.1, 1.4, Math.PI, { y: DESK.top });
+  piece('laptop', 'laptop', -1.4, DESK.z - 0.05, 1.4, LAPTOP_ROT_Y, { y: DESK.top });
   piece('books', 'books', 1.75, DESK.z - 0.1, 2.2, 0.4, { y: DESK.top });
   piece('plantSmall1', 'plantSmall1', 0.7, DESK.z + 0.15, 2.4, 0, { y: DESK.top });
   // 책상 양끝의 낮은 책장(면접관 자리 막기).
@@ -163,14 +166,23 @@ export function buildInterviewInterior() {
 
   // 지원자 의자와 서 있을 자리, 러그, 그 밖의 장식.
   const guest = at(GUEST_CHAIR.x, GUEST_CHAIR.z);
-  const chair = { name: 'chairCushion', x: guest.x, z: guest.z, scale: GUEST_CHAIR.scale, rotY: Math.PI };
-  piece('interviewChair', 'chairCushion', GUEST_CHAIR.x, GUEST_CHAIR.z, GUEST_CHAIR.scale, Math.PI, { circles: [[0, 0, GUEST_CHAIR.radius]] });
+  const chair = { name: GUEST_CHAIR.model, x: guest.x, z: guest.z, scale: GUEST_CHAIR.scale, rotY: Math.PI };
+  piece('interviewChair', GUEST_CHAIR.model, GUEST_CHAIR.x, GUEST_CHAIR.z, GUEST_CHAIR.scale, Math.PI, { circles: [[0, 0, GUEST_CHAIR.radius]] });
   piece('rugRectangle', 'rugRectangle', 0, 1.1, 2.6, 0); // 바닥 장식(장애물 아님)
   piece('pottedPlant-ne', 'pottedPlant', 5.2, -4.2, 3.2, 0, { circles: [[0, 0, 0.4]] });
   piece('pottedPlant-sw', 'pottedPlant', -5.2, 3.9, 3.2, 0, { circles: [[0, 0, 0.4]] });
-  piece('benchCushion', 'benchCushion', 3.8, 4.4, 2.6, Math.PI, { circles: [[0, 0, 0.5]] }); // 남쪽 벽 앞 대기 의자
-  piece('lampRoundFloor', 'lampRoundFloor', -5.3, -4.0, 2.4, 0, { circles: [[0, 0, 0.3]] });
+  for (const rx of [3.3, 4.3]) piece('waitingChair', 'chairModernCushion', rx, 4.4, 2.6, Math.PI, { circles: [[0, 0, 0.4]] }); // 남쪽 벽 앞 대기 의자 둘(북쪽을 본다)
+  piece('trashcan', 'trashcan', -5.35, 0.3, 1.2, 0, { circles: [[0, 0, 0.3]] }); // 출입문 곁 쓰레기통
   piece('coatRackStanding', 'coatRackStanding', 5.3, 0.6, 3.0, 0, { circles: [[0, 0, 0.3]] });
+  // 도형으로 그리는 사무용품(모델이 없다): 서류함(서쪽 벽 북쪽 끝, 동쪽을 본다)과 정수기(동쪽 벽, 서쪽을 본다). w x d x h 는 월드 단위.
+  const props = [];
+  const prop = (id, kind, rx, rz, rotY, w, d, h, radius) => {
+    const p = at(rx, rz);
+    props.push({ id, kind, x: p.x, z: p.z, rotY, width: w, depth: d, height: h });
+    circle(id, p.x, p.z, radius);
+  };
+  prop('filingCabinet', 'filingCabinet', -5.5, -3.9, Math.PI / 2, 0.9, 0.5, 1.35, 0.45);
+  prop('waterDispenser', 'waterDispenser', 5.55, -1.9, -Math.PI / 2, 0.42, 0.42, 1.5, 0.35);
 
   // 출입문(서쪽 벽).
   const exitPos = at(-width / 2, INTERVIEW_EXIT.z);
@@ -189,13 +201,14 @@ export function buildInterviewInterior() {
 
   const lamps = [at(-3, -0.5), at(2.8, -0.8), at(0, 2.4)].map((p) => ({ x: p.x, y: wallHeight - 0.2, z: p.z }));
   const sign = { x: origin.x, y: 2.05, z: bounds.minZ + 0.06, rotY: 0, width: 2.4, height: 0.6, text: '면접장' };
-  const board = { x: bounds.minX + 0.07, y: 1.5, z: origin.z - 1.9, rotY: Math.PI / 2, width: 2.2, height: 1.2 }; // 서쪽 벽 칠판(동쪽을 본다)
+  const board = { x: bounds.minX + 0.07, y: 1.5, z: origin.z - 1.9, rotY: Math.PI / 2, width: 2.2, height: 1.2 }; // 서쪽 벽 화이트보드(동쪽을 본다)
+  const notice = { x: bounds.minX + 0.07, y: 1.55, z: origin.z + 0.1, rotY: Math.PI / 2, width: 0.8, height: 1.0 }; // 서쪽 벽 안내판 "면접 안내"(화이트보드와 출입문 사이, 동쪽을 본다)
   const clock = { x: origin.x - 3.4, y: 1.95, z: bounds.minZ + 0.07, rotY: 0, radius: 0.3 }; // 북쪽 벽 벽시계
   const deskTop = { ...at(0, DESK.z), y: DESK.top }; // 돌발행동 "책상 위 만세"에서 올라서는 자리
 
   return {
     id: 'interview', origin: { ...origin }, bounds, wallHeight, tile: TILE, walls, exit, arrival, interactables,
-    furniture, seats, chair, obstacles, lamps, sign, board, clock, deskTop,
+    furniture, props, seats, chair, obstacles, lamps, sign, board, notice, clock, deskTop,
     standingSpot: standSpot, seatId: GUEST_SEAT_ID,
     zoneCenter: at(0, 0.1),
   };
