@@ -8,7 +8,7 @@
 | `models/kenney_nature-kit/` | Nature Kit (2.1) | 나무(단풍 포함), 돌길, 연못, 풀·꽃, 바위, 모닥불(소각로) | CC0 |
 | `models/kenney_fantasy-town-kit_2.0/` | Fantasy Town Kit (2.0) | 등롱, 울타리, 아치문, 석재 기둥, 분수 | CC0 |
 | `models/kenney_furniture-kit/` | Furniture Kit (2.0) | 소품(벤치·책상·조명 등, 필요 시) | CC0 |
-| `models/kenney_building-kit/` | Building Kit (1.0) | 현재 미사용(보유) | CC0 |
+| `models/kenney_building-kit/` | Building Kit (1.0) | 현재 미사용(보유). 단계 8d 건물 외관 검토 결과 중세풍 석재 조각이라 회사 빌딩에 맞지 않아 쓰지 않았다 | CC0 |
 
 | 파일 | 출처 | 비고 |
 |---|---|---|

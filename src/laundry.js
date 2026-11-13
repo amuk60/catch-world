@@ -1,33 +1,16 @@
-// 브라우저 전용: 건물 외관(세탁소·면접장 공용. Fantasy Town 판벽·지붕 조립 + 간판), 세탁기 줄, 빨랫줄과 널린 빨래, 손에 드는 셔츠.
+// 브라우저 전용: 건물 외관 배치(외관 자체는 buildingExterior.js), 간판 글씨 판, 세탁기 줄, 빨랫줄과 널린 빨래, 손에 드는 셔츠.
 // 건물은 layout(logic/layout.js)의 buildings 에서, 세탁기·빨랫줄은 실내 데이터(logic/interiors.js)에서 온다(실내는 interiorLaundry.js 가 이 모듈의 buildWashers/buildClothesline 을 쓴다).
 import * as THREE from 'three';
 import {
   hangSlot, shirtColor, slotPoint, wobbleAmount, WOBBLE_SECONDS, foamBubble, FOAM_COUNT, FOAM_SECONDS, swingAngle, SWING_SECONDS,
 } from './logic/laundry.js';
+import { buildOfficeTower, buildShop } from './buildingExterior.js';
 
 const MY_SHIRT_COLOR = 0xffffff; // 내 새 셔츠(흰색. 파스텔 셔츠와 구별된다)
 const MY_SHIRT_GLOW = 0xb0b0b0;
 
-// 건물 조립에 쓰는 Fantasy Town 조각(main 이 미리 불러온다).
-export const LAUNDRY_MODEL_ITEMS = ['wall', 'wall-door', 'wall-window-glass', 'wall-window-shutters', 'wall-window-small', 'roof-gable', 'roof-gable-end']
-  .map((name) => ({ pack: 'fantasy', name }));
-
-const PLASTER = 0xadb5d9; // 판벽 조각의 회반죽 색(박공 채움에 맞춘다)
-const WALL_HEIGHT_TILES = 1; // 판벽 조각 하나의 높이(원본 단위)
-// 지붕: 원본(높이 0.57)에 곱하는 높이 배율, 벽 위에 띄우는 높이(그 띠는 회반죽으로 채워 간판 자리가 된다), 앞뒤 처마 내밀기, 폭 방향 처마(양쪽 합) 여유
-const ROOF = { scaleY: 1.5, lift: 0.45, overhang: 0.15, crossExtra: 0.5 };
-
-// 로컬(정면 +z) 기준 벽 조각 배치. side: 어느 벽인지, 바깥을 향하는 방향각 yaw(원본 +x 면이 바깥).
-const SIDES = {
-  front: { yaw: -Math.PI / 2 },
-  back: { yaw: Math.PI / 2 },
-  right: { yaw: 0 },
-  left: { yaw: Math.PI },
-};
-const FRONT_WALL = ['wall-door', 'wall-window-glass', 'wall-window-glass']; // 로컬 x 작은 쪽(북)부터: 문은 북쪽 끝(doorLocalX 가 양수인 건물은 순서를 뒤집어 문이 남쪽 끝)
-const BACK_WALL = ['wall', 'wall-window-small', 'wall'];
-const RIGHT_WALL = ['wall-window-shutters', 'wall']; // 앞쪽(+z)부터
-const LEFT_WALL = ['wall', 'wall-window-shutters'];
+// 건물 외관은 모델 없이 만든다(buildingExterior.js). main 이 미리 불러올 모델 조각은 없다.
+export const LAUNDRY_MODEL_ITEMS = [];
 
 // receive 를 끄면 얇은 판벽 조각의 그림자 줄무늬(shadow acne)가 사라진다. 지붕·소품은 받는다.
 function shadowAll(root, receive = true) {
@@ -37,14 +20,6 @@ function shadowAll(root, receive = true) {
     o.receiveShadow = receive;
     for (const mat of [].concat(o.material)) mat.metalness = 0; // Kenney glb 재질은 metallic=1 이라 환경맵 없이는 검다
   });
-}
-
-function piece(models, name, receive = true) {
-  const model = models.get(`fantasy/${name}`);
-  if (!model) return null;
-  const clone = model.clone(true);
-  shadowAll(clone, receive);
-  return clone;
 }
 
 // 나무 간판 글씨 판(world.js 의 'Catch World' 팻말과 같은 밝은 나무판·어두운 글씨).
@@ -72,106 +47,6 @@ export function signTexture(text) {
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
-}
-
-// 건물 하나(세탁소·면접장 공용). b 는 layout.buildings 의 항목이고 b.label 이 간판 글씨다. 그룹의 로컬 +z 가 정면(문), 로컬 y=0 이 바닥이다.
-function buildBuilding(scene, b, models) {
-  const group = new THREE.Group();
-  const T = b.tile;
-  const hw = b.width / 2;
-  const hd = b.depth / 2;
-  const missing = ['wall', 'wall-door', 'roof-gable'].some((n) => !models.get(`fantasy/${n}`));
-  // 지붕(박공 두 조각과 앞뒤 삼각형)은 벽 윗면을 축으로 세로로 줄어든다(플레이어가 가까이 가면 캐릭터가 가려지지 않게).
-  const roofGroup = new THREE.Group();
-
-  const plaster = new THREE.MeshStandardMaterial({ color: PLASTER, roughness: 0.9 });
-  if (missing) {
-    // 모델을 못 불러왔을 때: 색 상자(벽 0xe8dcc8, 지붕 0x8a4b3a, 문 0x6b4a2f).
-    const walls = new THREE.Mesh(new THREE.BoxGeometry(b.width, T, b.depth), new THREE.MeshStandardMaterial({ color: 0xe8dcc8 }));
-    walls.position.y = T / 2;
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.hypot(hw, hd) * 1.05, 1.4, 4, 1), new THREE.MeshStandardMaterial({ color: 0x8a4b3a }));
-    roof.rotation.y = Math.PI / 4;
-    roof.position.y = T + 0.7;
-    const door = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.5, 0.1), new THREE.MeshStandardMaterial({ color: 0x6b4a2f }));
-    door.position.set(b.doorLocalX ?? -1.8, 0.75, hd + 0.05);
-    for (const m of [walls, roof, door]) { m.castShadow = true; m.receiveShadow = true; }
-    group.add(walls, roof, door);
-  } else {
-    // 벽: 정면 3칸, 뒷면 3칸, 양옆 2칸. 조각의 바깥 면(+x)이 건물 가장자리에 오도록 안쪽으로 반 칸 들여 놓는다.
-    const place = (name, side, lx, lz) => {
-      const m = piece(models, name, false);
-      if (!m) return;
-      m.scale.setScalar(T);
-      m.rotation.y = SIDES[side].yaw;
-      m.position.set(lx, 0, lz);
-      group.add(m);
-    };
-    const frontWall = (b.doorLocalX ?? -1.8) < 0 ? FRONT_WALL : [...FRONT_WALL].reverse();
-    frontWall.forEach((n, i) => place(n, 'front', (i - 1) * T, hd - T / 2));
-    BACK_WALL.forEach((n, i) => place(n, 'back', (i - 1) * T, -hd + T / 2));
-    RIGHT_WALL.forEach((n, i) => place(n, 'right', hw - T / 2, hd - T / 2 - i * T));
-    LEFT_WALL.forEach((n, i) => place(n, 'left', -hw + T / 2, hd - T / 2 - i * T));
-
-    // 지붕: 용마루가 앞뒤(로컬 z)로 가는 박공. 원본 roof-gable 은 용마루가 x 방향이라 -90도 돌려 놓고 폭(원본 z)·높이만 늘린다.
-    const roofLen = b.depth + 2 * ROOF.overhang;
-    const roofSpan = b.width + ROOF.crossExtra;
-    const wallTop = T * WALL_HEIGHT_TILES;
-    const base = ROOF.lift; // roofGroup 기준(roofGroup 은 벽 윗면 높이)
-    roofGroup.position.y = wallTop;
-    group.add(roofGroup);
-    for (const k of [0, 1]) {
-      const r = piece(models, 'roof-gable');
-      r.rotation.y = -Math.PI / 2; // 원본 +x(용마루) -> 로컬 +z
-      r.scale.set(roofLen / 2 / 1.1, ROOF.scaleY, roofSpan / 1.08); // 회전 전 기준 (x: 용마루 방향, y: 높이, z: 폭)
-      r.position.set(0, base, -roofLen / 4 + k * (roofLen / 2));
-      roofGroup.add(r);
-    }
-    // 앞뒤 박공 삼각형 채움(회반죽).
-    const rise = 0.57 * ROOF.scaleY; // 지붕 높이
-    const tri = new THREE.Shape();
-    tri.moveTo(-hw, 0);
-    tri.lineTo(hw, 0);
-    tri.lineTo(0, rise * 0.93);
-    tri.closePath();
-    const triGeo = new THREE.ExtrudeGeometry(tri, { depth: 0.18, bevelEnabled: false });
-    for (const sz of [1, -1]) {
-      const fill = new THREE.Mesh(triGeo, plaster);
-      fill.position.set(0, base, sz > 0 ? hd - 0.2 : -hd + 0.02);
-      fill.castShadow = true;
-      roofGroup.add(fill);
-    }
-    // 벽 위 띠(둘레 전체): 지붕을 ROOF.lift 만큼 띄운 틈을 회반죽으로 채운다. 앞쪽 띠가 간판 자리다.
-    const band = ROOF.lift + 0.02;
-    for (const [w, d, x, z] of [[b.width, 0.18, 0, hd - 0.09], [b.width, 0.18, 0, -hd + 0.09], [0.18, b.depth - 0.36, hw - 0.09, 0], [0.18, b.depth - 0.36, -hw + 0.09, 0]]) {
-      const strip = new THREE.Mesh(new THREE.BoxGeometry(w, band, d), plaster);
-      strip.position.set(x, wallTop + band / 2 - 0.01, z);
-      strip.castShadow = true;
-      group.add(strip);
-    }
-  }
-
-  // 바닥(창으로 들여다보일 때 허공이 비치지 않게).
-  const floor = new THREE.Mesh(new THREE.BoxGeometry(b.width - 0.3, 0.06, b.depth - 0.3), new THREE.MeshStandardMaterial({ color: 0x8d7a66 }));
-  floor.position.y = 0.03;
-  group.add(floor);
-
-  // 문 위 간판: 문 칸(로컬 x = doorLocalX) 위, 정면 벽 바깥.
-  const sign = new THREE.Group();
-  const board = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.46, 0.1), new THREE.MeshStandardMaterial({ color: 0xb98a56 }));
-  board.castShadow = true;
-  const face = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.5, 0.4),
-    new THREE.MeshBasicMaterial({ map: signTexture(b.label), toneMapped: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
-  );
-  face.position.z = 0.056;
-  sign.add(board, face);
-  sign.position.set(b.doorLocalX ?? -1.8, T + ROOF.lift / 2 + 0.01, hd + 0.04);
-  group.add(sign);
-
-  group.position.set(b.x, 0, b.z);
-  group.rotation.y = b.rotY;
-  scene.add(group);
-  return { group, sign, roofGroup };
 }
 
 // ---- 셔츠 ----
@@ -406,8 +281,12 @@ export function buildClothesline(scene, line) {
   };
 }
 
-// models: loadModels 결과(없는 조각은 색 상자로 대체).
-// layout.buildings 의 모든 건물(세탁소·면접장)을 마당에 세운다. 건물 id -> { group, sign, roofGroup }.
-export function buildBuildings(scene, layout, models) {
-  return Object.fromEntries(layout.buildings.map((b) => [b.id, buildBuilding(scene, b, models)]));
+// layout.buildings 의 모든 건물을 마당에 세운다: 면접장은 회사 빌딩, 세탁소는 상가. 건물 id -> { group }.
+export function buildBuildings(scene, layout) {
+  const entries = layout.buildings.map((b) => {
+    const built = b.id === 'interview' ? buildOfficeTower(b) : buildShop(b);
+    scene.add(built.group);
+    return [b.id, built];
+  });
+  return Object.fromEntries(entries);
 }

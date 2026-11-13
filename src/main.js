@@ -93,7 +93,7 @@ if (isMobileUA(navigator.userAgent)) {
   const { fog: yardFog } = applyAtmosphere(scene, renderer, yardRoot);
   const ground = buildGround(yardRoot);
   buildCity(yardRoot, layout);
-  buildBuildings(yardRoot, layout, models);
+  buildBuildings(yardRoot, layout);
   const inside = buildInteriorLaundry(scene, interior, models);
   const insideInterview = buildInteriorInterview(scene, interviewData, models);
   const laundry = { washers: inside.washers, clothesline: inside.clothesline, update: (dt) => inside.update(dt) };

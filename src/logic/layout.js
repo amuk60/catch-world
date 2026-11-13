@@ -13,13 +13,13 @@ const BUILDING_SLOTS = [
   { id: 'laundry', x: 8.5, z: 5.5, width: 6, depth: 6 },
 ];
 
-// 세탁소(세탁소 터 안, 중심에서 offsetX 만큼 동쪽으로 붙인다: 기본 카메라(남동쪽)에서 서쪽 앞마당의 플레이어를 건물이 덜 가리게). 정면(문 쪽)은 서쪽(-x) = 건물 로컬 +z 이고 rotY 가 그 방향이다(three.js rotation.y: 로컬 +z -> (sin, cos), 로컬 +x -> (cos, -sin)).
-// width 는 정면 벽을 따른 길이(월드 z), depth 는 앞뒤 길이(월드 x). tile 은 판벽 조각(원본 1x1x1) 배율이고 문은 정면 벽의 북쪽 끝 칸이다.
+// 세탁소(작은 상가 외관. 세탁소 터 안, 중심에서 offsetX 만큼 동쪽으로 붙인다: 기본 카메라(남동쪽)에서 서쪽 앞마당의 플레이어를 건물이 덜 가리게). 정면(문 쪽)은 서쪽(-x) = 건물 로컬 +z 이고 rotY 가 그 방향이다(three.js rotation.y: 로컬 +z -> (sin, cos), 로컬 +x -> (cos, -sin)).
+// width 는 정면 벽을 따른 길이(월드 z), depth 는 앞뒤 길이(월드 x). tile 은 옛 판벽 조각 배율(외관을 모델 없이 만드는 지금은 쓰지 않지만 데이터로 남긴다)이고 문은 정면 벽의 북쪽 끝 칸이다.
 // 장애물 원은 벽 바깥선에서 OBSTACLE_INSET 안쪽을 따라 촘촘히 놓아 지나갈 수 없게 한다.
-const LAUNDRY = { id: 'laundry', label: '세탁소', tile: 1.8, width: 5.4, depth: 3.6, rotY: -Math.PI / 2, offsetX: 0.4, doorLocalX: -1.8, obstacleRadius: 0.65, inset: 0.3, spacing: 1.1, pickHeight: 3 };
-// 면접장: 세탁소와 같은 조립·크기. 정면(문 쪽)도 서쪽이고 문은 정면 벽의 남쪽 끝 칸이라(doorLocalX 양수) 두 문이 광장 가운데를 사이에 두고 마주 보지 않고 멀리 떨어진다.
+const LAUNDRY = { id: 'laundry', label: '세탁소', tile: 1.8, width: 5.4, depth: 3.6, rotY: -Math.PI / 2, offsetX: 0.4, doorLocalX: -1.8, obstacleRadius: 0.65, inset: 0.3, spacing: 1.1, pickHeight: 3.5 };
+// 면접장(6층 회사 빌딩 외관): 세탁소와 같은 발자국·방향. 정면(문 쪽)도 서쪽이고 문은 정면 벽의 남쪽 끝 칸이라(doorLocalX 양수) 두 문이 광장 가운데를 사이에 두고 마주 보지 않고 멀리 떨어진다.
 // 건물 외곽 원 반경은 세탁소(0.65)와 구별되는 값(0.66)이라 테스트와 장애물 집계가 두 건물을 따로 센다.
-const INTERVIEW = { id: 'interview', label: '면접장', tile: 1.8, width: 5.4, depth: 3.6, rotY: -Math.PI / 2, offsetX: 0.4, doorLocalX: 1.8, obstacleRadius: 0.66, inset: 0.3, spacing: 1.1, pickHeight: 3 };
+const INTERVIEW = { id: 'interview', label: '면접장', tile: 1.8, width: 5.4, depth: 3.6, rotY: -Math.PI / 2, offsetX: 0.4, doorLocalX: 1.8, obstacleRadius: 0.66, inset: 0.3, spacing: 1.1, pickHeight: 9 };
 const BUILDING_DEFS = [LAUNDRY, INTERVIEW]; // 장애물·상호작용 순서(세탁소가 먼저: 기존 배치와 테스트의 순서를 지킨다)
 // 건물 문(입구) 상호작용: 문 앞 DOOR_ITEM_DISTANCE 지점에 작은 원을 둔다. 세탁기·빨랫줄은 실내(logic/interiors.js)로 옮겼다.
 // 마당으로 나왔을 때의 도착 지점은 문 앞 ARRIVAL_DISTANCE(상호작용 범위 밖이라 나오자마자 E 안내가 뜨지 않는다).
