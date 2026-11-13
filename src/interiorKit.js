@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { INTERIOR_LOOK } from './config.js';
 import { signTexture } from './laundry.js';
 import { materialOverrides } from './logic/look.js';
+import { createGlassKit, buildGlassPiece } from './interiorGlass.js';
 
 const FALLBACK_SIZE = { wall: [2, 2.58, 0.1], wallWindow: [2, 2.58, 0.1], wallDoorwayWide: [2, 2.58, 0.1] }; // 모델이 없을 때 도형 대체물(폭, 높이, 두께)
 const WALL_COLOR = 0xe9dcc4;
@@ -83,7 +84,10 @@ export function buildFloor(bounds, look = INTERIOR_LOOK) {
   const d = bounds.maxZ - bounds.minZ;
   texture.repeat.set(w / 2, d / 2); // 한 번 반복 = 2x2 (체크 한 칸 1)
   texture.anisotropy = 4;
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshStandardMaterial({ map: texture, roughness: 0.85 }));
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshStandardMaterial({
+    map: texture, roughness: look.floor.roughness ?? 0.85,
+    ...(look.floor.glow ? { emissive: 0xffffff, emissiveMap: texture, emissiveIntensity: look.floor.glow } : {}), // glow: 타일 무늬 그대로 스스로 살짝 빛나 밝은 바닥이 흐려 보이지 않게
+  }));
   floor.rotation.x = -Math.PI / 2;
   floor.position.set((bounds.minX + bounds.maxX) / 2, 0, (bounds.minZ + bounds.maxZ) / 2);
   floor.receiveShadow = true;
@@ -91,14 +95,21 @@ export function buildFloor(bounds, look = INTERIOR_LOOK) {
 }
 
 // 벽: 면마다 그룹 하나(카메라가 바깥에서 볼 때 통째로 숨긴다). 벽 조각은 그림자를 던지지도 받지도 않는다(얇은 판의 줄무늬 방지). 걸레받이 포함.
+// look.glass 가 있으면 모델 대신 유리 벽 조각(interiorGlass.js: 서리 유리 판 + 철제 틀)으로 만들고, 걸레받이는 틀의 아랫단이 대신한다.
 // interior: logic/interiors.js 의 실내 데이터(bounds, walls, tile). 돌려주는 값: { 벽 id -> THREE.Group }.
 export function buildWallGroups(root, interior, models, look = INTERIOR_LOOK) {
   const { bounds } = interior;
   const wallGroups = {};
+  const glassKit = look.glass ? createGlassKit(look.glass) : null;
   for (const wall of interior.walls) {
     const group = new THREE.Group();
     group.name = `wall-${wall.id}`;
-    for (const p of wall.pieces) group.add(placed(models, p.name, { x: p.x, z: p.z, scale: interior.tile, rotY: p.rotY }, false, look));
+    for (const p of wall.pieces) {
+      group.add(glassKit
+        ? buildGlassPiece(glassKit, p, { tile: interior.tile, wallHeight: interior.wallHeight })
+        : placed(models, p.name, { x: p.x, z: p.z, scale: interior.tile, rotY: p.rotY }, false, look));
+    }
+    if (glassKit) { wallGroups[wall.id] = group; root.add(group); continue; }
     // 걸레받이: 벽 안쪽 면을 따라.
     const alongX = wall.side === 'north' || wall.side === 'south';
     const length = alongX ? bounds.maxX - bounds.minX : bounds.maxZ - bounds.minZ;

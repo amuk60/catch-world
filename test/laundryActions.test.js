@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRunner, fitDurations, canPerform } from '../src/logic/actions.js';
 
-// 세탁소 행동(세탁·널기)과 구역별 자동 반복. 가짜 클립 길이 1초, 회전 0.5초: 총 4.5초.
+// 세탁소 행동(세탁·널기)과 구역별 자동 반복. 가짜 클립 길이 1초, 회전 0.5초. 세탁소 행동은 한숨(emote-no)이 없어 클립 3개 + 회전 = 총 3.5초.
 const durations = { 'emote-no': 1.0, 'pick-up': 1.0, 'attack-melee-right': 1.0, 'interact-right': 1.0, 'emote-yes': 1.0 };
 const make = (extra = {}) => createRunner({ durations, turnSeconds: 0.5, effectAt: 0.5, autoGap: 1, ...extra });
 const types = (events) => events.map((e) => `${e.type}:${e.action}`);
@@ -22,26 +22,25 @@ function simulate(r, seconds, step = 0.01) {
 test('stepsOf: 세탁은 washer 쪽으로, 널기는 clothesline 쪽으로 돌고 효과 표식은 던지기/팔 들기 단계에 있다', () => {
   const r = make();
   assert.deepEqual(r.stepsOf('wash'), [
-    { kind: 'clip', name: 'emote-no', seconds: 1 },
     { kind: 'clip', name: 'pick-up', event: 'paperOut', eventAt: 0.6, seconds: 1 },
     { kind: 'turn', target: 'washer', seconds: 0.5 },
     { kind: 'clip', name: 'attack-melee-right', effect: true, seconds: 1 },
     { kind: 'clip', name: 'emote-yes', seconds: 1 },
   ]);
   assert.deepEqual(r.stepsOf('hang').map((s) => [s.kind, s.name ?? s.target, Boolean(s.effect)]), [
-    ['clip', 'emote-no', false], ['clip', 'pick-up', false], ['turn', 'clothesline', false], ['clip', 'interact-right', true], ['clip', 'emote-yes', false],
+    ['clip', 'pick-up', false], ['turn', 'clothesline', false], ['clip', 'interact-right', true], ['clip', 'emote-yes', false],
   ]);
 });
 
-test('세탁·널기도 같은 리듬: step0@0 step1@1 paperOut@1.6 step2@2 step3@2.5 effect@3.0 step4@3.5 done@4.5', () => {
+test('세탁·널기는 한숨 없이 바로 주머니부터: step0@0 paperOut@0.6 step1@1 step2@1.5 effect@2.0 step3@2.5 done@3.5', () => {
   for (const id of ['wash', 'hang']) {
     const r = make();
     r.start(id);
-    const log = simulate(r, 4.7, 0.001);
+    const log = simulate(r, 3.7, 0.001);
     assert.deepEqual(log.map((l) => l[1]), [
-      `step:${id}:0`, `step:${id}:1`, `paperOut:${id}`, `step:${id}:2`, `step:${id}:3`, `effect:${id}`, `step:${id}:4`, `done:${id}`,
+      `step:${id}:0`, `paperOut:${id}`, `step:${id}:1`, `step:${id}:2`, `effect:${id}`, `step:${id}:3`, `done:${id}`,
     ]);
-    [0.001, 1.0, 1.6, 2.0, 2.5, 3.0, 3.5, 4.5].forEach((t, i) => assert.ok(close(log[i][0], t, 0.003), `${id} ${i}: ${log[i][0]} vs ${t}`));
+    [0.001, 0.6, 1.0, 1.5, 2.0, 2.5, 3.5].forEach((t, i) => assert.ok(close(log[i][0], t, 0.003), `${id} ${i}: ${log[i][0]} vs ${t}`));
   }
 });
 
@@ -49,10 +48,10 @@ test('효과는 세탁·널기 모두 effect 표식 단계(마지막 후련 단�
   for (const id of ['wash', 'hang']) {
     const r = make({ effectAt: 0.25 });
     r.start(id);
-    const log = simulate(r, 4.7, 0.001);
+    const log = simulate(r, 3.7, 0.001);
     const effects = log.filter((l) => l[1] === `effect:${id}`);
     assert.equal(effects.length, 1, id);
-    assert.ok(close(effects[0][0], 2.75, 0.003), `${id} ${effects[0][0]}`);
+    assert.ok(close(effects[0][0], 1.75, 0.003), `${id} ${effects[0][0]}`);
     assert.ok(effects[0][0] < log.filter((l) => l[1].startsWith(`step:${id}`)).pop()[0], id);
   }
 });
@@ -61,16 +60,25 @@ test('효과는 세탁·널기 모두 effect 표식 단계(마지막 후련 단�
 const RAW = {
   'emote-no': 0.667, 'pick-up': 0.333, 'attack-melee-right': 0.417, 'interact-right': 0.667, 'emote-yes': 0.667,
 };
-const naturalAttack = 0.667 + 0.333 + 0.417 + 0.667 + 0.5;
-const naturalHang = 0.667 + 0.333 + 0.667 + 0.667 + 0.5;
+const naturalBurn = 0.667 + 0.333 + 0.417 + 0.667 + 0.5; // 한숨 있음(소각장)
+const naturalWash = 0.333 + 0.417 + 0.667 + 0.5; // 한숨 없음(세탁소)
+const naturalHang = 0.333 + 0.667 + 0.667 + 0.5;
 
-test('fitDurations: 널기(interact-right)도 팔 올리기 클립만 늘려 총 5초, 세탁·태우기·파쇄도 그대로 5초', () => {
-  const { durations: d, speeds } = fitDurations(RAW, 0.5, 5);
-  assert.ok(Math.abs(d['interact-right'] - (0.667 + 5 - naturalHang)) < 1e-9);
-  assert.ok(Math.abs(d['attack-melee-right'] - (0.417 + 5 - naturalAttack)) < 1e-9); // 다른 행동 클립은 서로 영향 없음
-  assert.ok(speeds['interact-right'] < 1 && speeds['interact-right'] > 0);
-  assert.deepEqual([d['emote-no'], d['pick-up'], d['emote-yes']], [0.667, 0.333, 0.667]);
-  const r = createRunner({ durations: d, turnSeconds: 0.5, effectAt: 0.45, autoGap: 1 });
+test('fitDurations: 세탁소 행동은 한숨이 없는 만큼 팔 올리기/치기 클립이 더 늘어나 총 5초(행동별 표), 소각장은 그대로', () => {
+  const { byAction } = fitDurations(RAW, 0.5, 5);
+  const hang = byAction.hang;
+  const wash = byAction.wash;
+  const burn = byAction.burn;
+  assert.ok(Math.abs(hang.durations['interact-right'] - (0.667 + 5 - naturalHang)) < 1e-9);
+  assert.ok(Math.abs(wash.durations['attack-melee-right'] - (0.417 + 5 - naturalWash)) < 1e-9);
+  assert.ok(Math.abs(burn.durations['attack-melee-right'] - (0.417 + 5 - naturalBurn)) < 1e-9); // 같은 클립이라도 소각장 표는 따로(한숨이 있어 덜 늘어난다)
+  assert.ok(wash.durations['attack-melee-right'] > burn.durations['attack-melee-right'], '한숨(0.667초)이 빠진 만큼 세탁 클립이 더 길다');
+  assert.ok(Math.abs(wash.durations['attack-melee-right'] - burn.durations['attack-melee-right'] - 0.667) < 1e-9);
+  assert.ok(hang.speeds['interact-right'] < 1 && hang.speeds['interact-right'] > 0);
+  for (const a of [hang, wash, burn]) assert.deepEqual([a.durations['emote-no'], a.durations['pick-up'], a.durations['emote-yes']], [0.667, 0.333, 0.667]);
+  const { durations: d } = fitDurations(RAW, 0.5, 5);
+  assert.deepEqual(d, RAW, '기본(행동별 표가 없을 때)은 원래 길이');
+  const r = createRunner({ durations: d, byAction, turnSeconds: 0.5, effectAt: 0.45, autoGap: 1 });
   for (const id of ['burn', 'shred', 'wash', 'hang']) {
     r.start(id);
     assert.deepEqual(types(noSteps(r.update(4.99))), [`effect:${id}`], id);
@@ -80,7 +88,8 @@ test('fitDurations: 널기(interact-right)도 팔 올리기 클립만 늘려 총
 
 test('fitDurations: 어떤 목표에서도 배속은 1 이하(널기 클립 포함)', () => {
   for (const target of [0, 2, 2.834, 5, 10]) {
-    for (const v of Object.values(fitDurations(RAW, 0.5, target).speeds)) assert.ok(v <= 1 && v > 0, `target ${target}`);
+    const { speeds, byAction } = fitDurations(RAW, 0.5, target);
+    for (const v of [...Object.values(speeds), ...Object.values(byAction).flatMap((a) => Object.values(a.speeds))]) assert.ok(v <= 1 && v > 0, `target ${target}`);
   }
 });
 
@@ -138,9 +147,9 @@ test('자동(세탁소): 세탁 -> 1초 쉼 -> 널기 -> 세탁 ... 번갈아, �
   assert.deepEqual(log.map((l) => l[1]).slice(0, 8), [
     'effect:wash', 'done:wash', 'effect:hang', 'done:hang', 'effect:wash', 'done:wash', 'effect:hang', 'done:hang',
   ]);
-  assert.ok(close(log[0][0], 3.0));
-  assert.ok(close(log[2][0], 5.5 + 3.0)); // 4.5 끝 + 1초 쉼 + 3.0
-  assert.ok(close(log[4][0], 11.0 + 3.0));
+  assert.ok(close(log[0][0], 2.0));
+  assert.ok(close(log[2][0], 4.5 + 2.0)); // 3.5 끝 + 1초 쉼 + 2.0
+  assert.ok(close(log[4][0], 9.0 + 2.0));
 });
 
 test('자동(소각장)은 구역을 지정해도 세탁소 행동을 섞지 않는다', () => {

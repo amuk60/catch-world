@@ -40,3 +40,9 @@ export function applyZoom(state, wheelDeltaY, zoomStep, limits) {
   else if (wheelDeltaY < 0) distance = distance * zoomStep;
   return clampOrbit({ ...state, distance }, limits);
 }
+
+// 캐릭터가 rotY(three.js rotation.y: 앞 = (sin, cos))로 서 있을 때, 카메라가 캐릭터 정면(얼굴 쪽)에서 캐릭터를 바라보게 하는 방위각(0~360).
+// orbitPosition 은 카메라를 (sin az, cos az) 쪽에 놓으므로 방위각은 캐릭터가 바라보는 각도 그대로다.
+export function frontAzimuthDeg(rotY) {
+  return ((rotY / DEG) % 360 + 360) % 360;
+}

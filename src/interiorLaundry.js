@@ -1,6 +1,7 @@
 // 브라우저 전용: 세탁소 실내 공간(코인세탁소). 마당과 멀리 떨어진 같은 씬 안의 별도 그룹(root)이고, 데이터는 logic/interiors.js 에서 온다.
-// Furniture Kit 조각(벽·창·출입문 틀·세탁기·건조기·테이블·벤치·화분·쓰레기통·상자·스탠드·러그·천장 램프)으로 꾸미고, 바닥은 체크 타일, 간판 "세탁소"를 북쪽 벽에 건다.
-// 조명: 따뜻한 반구광 + 천장 램프 점광 3개(그림자 없음) + 그림자용 방향광 1개. 카메라 쪽 벽은 면 단위로 숨긴다(updateWalls). 공용 조각은 interiorKit.js.
+// 벽·창·출입문은 서리 유리 판 + 은색 철제 틀(interiorGlass.js: 불투명해서 밖이 안 보인다), 가구는 Furniture Kit 조각(세탁기·건조기·테이블·벤치·화분·쓰레기통·상자·스탠드·러그)을 밝고 시원한 색으로 덮어 쓴다.
+// 바닥은 밝은 타일, 간판 "세탁소"는 솔질한 금속 판 + 청록 글씨를 북쪽 벽에 건다. 모양(색·재질·유리)은 config 의 INTERIOR_LOOK 가 정한다.
+// 조명: 시원한 흰 반구광 + 천장 램프 점광 3개(그림자 없음) + 그림자용 방향광 1개. 카메라 쪽 벽은 면 단위로 숨긴다(updateWalls). 공용 조각은 interiorKit.js.
 import * as THREE from 'three';
 import { INTERIOR_LOOK } from './config.js';
 import { hiddenWalls } from './logic/wallVisibility.js';
@@ -30,7 +31,7 @@ export function buildInteriorLaundry(scene, interior, models) {
 
   // 세탁기 줄과 빨랫줄(널린 빨래·세탁기 흔들림·거품은 기존 코드 그대로: 월드 좌표 데이터라 위치만 다르다).
   const washers = buildWashers(root, interior.washers, models);
-  const clothesline = buildClothesline(root, interior.clothesline);
+  const clothesline = buildClothesline(root, interior.clothesline, INTERIOR_LOOK.clothesline);
 
   // 간판 "세탁소": 북쪽 벽 안쪽 면, 세탁기 줄 위.
   addSign(wallGroups, interior.sign);

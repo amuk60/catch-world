@@ -31,6 +31,14 @@ export function signTexture(text, style = SIGN_STYLE) {
   const g = canvas.getContext('2d');
   g.fillStyle = style.bg;
   g.fillRect(0, 0, canvas.width, canvas.height);
+  if (style.brushed) { // 솔질한 금속: 가는 가로 결(고정 시드)
+    let seed = 5;
+    const rand = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+    for (let i = 0; i < 260; i++) {
+      g.fillStyle = rand() < 0.5 ? 'rgba(255, 255, 255, 0.35)' : 'rgba(80, 100, 110, 0.07)';
+      g.fillRect(rand() * canvas.width, rand() * canvas.height, 60 + rand() * 260, 1);
+    }
+  }
   g.strokeStyle = style.border;
   g.lineWidth = 14;
   g.strokeRect(7, 7, canvas.width - 14, canvas.height - 14);
@@ -192,9 +200,10 @@ export function buildWashers(scene, washers, models) {
 }
 
 // ---- 빨랫줄 ----
-export function buildClothesline(scene, line) {
+// style: 기둥·집게 색(공간 look 의 clothesline). 안 넘기면 나무색.
+export function buildClothesline(scene, line, style = {}) {
   const group = new THREE.Group();
-  const postMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2f });
+  const postMat = new THREE.MeshStandardMaterial({ color: style.post ?? 0x6b4a2f });
   for (const [x, z] of [[line.x1, line.z1], [line.x2, line.z2]]) {
     const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, line.postHeight, 8), postMat);
     post.position.set(x, line.postHeight / 2, z);
@@ -216,7 +225,7 @@ export function buildClothesline(scene, line) {
 
   // 걸린 빨래 slots 칸: 처음엔 숨김. 줄을 축으로 흔들리도록 줄 방향을 향한 피벗에 단다.
   const yaw = -Math.atan2(dz, dx); // 피벗 로컬 +x 가 줄 방향
-  const pinMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2f });
+  const pinMat = new THREE.MeshStandardMaterial({ color: style.pin ?? 0x6b4a2f });
   const slots = Array.from({ length: line.slots }, (_, i) => {
     const pivot = new THREE.Group();
     pivot.rotation.order = 'YXZ';

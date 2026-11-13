@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { clampOrbit, orbitPosition, applyDrag, applyZoom } from '../src/logic/orbit.js';
+import { clampOrbit, orbitPosition, applyDrag, applyZoom, frontAzimuthDeg } from '../src/logic/orbit.js';
 
 const L = { minPolarDeg: 25, maxPolarDeg: 75, minDistance: 5, maxDistance: 16 };
 const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} !~ ${b}`);
@@ -81,4 +81,17 @@ test('applyZoom: 제한과 불변', () => {
   assert.equal(applyZoom(s, 1, 0.9, L).distance, 16);
   assert.equal(applyZoom({ ...s, distance: 5.2 }, -1, 0.9, L).distance, 5);
   assert.equal(s.distance, 15.5);
+});
+
+test('frontAzimuthDeg: 카메라가 캐릭터 정면(얼굴 쪽)에 오는 방위각(0~360)', () => {
+  for (const rotY of [0, Math.PI / 2, -Math.PI / 2, Math.PI, 1.1, -2.3, 7]) {
+    const az = frontAzimuthDeg(rotY);
+    assert.ok(az >= 0 && az < 360, `${rotY} -> ${az}`);
+    // 카메라(orbitPosition)가 캐릭터가 바라보는 쪽(sin, cos)에 놓인다
+    const [cx, , cz] = orbitPosition([0, 1, 0], { azimuthDeg: az, polarDeg: 60, distance: 9 });
+    const len = Math.hypot(cx, cz);
+    assert.ok(Math.abs(cx / len - Math.sin(rotY)) < 1e-9 && Math.abs(cz / len - Math.cos(rotY)) < 1e-9, `${rotY}`);
+  }
+  assert.ok(Math.abs(frontAzimuthDeg(-Math.PI / 2) - 270) < 1e-9, '건물에서 나올 때(서쪽을 봄) 카메라는 서쪽');
+  assert.equal(frontAzimuthDeg(0), 0);
 });

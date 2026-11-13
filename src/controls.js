@@ -72,6 +72,7 @@ export function createControls(domElement, { onDrag, onClick, onWheel, onHover }
   domElement.addEventListener('contextmenu', (e) => e.preventDefault());
 
   return {
+    isDown: () => down !== null, // 지금 버튼을 누른 채(드래그 중일 수 있다)인가
     setEnabled(value) {
       enabled = value;
       if (!value) { down = null; hoverEvent = null; }

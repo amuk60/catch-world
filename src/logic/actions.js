@@ -1,6 +1,6 @@
 // 구역 행동(소각장: 태우기·파쇄 / 세탁소: 세탁·널기 / 면접장: 면접 보기·돌발행동) 정의와 실행기 (순수). 행동은 여러 단계(클립 재생, 제자리 회전)를 순서대로 하는 한 번짜리 동작이고,
 // 실행기는 시간만 보고 단계 시작·단계 안의 표식 순간·효과 순간·끝을 알려 준다(렌더링·상태 변경은 main.js 가 한다).
-// 단계: 한숨(emote-no) -> 재킷 주머니에서 소품(종이·셔츠)을 꺼낸다(pick-up, 60% 에 paperOut) -> 대상 쪽으로 돈다(유일한 회전)
+// 단계: 한숨(emote-no, 소각장 행동만. 세탁소 행동은 한숨 없이 바로 주머니부터) -> 재킷 주머니에서 소품(종이·셔츠)을 꺼낸다(pick-up, 60% 에 paperOut) -> 대상 쪽으로 돈다(유일한 회전)
 //       -> 던진다/친다/팔을 든다(effect 표식: 효과 순간) -> 후련(emote-yes). 캐릭터는 걷지 않고 제자리에서 돈다.
 // 행동의 zone 은 그 행동이 속한 행동 구역(logic/zones.js)의 id 이고, 같은 구역 안에서 key 1 과 2 가 첫째·둘째 행동이다.
 // 단계 표식: event/eventAt = 그 단계의 eventAt(0~1) 지점에서 { type: event } 이벤트, effect = 이 단계의 effectAt 지점이 효과 순간.
@@ -9,12 +9,13 @@ const POCKET_PULL = { kind: 'clip', name: 'pick-up', event: 'paperOut', eventAt:
 const RELIEF = { kind: 'clip', name: 'emote-yes' };
 const turnTo = (target) => ({ kind: 'turn', target });
 const hit = (name) => ({ kind: 'clip', name, effect: true });
-const sequence = (target, effect) => [SIGH, POCKET_PULL, turnTo(target), effect, RELIEF].map((step) => ({ ...step }));
+// sigh: 맨 앞에 한숨(고개 젓기)을 넣을지. 세탁소(세탁·널기)는 뺀다.
+const sequence = (target, effect, sigh = true) => [...(sigh ? [SIGH] : []), POCKET_PULL, turnTo(target), effect, RELIEF].map((step) => ({ ...step }));
 export const ACTIONS = {
   burn: { id: 'burn', label: '태우기', key: '1', zone: 'incinerator', target: 'fire', steps: sequence('fire', hit('attack-melee-right')) },
   shred: { id: 'shred', label: '파쇄', key: '2', zone: 'incinerator', target: 'shredder', steps: sequence('shredder', hit('attack-melee-right')) },
-  wash: { id: 'wash', label: '세탁', key: '1', zone: 'laundry', target: 'washer', steps: sequence('washer', hit('attack-melee-right')) },
-  hang: { id: 'hang', label: '널기', key: '2', zone: 'laundry', target: 'clothesline', steps: sequence('clothesline', hit('interact-right')) },
+  wash: { id: 'wash', label: '세탁', key: '1', zone: 'laundry', target: 'washer', steps: sequence('washer', hit('attack-melee-right'), false) },
+  hang: { id: 'hang', label: '널기', key: '2', zone: 'laundry', target: 'clothesline', steps: sequence('clothesline', hit('interact-right'), false) },
 };
 
 // 면접장 행동: 실행기(ACTIONS 의 단계 진행)가 아니라 logic/interview.js 의 대본(시간표)이 장면을 진행한다. 여기서는 행동 막대의 버튼(키·이름·구역)과 사정거리 대상만 정한다.
@@ -31,19 +32,23 @@ const ORDER = { step: 0, mark: 1, effect: 2, done: 3 }; // 같은 시각일 때 
 
 // 클립 길이 맞추기. raw: 클립 이름 -> 원래 길이(초). 행동의 자연 길이(클립 합 + 회전 시간)가 targetSeconds 보다 짧으면
 // 그 행동의 던지기/치기(effect) 클립만 늘려 총 길이를 정확히 targetSeconds 로 맞춘다. 더 길면 늘리지 않는다(배속은 항상 1 이하).
-// 돌려주는 값: durations(재생 길이, 클립 이름 -> 초), speeds(재생 배속 timeScale, 클립 이름 -> 값).
+// 같은 클립(attack-melee-right)을 쓰는 행동이라도 단계 구성이 다르면(세탁소 행동은 한숨이 없다) 늘려야 할 길이가 달라, 행동별 표를 따로 만든다.
+// 돌려주는 값: byAction(행동 id -> { durations: 재생 길이(클립 이름 -> 초), speeds: 재생 배속 timeScale(클립 이름 -> 값) }), 그리고 행동별 표가 없을 때 쓰는 기본(원래 길이, 배속 1) durations/speeds.
 export function fitDurations(raw, turnSeconds, targetSeconds) {
-  const durations = { ...raw };
-  const speeds = {};
-  for (const name of Object.keys(raw)) speeds[name] = 1;
+  const unit = () => Object.fromEntries(Object.keys(raw).map((name) => [name, 1]));
+  const byAction = {};
   for (const action of Object.values(ACTIONS)) {
+    const durations = { ...raw };
+    const speeds = unit();
     const natural = action.steps.reduce((sum, s) => sum + (s.kind === 'turn' ? turnSeconds : (raw[s.name] ?? 0)), 0);
     const effectStep = action.steps.find((s) => s.effect);
-    if (natural >= targetSeconds || !effectStep || !(raw[effectStep.name] > 0)) continue;
-    durations[effectStep.name] = raw[effectStep.name] + (targetSeconds - natural);
-    speeds[effectStep.name] = raw[effectStep.name] / durations[effectStep.name];
+    if (natural < targetSeconds && effectStep && raw[effectStep.name] > 0) {
+      durations[effectStep.name] = raw[effectStep.name] + (targetSeconds - natural);
+      speeds[effectStep.name] = raw[effectStep.name] / durations[effectStep.name];
+    }
+    byAction[action.id] = { durations, speeds };
   }
-  return { durations, speeds };
+  return { durations: { ...raw }, speeds: unit(), byAction };
 }
 
 // 행동을 할 수 있는가: 대상(소각로/파쇄기/세탁기/빨랫줄/면접 책상)이 사정거리(경계 포함) 안.
@@ -54,17 +59,17 @@ export function canPerform(actionId, dist, ranges) {
   return dist[action.target] <= ranges[action.target];
 }
 
-// durations: 클립 이름 -> 초(늘려서 재생하는 경우 늘어난 길이). turnSeconds: 회전 단계 하나의 길이(고정).
+// durations: 클립 이름 -> 초. byAction: 행동 id -> { durations }(fitDurations 가 행동마다 늘린 길이, 없는 행동은 durations 를 쓴다). turnSeconds: 회전 단계 하나의 길이(고정).
 // effectAt: effect 표식이 붙은 단계(던지기/치기) 길이 중 효과 순간의 비율.
 // autoGap: 자동 반복에서 행동이 끝난 뒤 다음 행동을 시작하기까지 쉬는 시간(초).
 // canStart(actionId): 자동이 다음 행동을 시작해도 되는지(사정거리 등). false 면 자동이 꺼진다. 수동 start 에는 쓰지 않는다.
 // autoActions(): 지금 자동이 번갈아 할 구역의 행동 id [첫째, 둘째](호출할 때마다 현재 구역을 돌려준다). 구역이 없으면 [] 이고 자동은 꺼진다.
 export function createRunner({
-  durations, turnSeconds = 0, effectAt, autoGap, canStart = () => true, autoActions = () => ['burn', 'shred'],
+  durations, byAction = {}, turnSeconds = 0, effectAt, autoGap, canStart = () => true, autoActions = () => ['burn', 'shred'],
 }) {
   // 행동의 단계(초 포함)와 이벤트 시간표를 만든다. 시간표: [{ t, type, index? }] 를 시각 -> 종류 순으로 정렬.
   function plan(id) {
-    const steps = ACTIONS[id].steps.map((s) => ({ ...s, seconds: s.kind === 'turn' ? turnSeconds : (durations[s.name] ?? 0) }));
+    const steps = ACTIONS[id].steps.map((s) => ({ ...s, seconds: s.kind === 'turn' ? turnSeconds : (byAction[id]?.durations?.[s.name] ?? durations[s.name] ?? 0) }));
     const timeline = [];
     let t = 0;
     steps.forEach((s, index) => {

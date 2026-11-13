@@ -33,7 +33,7 @@ const SIGH = { kind: 'clip', name: 'emote-no' };
 const PULL = { kind: 'clip', name: 'pick-up', event: 'paperOut', eventAt: 0.6 };
 const RELIEF = { kind: 'clip', name: 'emote-yes' };
 
-test('ACTIONS: 네 행동(태우기·파쇄·세탁·널기). 한숨 -> 주머니에서 꺼내기 -> 대상 쪽으로 돌기 -> 던지기/치기/팔 들기(효과) -> 후련', () => {
+test('ACTIONS: 네 행동(태우기·파쇄·세탁·널기). 소각장은 한숨 -> 주머니에서 꺼내기 -> ..., 세탁소(세탁·널기)는 한숨 없이 주머니에서 꺼내기부터 -> 대상 쪽으로 돌기 -> 던지기/치기/팔 들기(효과) -> 후련', () => {
   assert.deepEqual(ACTIONS, {
     burn: { id: 'burn', label: '태우기', key: '1', zone: 'incinerator', target: 'fire', steps: BURN_STEPS },
     shred: {
@@ -42,11 +42,11 @@ test('ACTIONS: 네 행동(태우기·파쇄·세탁·널기). 한숨 -> 주머�
     },
     wash: {
       id: 'wash', label: '세탁', key: '1', zone: 'laundry', target: 'washer',
-      steps: [SIGH, PULL, { kind: 'turn', target: 'washer' }, { kind: 'clip', name: 'attack-melee-right', effect: true }, RELIEF],
+      steps: [PULL, { kind: 'turn', target: 'washer' }, { kind: 'clip', name: 'attack-melee-right', effect: true }, RELIEF],
     },
     hang: {
       id: 'hang', label: '널기', key: '2', zone: 'laundry', target: 'clothesline',
-      steps: [SIGH, PULL, { kind: 'turn', target: 'clothesline' }, { kind: 'clip', name: 'interact-right', effect: true }, RELIEF],
+      steps: [PULL, { kind: 'turn', target: 'clothesline' }, { kind: 'clip', name: 'interact-right', effect: true }, RELIEF],
     },
   });
   assert.equal(ACTIONS.poke, undefined);
@@ -309,8 +309,11 @@ test('아주 큰 dt 에서도 자동이 무한 반복하지 않고 이벤트 순
 const RAW = { 'emote-no': 0.667, 'pick-up': 0.333, 'attack-melee-right': 0.417, 'emote-yes': 0.667 };
 const natural = 0.667 + 0.333 + 0.417 + 0.667 + 0.5; // 클립 합 + 회전 한 번 = 2.584
 
-test('fitDurations: 목표(5초)보다 짧으면 던지기/치기 클립만 늘려서 총 길이가 정확히 목표가 된다', () => {
-  const { durations: d, speeds } = fitDurations(RAW, 0.5, 5);
+test('fitDurations: 목표(5초)보다 짧으면 던지기/치기 클립만 늘려서 총 길이가 정확히 목표가 된다(소각장 행동의 표)', () => {
+  const { durations: raw0, byAction } = fitDurations(RAW, 0.5, 5);
+  assert.deepEqual(raw0, RAW, '기본 표는 원래 길이');
+  assert.deepEqual(byAction.burn, byAction.shred, '한숨이 있는 두 소각장 행동은 같은 표');
+  const { durations: d, speeds } = byAction.burn;
   assert.deepEqual([d['emote-no'], d['pick-up'], d['emote-yes']], [0.667, 0.333, 0.667]); // 나머지는 자연 속도
   assert.equal(speeds['emote-no'], 1);
   assert.equal(speeds['pick-up'], 1);
@@ -320,7 +323,7 @@ test('fitDurations: 목표(5초)보다 짧으면 던지기/치기 클립만 늘�
   assert.ok(Math.abs(speeds['attack-melee-right'] - 0.417 / d['attack-melee-right']) < 1e-9);
   // 파쇄도 같은 클립(오른손 휘두르기)을 같은 길이로 쓰므로 총 5초
   // 러너로 재면 총 길이가 5초
-  const r = createRunner({ durations: d, turnSeconds: 0.5, effectAt: 0.45, autoGap: 1 });
+  const r = createRunner({ durations: RAW, byAction, turnSeconds: 0.5, effectAt: 0.45, autoGap: 1 });
   for (const id of ['burn', 'shred']) {
     r.start(id);
     assert.deepEqual(types(noSteps(r.update(4.99))), [`effect:${id}`]);

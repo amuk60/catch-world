@@ -38,12 +38,13 @@ import { initAnalytics, track } from './analytics.js';
 import { renderShareCard, saveShareCard, copyText } from './share.js';
 import { easeInOut } from './logic/burn.js';
 import {
-  ORBIT, TRANSITION, PLAYER, PLAYER_MODEL, FURNACE, STRESS, SPAWN, SEED, COMFORT_MESSAGES, FORTUNES,
+  ORBIT, CAMERA_CLEAR, TRANSITION, PLAYER, PLAYER_MODEL, FURNACE, STRESS, SPAWN, SEED, COMFORT_MESSAGES, FORTUNES,
   ACTION_REDUCE, ACTION_EFFECT_AT, ACTION_TARGET_SECONDS, ACTION_TURN_SECONDS, AUTO_GAP, PASSIVE,
   FIRE_RANGE, SHREDDER_RANGE, WASHER_RANGE, CLOTHESLINE_RANGE, FIRE_ZONE_RADIUS, CATCH_URL, GA_MEASUREMENT_ID, WEAR_SECONDS, WEAR_SWAP_AT,
   INTERVIEW, INTERVIEW_ROUND, INTERVIEW_BONUS, INTERVIEW_ZONE_RADIUS, INTERVIEW_ANSWER_SECONDS, INTERVIEW_IMPROV_SECONDS, INTERVIEW_FINALE_SECONDS, SPEECH_SECONDS,
 } from './config.js';
-import { applyDrag, applyZoom, orbitPosition } from './logic/orbit.js';
+import { applyDrag, applyZoom, orbitPosition, frontAzimuthDeg } from './logic/orbit.js';
+import { createCameraClear, buildingBoxes } from './logic/cameraClear.js';
 import { stepToward, pushOutOfCircle, headingY } from './logic/movement.js';
 
 const MAX_DT = 0.1; // 한 프레임에 진행하는 최대 시간(초). 탭이 멈췄다 돌아와도 행동·애니메이션이 한꺼번에 튀지 않게 한다.
@@ -163,6 +164,8 @@ if (isMobileUA(navigator.userAgent)) {
   let moveTarget = null;
   let mode = 'free'; // 'free' | 'seated' | 'fortune' | 'result' | 'transition' | 'wearing' | 'interview-choice' | 'interview-play' (전이는 logic/playerMode.js)
   const transition = createTransition(TRANSITION); // 공간 전환(차원문) 상태 기계
+  const cameraClear = createCameraClear(CAMERA_CLEAR); // 마당에서 건물이 플레이어를 가리면 카메라를 천천히 돌려 피한다(config 의 CAMERA_CLEAR 로 끈다)
+  const clearBoxes = buildingBoxes(layout.buildings, CAMERA_CLEAR.margin);
   let transitionTarget = null; // 전환이 끝나면 가 있을 공간 id
   let seatItem = null; // 앉아 있는 벤치(layout.interactables 의 항목)
   let lastFortune = -1;
@@ -231,11 +234,11 @@ if (isMobileUA(navigator.userAgent)) {
   });
 
   // ---- 소각장 행동: 러너가 시간을 재고, 여기서 캐릭터 동작·종이·효과를 맡는다. ----
-  // 한숨 -> 주머니에서 종이 꺼내기 -> (대상 쪽으로 돌기) -> 던지기/치기 -> 후련. 던지기/치기 클립만 총 길이가 ACTION_TARGET_SECONDS 가 되도록 느려진다.
-  const { durations, speeds } = fitDurations(character ? character.getRawClipDurations() : FALLBACK_RAW_DURATIONS, ACTION_TURN_SECONDS, ACTION_TARGET_SECONDS);
+  // (소각장만 한숨 ->) 주머니에서 종이 꺼내기 -> (대상 쪽으로 돌기) -> 던지기/치기 -> 후련. 던지기/치기 클립만 총 길이가 ACTION_TARGET_SECONDS 가 되도록 느려진다(행동별 표: 세탁소 행동은 한숨이 없다).
+  const { durations, speeds, byAction } = fitDurations(character ? character.getRawClipDurations() : FALLBACK_RAW_DURATIONS, ACTION_TURN_SECONDS, ACTION_TARGET_SECONDS);
   let currentZone = null; // 지금 행동 막대를 보일 구역: 자유 상태면 서 있는 자리의 구역, 앉아 있으면 그 자리에 묶인 구역(면접장 의자). 막대·숫자 키·자동이 이 구역을 따른다.
   const runner = createRunner({
-    durations, turnSeconds: ACTION_TURN_SECONDS, effectAt: ACTION_EFFECT_AT, autoGap: AUTO_GAP,
+    durations, byAction, turnSeconds: ACTION_TURN_SECONDS, effectAt: ACTION_EFFECT_AT, autoGap: AUTO_GAP,
     canStart: (id) => inRangeFor(id), autoActions: () => autoActionsOf(currentZone),
   });
   const passive = createPassive(PASSIVE);
@@ -331,7 +334,7 @@ if (isMobileUA(navigator.userAgent)) {
       }
       return;
     }
-    character?.playClip(step.name, speeds[step.name] ?? 1);
+    character?.playClip(step.name, byAction[action]?.speeds[step.name] ?? speeds[step.name] ?? 1);
     if (step.event === 'paperOut') {
       // 재킷 가슴 주머니에서 작은 종이가 나와 paperOut 순간까지 손으로 올라온다.
       pull = { t: 0, dur: step.seconds * step.eventAt };
@@ -701,6 +704,9 @@ if (isMobileUA(navigator.userAgent)) {
     stopWalking();
     runner.cancelAuto();
     targetPos.set(player.position.x, ORBIT.targetHeight, player.position.z);
+    // 건물에서 나오면(마당 도착) 카메라를 캐릭터 정면에 둔다: 캐릭터는 건물을 등지고 서므로 카메라는 광장 쪽에서 캐릭터 얼굴을 보고 건물이 그 뒤에 온다. 화면이 포털로 덮인 순간이라 바로 바꾼다(polar·거리는 그대로).
+    if (toId === 'yard') orbit = { ...orbit, azimuthDeg: frontAzimuthDeg(arrival.rotY) };
+    cameraClear.reset(); // 공간이 바뀌면 입력 직후처럼 기다린 뒤에야 가림 자동 보완을 한다
     if (toId === 'yard') track('exit_space', { space: from });
     else track('enter_space', { space: toId });
   }
@@ -769,11 +775,16 @@ if (isMobileUA(navigator.userAgent)) {
   const controls = createControls(renderer.domElement, {
     onDrag: (dx, dy) => {
       if (mode === 'transition') return;
+      cameraClear.touch();
       orbit = applyDrag(orbit, dx, dy, ORBIT.rotateSpeed, ORBIT);
       renderer.domElement.style.cursor = '';
       hud.hideTooltip();
     },
-    onWheel: (deltaY) => { if (mode !== 'transition') orbit = applyZoom(orbit, deltaY, ORBIT.zoomStep, ORBIT); },
+    onWheel: (deltaY) => {
+      if (mode === 'transition') return;
+      cameraClear.touch();
+      orbit = applyZoom(orbit, deltaY, ORBIT.zoomStep, ORBIT);
+    },
     // 클릭하면 그 지점/오브젝트로 걸어간다(도착해도 아무 일도 일어나지 않는다. 동작은 E 키). 앉아 있으면 먼저 일어난다.
     // 행동 중에는 이동 클릭을 무시하고, 쉬는 중의 이동 클릭은 자동을 끈다.
     onClick: (ndc) => {
@@ -878,6 +889,11 @@ if (isMobileUA(navigator.userAgent)) {
     const k = 1 - Math.exp(-ORBIT.followSpeed * dt);
     desired.set(player.position.x, ORBIT.targetHeight, player.position.z);
     targetPos.lerp(desired, k);
+    // 가림 자동 보완: 마당에서 자유 상태로 서 있거나 걸을 때만(실내·전환·앉기·드래그 중에는 안 돈다).
+    orbit = { ...orbit, azimuthDeg: cameraClear.update(dt, {
+      allowed: spaceId === 'yard' && mode === 'free' && !transition.active && !controls.isDown(),
+      target: targetPos.toArray(), orbit, boxes: clearBoxes,
+    }).azimuthDeg };
     camera.position.set(...orbitPosition(targetPos.toArray(), orbit));
     camera.lookAt(targetPos);
     if (spaceId === 'yard') updateTreeOcclusion(camera.position, targetPos, dt); // 나무 가림 축소는 마당에서만

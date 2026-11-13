@@ -44,6 +44,12 @@ export const ORBIT = {
   targetHeight: 1.0, followSpeed: 6, rotateSpeed: 0.005, zoomStep: 0.9,
 };
 
+// 마당에서 건물이 카메라와 플레이어 사이를 가리면 카메라를 천천히 돌려 가림을 피하는 설정(logic/cameraClear.js). 끄려면 enabled: false.
+// 건물 밖(마당)에서 서 있거나 걸을 때만 동작하고, 실내·공간 전환·앉아 있는 동안에는 절대 돌지 않는다. 나무는 따로 줄어들므로 건물만 본다.
+// delaySeconds: 가림이 이만큼(초) 이어져야 돌기 시작한다. idleSeconds: 사용자가 카메라를 드래그·휠로 만진 뒤 이만큼(초) 지나야 돈다(드래그 중에는 절대 안 돈다).
+// maxDegPerSecond: 도는 최대 속도(도/초, 출발과 도착은 서서히). margin: 건물 가장자리에서 시선이 이만큼(단위) 더 비켜 가야 "안 가려짐"으로 본다(경계에서 떨리지 않게).
+export const CAMERA_CLEAR = { enabled: true, delaySeconds: 0.4, idleSeconds: 2, maxDegPerSecond: 45, margin: 0.3 };
+
 // 플레이어 이동 속도(단위/초)와 충돌 반경(단위).
 export const PLAYER = { speed: 4, radius: 0.4 };
 
@@ -76,7 +82,7 @@ export const INTERACT_RADIUS = 1.5;
 // FIRE_ZONE_RADIUS: 소각로 중심에서 이 거리 안에 있어야 행동 막대가 보인다.
 // FIRE_RANGE: 이 거리 안이면 태우기가 켜진다(소각로 중심 기준).
 // SHREDDER_RANGE: 파쇄기 중심에서 이 거리 안이면 파쇄가 켜진다. 두 범위가 겹치는 자리(소각로와 파쇄기 사이)에서 자동이 두 행동을 번갈아 한다.
-// 행동 순서: 한숨(emote-no) -> 재킷 주머니에서 종이를 꺼낸다(pick-up) -> 대상 쪽으로 돈다(ACTION_TURN_SECONDS, 유일한 회전)
+// 행동 순서: 한숨(emote-no, 소각장 행동만: 세탁소 행동은 한숨 없이 바로) -> 재킷 주머니에서 종이를 꺼낸다(pick-up) -> 대상 쪽으로 돈다(ACTION_TURN_SECONDS, 유일한 회전)
 // -> 던지기/치기 -> 후련(emote-yes). 캐릭터는 걷지 않고 제자리에서 돈다.
 // ACTION_EFFECT_AT: 던지기/치기 단계 길이 중 효과(종이가 불에 닿는 순간 등)가 일어나는 비율.
 // ACTION_TARGET_SECONDS: 행동 한 번의 총 길이 목표. 클립 합 + 회전이 이보다 짧으면 던지기/치기 클립만 천천히 재생해 맞춘다
@@ -129,17 +135,38 @@ export const LIGHT = { sun: 1.5, hemi: 0.95, sunPosition: [-9, 14, 7], shadowExt
 export const TRANSITION = { outSeconds: 0.45, inSeconds: 0.45 };
 // 세탁소 실내는 마당에서 멀리 떨어진 같은 씬 안의 별도 공간이다(origin: 실내 중심). width 는 x, depth 는 z 방향 길이(안쪽 면 기준).
 export const LAUNDRY_INTERIOR = { origin: { x: 300, z: 0 }, width: 12, depth: 10, wallHeight: 2.58 };
-// 실내에서 쓰는 배경색(따뜻한 베이지)과 조명, 바닥·걸레받이·간판 모양. 세탁소 실내가 쓰는 기본값이다(면접장은 아래 INTERVIEW_LOOK).
-// hemi: 반구광 세기, lamp*: 천장 램프 점광(색·세기·닿는 거리), sun/sunColor: 그림자용 방향광 세기·색.
-// floor: 바닥 타일 두 색(a, b)과 줄눈 색(line), speckle 이 true 면 카펫 같은 잔 얼룩. baseboard: 걸레받이 색.
-// sign: 간판 판 색(board)과 글씨판 색(bg 바탕, border 테두리, text 글씨). materials: 모델 재질 덮어쓰기(없으면 모델 그대로, 아래 INTERVIEW_LOOK 참고).
+// 세탁소 실내(기본값. 면접장은 아래 INTERVIEW_LOOK): 유리 가게. 벽·창·출입문은 서리 유리(우윳빛, 밖이 전혀 안 보인다) + 은색 철제 틀이고, 바닥은 깨끗한 밝은 타일, 밝고 시원한 흰 조명이다.
+// 필드: 배경색(background), hemi: 반구광 세기, lamp*: 천장 램프 점광(색·세기·닿는 거리), sun/sunColor: 그림자용 방향광 세기·색.
+// floor: 바닥 타일 두 색(a, b)과 줄눈 색(line), speckle 이 true 면 카펫 같은 잔 얼룩, roughness(선택): 바닥 거칠기(작을수록 반짝), glow(선택, 0~1): 타일이 스스로 빛나는 정도(밝은 바닥이 흐려 보이지 않게). baseboard: 걸레받이 색(유리 벽에서는 틀의 아랫단이 대신한다).
+// sign: 간판 판 색(board)과 글씨판 색(bg 바탕, border 테두리, text 글씨), brushed(선택)가 true 면 솔질한 금속 결. materials: 모델 재질 덮어쓰기(아래 INTERVIEW_LOOK 참고).
+// glass(선택): 있으면 벽을 모델 대신 유리 조각으로 만든다(interiorGlass.js). 지우면(또는 materials 의 wall 항목을 채우면) 모델 벽으로 돌아간다.
+//   frame/frameDark: 철제 틀 색(밝은 은색 / 어두운 보호판·문턱), texture: 유리 질감의 세로 그라데이션 세 색(위, 가운데, 아래) kind 별(wall 벽 / low 벽 아래 띠 / window 창·문),
+//   sheen: 비스듬한 빛줄기의 세기(0~1), roughness·clearcoat: 유리 광택(작을수록 번들), emissive·emissiveIntensity: 유리가 스스로 은은히 빛나는 색·세기(서리 유리의 밝은 느낌).
+// clothesline(선택): 빨랫줄 기둥·집게 색.
 export const INTERIOR_LOOK = {
-  background: 0xf3e6d0, hemiSky: 0xfff4e0, hemiGround: 0xb59a78, hemi: 0.6,
-  lamp: 0xffd9a0, lampIntensity: 9, lampDistance: 12, sun: 0.55, sunColor: 0xfff0d8,
-  floor: { a: '#ead9b8', b: '#d7c19a', line: 'rgba(120, 95, 60, 0.25)', speckle: false },
-  baseboard: 0x8a6a48,
-  sign: { board: 0xb98a56, bg: '#d9b27c', border: '#8a5f3a', text: '#4a2f1a' },
-  materials: {},
+  background: 0xe4f1f3, hemiSky: 0xf4fbfd, hemiGround: 0xb8cad1, hemi: 1.25,
+  lamp: 0xf2fbff, lampIntensity: 9, lampDistance: 12, sun: 0.7, sunColor: 0xf3f9ff,
+  floor: { a: '#d9e8ed', b: '#c7dae1', line: 'rgba(90, 120, 135, 0.3)', speckle: false, roughness: 0.55, glow: 0.22 },
+  baseboard: 0xb7c2ca,
+  sign: { board: 0xc4ccd3, bg: '#e9eff1', border: '#a9b5be', text: '#1b8a98', brushed: true },
+  materials: {
+    table: { wood: 0xd3dde3 },
+    benchCushion: { wood: 0xcfd7dc, carpet: 0x47b4c0 },
+    pottedPlant: { wood: 0xe4eaed, woodDark: 0xbcc7ce },
+    trashcan: { metal: 0xcbd3d9, metalDark: 0x74818b },
+    cardboardBoxOpen: { wood: 0x6fc5cf, woodDark: 0x4aa7b3 },
+    lampRoundFloor: { metal: 0xcbd3d9, lamp: 0xf4fbff },
+    rugRectangle: { carpet: 0x93d5db, carpetDarker: 0x6dbcc4 },
+  },
+  glass: {
+    frame: 0xd8e0e5, frameDark: 0xb4c0c9,
+    texture: {
+      wall: ['#f6fcfc', '#e6f4f5', '#d4ebee'], low: ['#e2f2f4', '#d0e9ec', '#bfe0e5'], window: ['#fbfeff', '#ecf8f9', '#d9eff2'],
+    },
+    sheen: { wall: 0.5, low: 0.4, window: 0.8 },
+    roughness: 0.42, clearcoat: 0.55, emissive: 0xcde9ed, emissiveIntensity: 0.32,
+  },
+  clothesline: { post: 0xb4bec6, pin: 0x8e9ba5 },
 };
 
 // 면접장 실내: 따뜻한 우드톤 대신 차갑고 딱딱한 사무실 느낌(쿨 화이트·회색 벽, 청회색 카펫 타일 바닥, 남색 포인트, 흰 형광등 빛).
