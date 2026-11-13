@@ -1,4 +1,4 @@
-// 브라우저 전용: 세탁소 건물 외관(Fantasy Town 판벽·지붕 조립 + 간판), 세탁기 줄, 빨랫줄과 널린 빨래, 손에 드는 셔츠.
+// 브라우저 전용: 건물 외관(세탁소·면접장 공용. Fantasy Town 판벽·지붕 조립 + 간판), 세탁기 줄, 빨랫줄과 널린 빨래, 손에 드는 셔츠.
 // 건물은 layout(logic/layout.js)의 buildings 에서, 세탁기·빨랫줄은 실내 데이터(logic/interiors.js)에서 온다(실내는 interiorLaundry.js 가 이 모듈의 buildWashers/buildClothesline 을 쓴다).
 import * as THREE from 'three';
 import {
@@ -16,7 +16,6 @@ const PLASTER = 0xadb5d9; // 판벽 조각의 회반죽 색(박공 채움에 맞
 const WALL_HEIGHT_TILES = 1; // 판벽 조각 하나의 높이(원본 단위)
 // 지붕: 원본(높이 0.57)에 곱하는 높이 배율, 벽 위에 띄우는 높이(그 띠는 회반죽으로 채워 간판 자리가 된다), 앞뒤 처마 내밀기, 폭 방향 처마(양쪽 합) 여유
 const ROOF = { scaleY: 1.5, lift: 0.45, overhang: 0.15, crossExtra: 0.5 };
-const SIGN_TEXT = '세탁소';
 
 // 로컬(정면 +z) 기준 벽 조각 배치. side: 어느 벽인지, 바깥을 향하는 방향각 yaw(원본 +x 면이 바깥).
 const SIDES = {
@@ -25,7 +24,7 @@ const SIDES = {
   right: { yaw: 0 },
   left: { yaw: Math.PI },
 };
-const FRONT_WALL = ['wall-door', 'wall-window-glass', 'wall-window-glass']; // 로컬 x 작은 쪽(북)부터: 문은 북쪽 끝
+const FRONT_WALL = ['wall-door', 'wall-window-glass', 'wall-window-glass']; // 로컬 x 작은 쪽(북)부터: 문은 북쪽 끝(doorLocalX 가 양수인 건물은 순서를 뒤집어 문이 남쪽 끝)
 const BACK_WALL = ['wall', 'wall-window-small', 'wall'];
 const RIGHT_WALL = ['wall-window-shutters', 'wall']; // 앞쪽(+z)부터
 const LEFT_WALL = ['wall', 'wall-window-shutters'];
@@ -75,7 +74,7 @@ export function signTexture(text) {
   return texture;
 }
 
-// 세탁소 건물. 그룹의 로컬 +z 가 정면(문), 로컬 y=0 이 바닥이다.
+// 건물 하나(세탁소·면접장 공용). b 는 layout.buildings 의 항목이고 b.label 이 간판 글씨다. 그룹의 로컬 +z 가 정면(문), 로컬 y=0 이 바닥이다.
 function buildBuilding(scene, b, models) {
   const group = new THREE.Group();
   const T = b.tile;
@@ -107,7 +106,8 @@ function buildBuilding(scene, b, models) {
       m.position.set(lx, 0, lz);
       group.add(m);
     };
-    FRONT_WALL.forEach((n, i) => place(n, 'front', (i - 1) * T, hd - T / 2));
+    const frontWall = (b.doorLocalX ?? -1.8) < 0 ? FRONT_WALL : [...FRONT_WALL].reverse();
+    frontWall.forEach((n, i) => place(n, 'front', (i - 1) * T, hd - T / 2));
     BACK_WALL.forEach((n, i) => place(n, 'back', (i - 1) * T, -hd + T / 2));
     RIGHT_WALL.forEach((n, i) => place(n, 'right', hw - T / 2, hd - T / 2 - i * T));
     LEFT_WALL.forEach((n, i) => place(n, 'left', -hw + T / 2, hd - T / 2 - i * T));
@@ -161,7 +161,7 @@ function buildBuilding(scene, b, models) {
   board.castShadow = true;
   const face = new THREE.Mesh(
     new THREE.PlaneGeometry(1.5, 0.4),
-    new THREE.MeshBasicMaterial({ map: signTexture(SIGN_TEXT), toneMapped: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
+    new THREE.MeshBasicMaterial({ map: signTexture(b.label), toneMapped: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
   );
   face.position.z = 0.056;
   sign.add(board, face);
@@ -406,7 +406,8 @@ export function buildClothesline(scene, line) {
   };
 }
 
-// 세탁소 건물 외관을 씬에 올린다. models: loadModels 결과(없는 조각은 색 상자로 대체).
-export function buildLaundryBuilding(scene, layout, models) {
-  return buildBuilding(scene, layout.buildings.find((b) => b.id === 'laundry'), models);
+// models: loadModels 결과(없는 조각은 색 상자로 대체).
+// layout.buildings 의 모든 건물(세탁소·면접장)을 마당에 세운다. 건물 id -> { group, sign, roofGroup }.
+export function buildBuildings(scene, layout, models) {
+  return Object.fromEntries(layout.buildings.map((b) => [b.id, buildBuilding(scene, b, models)]));
 }

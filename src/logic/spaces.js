@@ -1,23 +1,27 @@
 // 공간 레지스트리 (순수). 한 씬 안에 서로 멀리 떨어진 여러 공간이 있고(마당은 원점, 실내는 멀리), 플레이어는 지금 공간 하나에 있다.
 // 공간마다 이동 범위(bounds), 원점, 도착 지점이 있다. 장애물·바닥 메시·분위기는 그리는 쪽(main.js·spaces.js)이 공간 id 로 고른다.
-// 면접장 같은 새 공간은 여기에 한 줄 더하고 데이터(logic/interiors.js 같은 모듈)를 만들면 된다.
-import { YARD, SPAWN, LAUNDRY_INTERIOR } from '../config.js';
-import { laundryFacade } from './layout.js';
-import { buildLaundryInterior } from './interiors.js';
+// 새 공간은 여기에 한 항목 더하고 데이터(logic/interiors.js)와 그리는 쪽(main.js 의 공간 목록)을 더하면 된다.
+import { YARD, SPAWN, LAUNDRY_INTERIOR, INTERVIEW_INTERIOR } from '../config.js';
+import { buildingFacade } from './layout.js';
+import { buildLaundryInterior, buildInterviewInterior } from './interiors.js';
 
 const interior = buildLaundryInterior();
-const facade = laundryFacade();
+const interviewInterior = buildInterviewInterior();
 
 export const SPACES = {
   yard: {
     id: 'yard', origin: { x: 0, z: 0 },
     bounds: { minX: -YARD.width / 2, maxX: YARD.width / 2, minZ: -YARD.depth / 2, maxZ: YARD.depth / 2 },
     // 도착 지점: 어디서 왔는지(fromId)에 따라. default 는 처음 시작할 때.
-    arrivals: { default: { ...SPAWN, rotY: 0 }, laundry: facade.arrival },
+    arrivals: { default: { ...SPAWN, rotY: 0 }, laundry: buildingFacade('laundry').arrival, interview: buildingFacade('interview').arrival },
   },
   laundry: {
     id: 'laundry', origin: { ...LAUNDRY_INTERIOR.origin }, bounds: { ...interior.bounds },
     arrivals: { default: interior.arrival, yard: interior.arrival },
+  },
+  interview: {
+    id: 'interview', origin: { ...INTERVIEW_INTERIOR.origin }, bounds: { ...interviewInterior.bounds },
+    arrivals: { default: interviewInterior.arrival, yard: interviewInterior.arrival },
   },
 };
 

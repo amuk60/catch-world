@@ -17,13 +17,17 @@ import { nextMode, showPrompt as promptAllowed } from './logic/playerMode.js';
 import { pickFortune } from './logic/fortune.js';
 import { createControls } from './controls.js';
 import { createGameState } from './logic/gameState.js';
-import { ACTIONS, createRunner, fitDurations, canPerform } from './logic/actions.js';
-import { buildZones, activeZone, zoneActions } from './logic/zones.js';
+import { ACTION_DEFS, createRunner, fitDurations, canPerform } from './logic/actions.js';
+import { buildZones, activeZone, zoneActions, autoActionsOf } from './logic/zones.js';
 import { nearestIndex } from './logic/laundry.js';
-import { buildLaundryBuilding, buildCleanShirt, buildCrumpledShirt, LAUNDRY_MODEL_ITEMS } from './laundry.js';
+import { buildBuildings, buildCleanShirt, buildCrumpledShirt, LAUNDRY_MODEL_ITEMS } from './laundry.js';
 import { buildInteriorLaundry, INTERIOR_MODEL_ITEMS } from './interiorLaundry.js';
+import { buildInteriorInterview, INTERVIEW_MODEL_ITEMS } from './interiorInterview.js';
+import { createInterviewers } from './interviewers.js';
+import { createInterviewScene } from './interviewScene.js';
+import { createFx } from './actor.js';
 import { createSpaces } from './spaces.js';
-import { buildLaundryInterior } from './logic/interiors.js';
+import { buildLaundryInterior, buildInterviewInterior } from './logic/interiors.js';
 import { arrivalPoint, clampToSpace } from './logic/spaces.js';
 import { createTransition } from './logic/transition.js';
 import { createPassive } from './logic/passive.js';
@@ -37,6 +41,7 @@ import {
   ORBIT, TRANSITION, PLAYER, PLAYER_MODEL, FURNACE, STRESS, SPAWN, SEED, COMFORT_MESSAGES, FORTUNES,
   ACTION_REDUCE, ACTION_EFFECT_AT, ACTION_TARGET_SECONDS, ACTION_TURN_SECONDS, AUTO_GAP, PASSIVE,
   FIRE_RANGE, SHREDDER_RANGE, WASHER_RANGE, CLOTHESLINE_RANGE, FIRE_ZONE_RADIUS, CATCH_URL, GA_MEASUREMENT_ID, WEAR_SECONDS, WEAR_SWAP_AT,
+  INTERVIEW, INTERVIEW_ROUND, INTERVIEW_BONUS, INTERVIEW_ZONE_RADIUS, INTERVIEW_ANSWER_SECONDS, INTERVIEW_IMPROV_SECONDS, INTERVIEW_FINALE_SECONDS, SPEECH_SECONDS,
 } from './config.js';
 import { applyDrag, applyZoom, orbitPosition } from './logic/orbit.js';
 import { stepToward, pushOutOfCircle, headingY } from './logic/movement.js';
@@ -68,13 +73,16 @@ if (isMobileUA(navigator.userAgent)) {
   const { scene, camera, renderer, onFrame } = createStage(document.getElementById('game'));
   const layout = buildLayout(SEED);
   const interior = buildLaundryInterior(); // 세탁소 실내 데이터(마당에서 멀리 떨어진 좌표)
+  const interviewData = buildInterviewInterior(); // 면접장 실내 데이터
   const loading = document.getElementById('loading');
 
   let models = new Map();
   let characterGltf = null;
+  const interviewerGltfs = {}; // 면접관 id -> gltf(못 불러오면 null/없음)
   try {
-    const all = [...Object.values(layout).filter(Array.isArray).flat(), ...layout.interactables.map((i) => i.item), ...LAUNDRY_MODEL_ITEMS, ...INTERIOR_MODEL_ITEMS].filter((it) => it?.pack);
+    const all = [...Object.values(layout).filter(Array.isArray).flat(), ...layout.interactables.map((i) => i.item), ...LAUNDRY_MODEL_ITEMS, ...INTERIOR_MODEL_ITEMS, ...INTERVIEW_MODEL_ITEMS].filter((it) => it?.pack);
     [models, characterGltf] = await Promise.all([loadModels(all), loadGltf('characters', PLAYER_MODEL.name)]);
+    await Promise.all(INTERVIEW.interviewers.map(async (c) => { interviewerGltfs[c.id] = await loadGltf('characters', c.model); }));
   } catch (err) {
     console.warn('모델 로딩 중 오류. 도형 대체물을 사용합니다.', err);
   }
@@ -85,10 +93,11 @@ if (isMobileUA(navigator.userAgent)) {
   const { fog: yardFog } = applyAtmosphere(scene, renderer, yardRoot);
   const ground = buildGround(yardRoot);
   buildCity(yardRoot, layout);
-  buildLaundryBuilding(yardRoot, layout, models);
+  buildBuildings(yardRoot, layout, models);
   const inside = buildInteriorLaundry(scene, interior, models);
+  const insideInterview = buildInteriorInterview(scene, interviewData, models);
   const laundry = { washers: inside.washers, clothesline: inside.clothesline, update: (dt) => inside.update(dt) };
-  const zones = buildZones(layout, interior);
+  const zones = buildZones(layout, interior, interviewData);
   const { updateTreeOcclusion } = buildDecor(yardRoot, layout, models);
   buildSign(yardRoot, layout.sign);
   // 모델이 없으면 도형 대체물.
@@ -119,15 +128,21 @@ if (isMobileUA(navigator.userAgent)) {
   const spaceData = {
     yard: { ground, pickables: buildPickables(yardRoot, layout.interactables), interactables: layout.interactables, obstacles: [FURNACE, ...layout.obstacles] },
     laundry: { ground: inside.ground, pickables: inside.pickables, interactables: interior.interactables, obstacles: interior.obstacles },
+    interview: { ground: insideInterview.ground, pickables: insideInterview.pickables, interactables: interviewData.interactables, obstacles: interviewData.obstacles },
   };
+  const interiorViews = { laundry: inside, interview: insideInterview }; // 실내 공간 id -> 그리는 쪽(벽 숨기기 등)
   const spaces = createSpaces({
     scene,
-    spaces: { yard: { root: yardRoot, fog: yardFog, background: null }, laundry: { root: inside.root, fog: inside.fog, background: inside.background } },
+    spaces: {
+      yard: { root: yardRoot, fog: yardFog, background: null },
+      laundry: { root: inside.root, fog: inside.fog, background: inside.background },
+      interview: { root: insideInterview.root, fog: insideInterview.fog, background: insideInterview.background },
+    },
   });
   let spaceId = 'yard';
   const here = () => spaceData[spaceId];
   // 첫 전환에서 셰이더가 새로 컴파일되어 멈칫하지 않도록 두 공간의 조명 상태로 미리 컴파일해 둔다.
-  for (const id of ['laundry', 'yard']) {
+  for (const id of ['laundry', 'interview', 'yard']) {
     spaces.apply(id);
     try { renderer.compile(scene, camera); } catch (err) { console.warn('셰이더 미리 컴파일 실패', err); }
   }
@@ -146,7 +161,7 @@ if (isMobileUA(navigator.userAgent)) {
   const targetPos = new THREE.Vector3(player.position.x, ORBIT.targetHeight, player.position.z);
   const desired = new THREE.Vector3();
   let moveTarget = null;
-  let mode = 'free'; // 'free' | 'seated' | 'fortune' | 'result' | 'transition' | 'wearing' (전이는 logic/playerMode.js)
+  let mode = 'free'; // 'free' | 'seated' | 'fortune' | 'result' | 'transition' | 'wearing' | 'interview-choice' | 'interview-play' (전이는 logic/playerMode.js)
   const transition = createTransition(TRANSITION); // 공간 전환(차원문) 상태 기계
   let transitionTarget = null; // 전환이 끝나면 가 있을 공간 id
   let seatItem = null; // 앉아 있는 벤치(layout.interactables 의 항목)
@@ -199,13 +214,28 @@ if (isMobileUA(navigator.userAgent)) {
     if (plan !== 'none') onResultPlan(plan, justGoal, value);
   }
 
+  // ---- 면접장: 면접관 3명과 장면 진행(질문·답변·돌발행동·완주). 지수 감소는 아래 콜백으로만 한다. ----
+  const interviewers = createInterviewers({ root: insideInterview.root, interior: interviewData, gltfs: interviewerGltfs, chairs: insideInterview.chairs, cfg: INTERVIEW.interviewers });
+  const playerFx = character ? character.fx : createFx(player);
+  const interviewScene = createInterviewScene({
+    hud, interviewers, character, player, playerFx, interior: interviewData, root: insideInterview.root, camera, renderer, config: INTERVIEW,
+    params: { round: INTERVIEW_ROUND, speech: SPEECH_SECONDS, answerSeconds: INTERVIEW_ANSWER_SECONDS, improvSeconds: INTERVIEW_IMPROV_SECONDS, finaleSeconds: INTERVIEW_FINALE_SECONDS },
+    callbacks: {
+      dispatch: (event) => dispatch(event),
+      reduce: () => applyReduction(ACTION_REDUCE), // 답변·돌발행동의 감소: 다른 행동과 같은 양, 같은 경로(gameState.apply -> 팝업)
+      bonus: () => applyReduction(INTERVIEW_BONUS, false), // 완주 보너스: 한 번 더(행동 횟수에는 넣지 않는다)
+      track,
+      outfitState: () => outfit.state,
+    },
+  });
+
   // ---- 소각장 행동: 러너가 시간을 재고, 여기서 캐릭터 동작·종이·효과를 맡는다. ----
   // 한숨 -> 주머니에서 종이 꺼내기 -> (대상 쪽으로 돌기) -> 던지기/치기 -> 후련. 던지기/치기 클립만 총 길이가 ACTION_TARGET_SECONDS 가 되도록 느려진다.
   const { durations, speeds } = fitDurations(character ? character.getRawClipDurations() : FALLBACK_RAW_DURATIONS, ACTION_TURN_SECONDS, ACTION_TARGET_SECONDS);
   let currentZone = null; // 플레이어가 안에 있는 행동 구역(자유 상태일 때만). 행동 막대·숫자 키·자동이 이 구역을 따른다.
   const runner = createRunner({
     durations, turnSeconds: ACTION_TURN_SECONDS, effectAt: ACTION_EFFECT_AT, autoGap: AUTO_GAP,
-    canStart: (id) => inRangeFor(id), autoActions: () => zoneActions(currentZone),
+    canStart: (id) => inRangeFor(id), autoActions: () => autoActionsOf(currentZone),
   });
   const passive = createPassive(PASSIVE);
 
@@ -263,10 +293,11 @@ if (isMobileUA(navigator.userAgent)) {
   const pointOf = (name) => ({
     fire: FURNACE, shredder: layout.shredder, washer: nearestWasher(), clothesline: interior.clothesline.centre,
   })[name];
-  const RANGES = { fire: FIRE_RANGE, shredder: SHREDDER_RANGE, washer: WASHER_RANGE, clothesline: CLOTHESLINE_RANGE };
+  const RANGES = { fire: FIRE_RANGE, shredder: SHREDDER_RANGE, washer: WASHER_RANGE, clothesline: CLOTHESLINE_RANGE, desk: INTERVIEW_ZONE_RADIUS };
   // 각 행동은 대상(소각로·파쇄기·세탁기·빨랫줄)이 사정거리 안일 때만 할 수 있다(어느 방향에서든).
   const inRangeFor = (id) => canPerform(id, {
     fire: distTo(FURNACE), shredder: distTo(layout.shredder), washer: distTo(nearestWasher()), clothesline: distTo(interior.clothesline.centre),
+    desk: distTo(interviewData.zoneCenter),
   }, RANGES);
 
   // 소품을 숨기고 손에 되돌려 놓는다(행동이 끝났거나 취소됐을 때).
@@ -412,8 +443,10 @@ if (isMobileUA(navigator.userAgent)) {
 
   // 행동 요청(막대 클릭·숫자 키). 막대가 보이는 구역 안의 자유 상태에서 쉬는 중이고 사정거리 안일 때만 시작한다.
   function requestAction(id) {
-    if (mode !== 'free' || runner.isBusy() || !ACTIONS[id] || !currentZone || ACTIONS[id].zone !== currentZone.id || !inRangeFor(id)) return false;
+    if (mode !== 'free' || runner.isBusy() || !ACTION_DEFS[id] || !currentZone || ACTION_DEFS[id].zone !== currentZone.id || !inRangeFor(id)) return false;
     stopWalking();
+    if (id === 'interview') return interviewScene.openQuestion(); // 면접 보기: 질문 + 답변 선택 창(지수 감소는 답한 순간)
+    if (id === 'improv') return interviewScene.startImprov(); // 돌발행동: 선택 없이 바로
     return runner.start(id); // 첫 단계(한숨)는 이 프레임의 update 에서 시작된다.
   }
 
@@ -422,7 +455,7 @@ if (isMobileUA(navigator.userAgent)) {
       runner.cancelAuto();
       return;
     }
-    // 이 구역에서 다음에 할 행동(기록이 없으면 구역의 첫 행동)을 할 수 없는 자리면 켜지지 않는다.
+    // 이 구역에서 다음에 할 행동(기록이 없으면 구역의 첫 행동)을 할 수 없는 자리면 켜지지 않는다. 자동이 없는 구역(면접장)은 next 가 null 이다.
     const next = runner.nextAutoAction();
     if (mode === 'free' && next && inRangeFor(next)) runner.setAuto(true);
   }
@@ -493,7 +526,7 @@ if (isMobileUA(navigator.userAgent)) {
     const relief = passive.update(dt, meditating);
     if (meditating && once('game_start')) track('game_start');
     if (relief > 0) applyReduction(relief, false); // 불멍은 소각 횟수에 넣지 않는다
-    if (pending && !runner.isBusy() && (pending.kind === 'side' || (mode !== 'fortune' && mode !== 'transition' && mode !== 'wearing'))) {
+    if (pending && !runner.isBusy() && !interviewScene.busy && (pending.kind === 'side' || (mode !== 'fortune' && mode !== 'transition' && mode !== 'wearing'))) {
       pending.wait -= dt;
       if (pending.wait <= 0) {
         const { kind, info } = pending;
@@ -506,10 +539,11 @@ if (isMobileUA(navigator.userAgent)) {
       const ids = zoneActions(currentZone);
       if (!hud.isActionBarVisible() || hud.actionBarZone() !== currentZone.id) {
         hud.showActionBar({
-          zoneId: currentZone.id, buttons: ids.map((id) => ({ id, key: ACTIONS[id].key, label: ACTIONS[id].label })),
-          onAction: requestAction, onToggleAuto: toggleAuto,
+          zoneId: currentZone.id, buttons: ids.map((id) => ({ id, key: ACTION_DEFS[id].key, label: ACTION_DEFS[id].label })),
+          auto: currentZone.auto !== false, onAction: requestAction, onToggleAuto: toggleAuto,
         });
       }
+      if (currentZone.id === 'interview') interviewScene.maybeOpening(); // 자리에 처음 선 순간 팀장의 첫 대사(방문마다 한 번, 옷에 따라 다르다)
       const state = { auto: runner.autoOn, busy: runner.isBusy() };
       for (const id of ids) state[id] = inRangeFor(id);
       hud.updateActionBar(state);
@@ -593,6 +627,7 @@ if (isMobileUA(navigator.userAgent)) {
     hud.closeSidePopup();
     pending = null;
     emptyInfo = null;
+    interviewScene.resetRound(); // 면접장 진행 횟수도 처음으로
     outfit.reset(); // 옷도 처음으로: 정장, 줄의 내 셔츠 제거, 마르는 시간 취소
     wearing = null;
     laundry.clothesline.removeMine();
@@ -657,8 +692,10 @@ if (isMobileUA(navigator.userAgent)) {
   // 화면이 완전히 덮인 순간: 공간을 바꾸고 도착 지점에 세운다. 카메라 추적 대상을 새 위치로 곧장 옮긴다(긴 미끄러짐 없음).
   function swapSpace(toId) {
     const from = spaceId;
+    if (from === 'interview') interviewScene.leaveHall(); // 면접장을 나가면 진행 횟수가 처음으로(이미 줄어든 지수는 그대로)
     spaceId = toId;
     spaces.apply(toId);
+    if (toId === 'interview') interviewScene.enterHall();
     const arrival = arrivalPoint(toId, from);
     player.position.set(arrival.x, 0, arrival.z);
     player.rotation.y = arrival.rotY;
@@ -677,7 +714,7 @@ if (isMobileUA(navigator.userAgent)) {
       else if (stage === 'card') dispatch('close');
       return;
     }
-    if (runner.isBusy() || mode === 'transition' || mode === 'wearing') return; // 행동·전환·옷 갈아입기 중에는 E 동작을 하지 않는다.
+    if (runner.isBusy() || mode === 'transition' || mode === 'wearing' || mode === 'interview-choice' || mode === 'interview-play') return; // 행동·전환·옷 갈아입기·면접 중에는 E 동작을 하지 않는다.
     if (mode === 'seated') { dispatch('interact'); return; }
     const item = nearestInRange(player.position, here().interactables);
     if (!item) return;
@@ -700,8 +737,14 @@ if (isMobileUA(navigator.userAgent)) {
 
   // 숫자 키 1·2 는 지금 구역의 첫째·둘째 행동(구역 밖이면 아무 일도 없다).
   const ACTION_KEYS = { Digit1: 0, Numpad1: 0, Digit2: 1, Numpad2: 1 };
+  const CHOICE_KEYS = { Digit1: 0, Numpad1: 0, Digit2: 1, Numpad2: 1, Digit3: 2, Numpad3: 2 }; // 답변 선택 창의 1·2·3
   window.addEventListener('keydown', (e) => {
-    if (mode === 'transition' || mode === 'wearing') return; // 전환·옷 갈아입기 중에는 모든 키를 무시한다.
+    if (mode === 'transition' || mode === 'wearing' || mode === 'interview-play') return; // 전환·옷 갈아입기·면접 연출 중에는 모든 키를 무시한다.
+    if (mode === 'interview-choice') { // 답변 선택 창: 1·2·3 으로 고르고 Esc 는 감소 없이 닫는다.
+      if (e.code === 'Escape') interviewScene.cancel();
+      else if (e.code in CHOICE_KEYS && !e.repeat) interviewScene.pick(CHOICE_KEYS[e.code]);
+      return;
+    }
     if (mode === 'result') { // 종료 화면 중에는 Esc(계속 둘러보기)만 받는다.
       if (e.code === 'Escape') closeResult();
       return;
@@ -735,7 +778,7 @@ if (isMobileUA(navigator.userAgent)) {
     // 클릭하면 그 지점/오브젝트로 걸어간다(도착해도 아무 일도 일어나지 않는다. 동작은 E 키). 앉아 있으면 먼저 일어난다.
     // 행동 중에는 이동 클릭을 무시하고, 쉬는 중의 이동 클릭은 자동을 끈다.
     onClick: (ndc) => {
-      if (mode === 'fortune' || mode === 'transition' || mode === 'wearing' || runner.isBusy()) return;
+      if (mode === 'fortune' || mode === 'transition' || mode === 'wearing' || mode === 'interview-choice' || mode === 'interview-play' || runner.isBusy()) return;
       const item = pickInteractable(ndc);
       let target = item && interactTarget(item);
       if (!target) {
@@ -828,7 +871,10 @@ if (isMobileUA(navigator.userAgent)) {
       else hud.hidePrompt();
     }
     character?.update(dt);
+    if (!character) playerFx.update(dt);
     laundry.update(dt);
+    interviewers.update(dt);
+    interviewScene.update(dt);
 
     const k = 1 - Math.exp(-ORBIT.followSpeed * dt);
     desired.set(player.position.x, ORBIT.targetHeight, player.position.z);
@@ -836,6 +882,6 @@ if (isMobileUA(navigator.userAgent)) {
     camera.position.set(...orbitPosition(targetPos.toArray(), orbit));
     camera.lookAt(targetPos);
     if (spaceId === 'yard') updateTreeOcclusion(camera.position, targetPos, dt); // 나무 가림 축소는 마당에서만
-    else inside.updateWalls(camera.position); // 실내: 카메라 쪽 벽을 숨긴다
+    else interiorViews[spaceId].updateWalls(camera.position); // 실내: 카메라 쪽 벽을 숨긴다
   });
 }

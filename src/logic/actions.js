@@ -1,4 +1,4 @@
-// 구역 행동(소각장: 태우기·파쇄 / 세탁소: 세탁·널기) 정의와 실행기 (순수). 행동은 여러 단계(클립 재생, 제자리 회전)를 순서대로 하는 한 번짜리 동작이고,
+// 구역 행동(소각장: 태우기·파쇄 / 세탁소: 세탁·널기 / 면접장: 면접 보기·돌발행동) 정의와 실행기 (순수). 행동은 여러 단계(클립 재생, 제자리 회전)를 순서대로 하는 한 번짜리 동작이고,
 // 실행기는 시간만 보고 단계 시작·단계 안의 표식 순간·효과 순간·끝을 알려 준다(렌더링·상태 변경은 main.js 가 한다).
 // 단계: 한숨(emote-no) -> 재킷 주머니에서 소품(종이·셔츠)을 꺼낸다(pick-up, 60% 에 paperOut) -> 대상 쪽으로 돈다(유일한 회전)
 //       -> 던진다/친다/팔을 든다(effect 표식: 효과 순간) -> 후련(emote-yes). 캐릭터는 걷지 않고 제자리에서 돈다.
@@ -16,6 +16,14 @@ export const ACTIONS = {
   wash: { id: 'wash', label: '세탁', key: '1', zone: 'laundry', target: 'washer', steps: sequence('washer', hit('attack-melee-right')) },
   hang: { id: 'hang', label: '널기', key: '2', zone: 'laundry', target: 'clothesline', steps: sequence('clothesline', hit('interact-right')) },
 };
+
+// 면접장 행동: 실행기(ACTIONS 의 단계 진행)가 아니라 logic/interview.js 의 대본(시간표)이 장면을 진행한다. 여기서는 행동 막대의 버튼(키·이름·구역)과 사정거리 대상만 정한다.
+export const SCENE_ACTIONS = {
+  interview: { id: 'interview', label: '면접 보기', key: '1', zone: 'interview', target: 'desk' },
+  improv: { id: 'improv', label: '돌발행동', key: '2', zone: 'interview', target: 'desk' },
+};
+// 행동 막대에 올라가는 모든 행동(실행기 행동 + 장면 행동).
+export const ACTION_DEFS = { ...ACTIONS, ...SCENE_ACTIONS };
 
 const EPS = 1e-9;
 const MAX_STEPS = 400; // 아주 큰 dt 에서도 무한 반복하지 않게 하는 안전장치
@@ -38,10 +46,10 @@ export function fitDurations(raw, turnSeconds, targetSeconds) {
   return { durations, speeds };
 }
 
-// 행동을 할 수 있는가: 대상(소각로/파쇄기/세탁기/빨랫줄)이 사정거리(경계 포함) 안.
-// dist: { fire, shredder, washer, clothesline } 플레이어까지의 거리, ranges: 같은 키의 사정거리.
+// 행동을 할 수 있는가: 대상(소각로/파쇄기/세탁기/빨랫줄/면접 책상)이 사정거리(경계 포함) 안.
+// dist: { fire, shredder, washer, clothesline, desk } 플레이어까지의 거리, ranges: 같은 키의 사정거리.
 export function canPerform(actionId, dist, ranges) {
-  const action = ACTIONS[actionId];
+  const action = ACTION_DEFS[actionId];
   if (!action) return false;
   return dist[action.target] <= ranges[action.target];
 }

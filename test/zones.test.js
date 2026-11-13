@@ -4,7 +4,7 @@ import { activeZone, zoneActions, buildZones } from '../src/logic/zones.js';
 import { buildLayout } from '../src/logic/layout.js';
 import { buildLaundryInterior } from '../src/logic/interiors.js';
 import { FURNACE, FIRE_ZONE_RADIUS, SEED, SPAWN } from '../src/config.js';
-import { ACTIONS } from '../src/logic/actions.js';
+import { ACTION_DEFS } from '../src/logic/actions.js';
 
 const A = { id: 'a', center: { x: 0, z: 0 }, radius: 5, actions: ['x1', 'x2'] };
 const B = { id: 'b', center: { x: 8, z: 0 }, radius: 5, actions: ['y1', 'y2'] };
@@ -41,11 +41,11 @@ test('zoneActions: 구역의 행동 id 두 개(복사본), 구역이 없으면 �
   assert.deepEqual(zoneActions(null), []);
 });
 
-test('buildZones: 마당의 소각장(소각로 중심, FIRE_ZONE_RADIUS, 태우기·파쇄)과 실내 세탁소(세탁·널기)', () => {
+test('buildZones: 마당의 소각장(소각로 중심, FIRE_ZONE_RADIUS, 태우기·파쇄)과 실내 세탁소(세탁·널기), 실내 면접장(면접 보기·돌발행동, 자동 없음)', () => {
   const L = buildLayout(SEED);
   const I = buildLaundryInterior();
   const zones = buildZones(L);
-  assert.deepEqual(zones.map((z) => z.id), ['incinerator', 'laundry']);
+  assert.deepEqual(zones.map((z) => z.id), ['incinerator', 'laundry', 'interview']);
   const [inc, laundry] = zones;
   assert.deepEqual(inc, { id: 'incinerator', space: 'yard', center: { x: FURNACE.x, z: FURNACE.z }, radius: FIRE_ZONE_RADIUS, actions: ['burn', 'shred'] });
   assert.equal(laundry.space, 'laundry');
@@ -82,14 +82,14 @@ test('마당 한가운데 어디서도 실내 세탁소 구역은 활성화되�
   assert.equal(activeZone(I.arrival, zones, 'laundry'), null); // 들어오자마자는 구역 밖(걸어 들어가야 행동 막대가 뜬다)
 });
 
-test('구역의 행동은 모두 ACTIONS 에 있고 그 구역 소속이며, 키 1/2 순서로 정의된다', () => {
+test('구역의 행동은 모두 ACTION_DEFS(실행기 행동과 면접 장면 행동)에 있고 그 구역 소속이며, 키 1/2 순서로 정의된다', () => {
   for (const zone of buildZones(buildLayout(SEED))) {
     const [first, second] = zoneActions(zone);
     assert.equal(zone.actions.length, 2);
-    assert.equal(ACTIONS[first].zone, zone.id);
-    assert.equal(ACTIONS[second].zone, zone.id);
-    assert.equal(ACTIONS[first].key, '1');
-    assert.equal(ACTIONS[second].key, '2');
+    assert.equal(ACTION_DEFS[first].zone, zone.id);
+    assert.equal(ACTION_DEFS[second].zone, zone.id);
+    assert.equal(ACTION_DEFS[first].key, '1');
+    assert.equal(ACTION_DEFS[second].key, '2');
   }
 });
 

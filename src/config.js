@@ -135,3 +135,178 @@ export const INTERIOR_LOOK = {
   background: 0xf3e6d0, hemiSky: 0xfff4e0, hemiGround: 0xb59a78, hemi: 0.6,
   lamp: 0xffd9a0, lampIntensity: 9, lampDistance: 12, sun: 0.55,
 };
+
+// ---- 면접장(압박 질문 받아치기) ----
+// 면접장 실내도 세탁소처럼 마당에서 멀리 떨어진 같은 씬 안의 별도 공간이다(세탁소 실내와도 멀다). 크기·벽 높이 의미는 LAUNDRY_INTERIOR 와 같다.
+export const INTERVIEW_INTERIOR = { origin: { x: 600, z: 0 }, width: 12, depth: 10, wallHeight: 2.58 };
+// 면접 구역(의자·책상 근처, 이 반경 안에서 행동 막대 [1 면접 보기] [2 돌발행동] 이 보인다. 자동 버튼은 없다).
+export const INTERVIEW_ZONE_RADIUS = 3.3;
+// INTERVIEW_ROUND: 질문에 이만큼 연속으로 답하면 면접관 3명이 일어나 박수를 치고 "최종 합격!" (공간을 나가거나 끝나면 처음부터).
+// INTERVIEW_BONUS: 완주 보너스로 한 번 더 줄어드는 지수(균형 조정 대상). 답변·돌발행동 한 번의 감소량은 언제나 ACTION_REDUCE 이다.
+export const INTERVIEW_ROUND = 5;
+export const INTERVIEW_BONUS = 3;
+// 면접 연출 시간(초). 답변 한 번 = 답하는 동작 + 면접관 반응 합쳐 INTERVIEW_ANSWER_SECONDS, 돌발행동 하나 = INTERVIEW_IMPROV_SECONDS(다른 행동의 ACTION_TARGET_SECONDS 와 비슷하게).
+// INTERVIEW_FINALE_SECONDS: 5문항 완주 때 이어지는 "일어나 박수 + 최종 합격!" 연출. SPEECH_SECONDS: 말풍선 하나가 떠 있는 시간.
+export const INTERVIEW_ANSWER_SECONDS = 5;
+export const INTERVIEW_IMPROV_SECONDS = 5;
+export const INTERVIEW_FINALE_SECONDS = 3.6;
+export const SPEECH_SECONDS = 2.3;
+
+// 면접장의 모든 글(질문·답변·면접관 반응·돌발행동·첫 대사). 팀이 자유롭게 고쳐 쓴다 (초안).
+// - 면접관 id: leader(엄격한 팀장) / hr(친절한 척하는 인사담당) / junior(눈치만 보는 막내). model 은 캐릭터 모델 이름이다.
+// - questions: 12개. asker 가 그 질문을 던지는 면접관. answers 는 정확히 정석/솔직/엉뚱 하나씩, text 는 40자 안팎(버튼과 말풍선에 그대로 뜬다).
+// - reactions: 답변 종류별로 면접관마다 대사 후보(그중 하나를 무작위로). 정석은 박수, 솔직은 당황, 엉뚱은 폭소 연출이 함께 나온다.
+// - improvs: 돌발행동 4개. id 는 코드의 연출 이름이라 바꾸지 말고, 대사(player/leader/hr/junior)만 고친다. player 는 차례로 나오는 말풍선이다.
+// - openings: 면접장에 들어와 자리에 설 때 팀장의 첫 대사. 옷 겉모습(suit 정장 / soot 그을음 / tank 나시)에 따라 다르다.
+export const INTERVIEW = {
+  interviewers: [
+    { id: 'leader', name: '팀장', model: 'character-male-b', scale: 1.75 },
+    { id: 'hr', name: '인사담당', model: 'character-female-e', scale: 1.7 },
+    { id: 'junior', name: '막내', model: 'character-male-f', scale: 1.6 },
+  ],
+  openings: {
+    suit: '자, 앉으세요. 첫 질문 드리겠습니다.',
+    soot: '어디서 불이라도 나셨어요? ...계속하시죠.',
+    tank: '복장이... 아주 시원하시네요.',
+  },
+  finale: '최종 합격!',
+  cancelLabel: '다음에 할게요',
+  types: ['정석', '솔직', '엉뚱'],
+  questions: [
+    {
+      asker: 'leader', text: '1분 자기소개 부탁드립니다.',
+      answers: [
+        { type: '정석', text: '끈기 있게 끝까지 해내는 지원자입니다.' },
+        { type: '솔직', text: '1분은 길어요. 제 자랑은 30초면 끝나요.' },
+        { type: '엉뚱', text: '저는 이력서 한 장에 안 접히는 사람입니다!' },
+      ],
+    },
+    {
+      asker: 'hr', text: '저희 회사에 지원한 이유가 뭔가요~?',
+      answers: [
+        { type: '정석', text: '제 목표와 회사의 방향이 같다고 느꼈습니다.' },
+        { type: '솔직', text: '공고를 읽을수록 마음에 들었어요. 진짜로요.' },
+        { type: '엉뚱', text: '운명입니다. 지원 버튼이 저를 불렀어요.' },
+      ],
+    },
+    {
+      asker: 'leader', text: '본인의 단점을 말씀해 주세요.',
+      answers: [
+        { type: '정석', text: '꼼꼼해서 오래 걸리지만 일정표로 보완합니다.' },
+        { type: '솔직', text: '월요일 아침의 저는 아직 로딩 중입니다.' },
+        { type: '엉뚱', text: '눈부신 매력이 단점입니다. 선글라스 필수예요.' },
+      ],
+    },
+    {
+      asker: 'hr', text: '5년 뒤에는 어떤 모습일까요~?',
+      answers: [
+        { type: '정석', text: '이 분야의 믿음직한 전문가로 성장하겠습니다.' },
+        { type: '솔직', text: '내일 점심도 고민인데요... 그래도 단단해질게요.' },
+        { type: '엉뚱', text: '5년 뒤엔 저 자리에서 질문하고 있겠습니다!' },
+      ],
+    },
+    {
+      asker: 'leader', text: '저희가 왜 지원자를 뽑아야 하죠?',
+      answers: [
+        { type: '정석', text: '맡은 일을 책임지고 끝내는 사람이니까요.' },
+        { type: '솔직', text: '저도 모르겠지만, 같이 일하면 후회 없게 할게요.' },
+        { type: '엉뚱', text: '저를 안 뽑으면 이 의자가 서운해합니다.' },
+      ],
+    },
+    {
+      asker: 'junior', text: '저기... 이 볼펜을 팔아 보시겠어요?',
+      answers: [
+        { type: '정석', text: '매끄럽게 써져서 일이 즐거워지는 볼펜입니다.' },
+        { type: '솔직', text: '쓰다 보면 정이 듭니다. 일단 써 보세요.' },
+        { type: '엉뚱', text: '이 볼펜으로 서명하면 합격이 따라옵니다!' },
+      ],
+    },
+    {
+      asker: 'junior', text: '퇴근 후에 회식이 있으면... 어떠세요?',
+      answers: [
+        { type: '정석', text: '팀워크를 다지는 자리라면 기쁘게 참석하겠습니다.' },
+        { type: '솔직', text: '가끔은 좋아요. 다만 2차는 내일의 제가 말려요.' },
+        { type: '엉뚱', text: '회식 자리의 분위기 메이커, 제가 접니다!' },
+      ],
+    },
+    {
+      asker: 'hr', text: '가장 크게 실패했던 경험은요~?',
+      answers: [
+        { type: '정석', text: '실패에서 원인을 찾아 같은 실수를 줄였습니다.' },
+        { type: '솔직', text: '지원서 이름란에 오타를 낸 적이 있어요.' },
+        { type: '엉뚱', text: '라면 물 조절 실패요. 인생을 배웠습니다.' },
+      ],
+    },
+    {
+      asker: 'leader', text: '마지막으로 하고 싶은 말이 있나요?',
+      answers: [
+        { type: '정석', text: '기회를 주셔서 감사합니다. 최선을 다하겠습니다.' },
+        { type: '솔직', text: '긴장해서 말이 꼬였지만, 진심은 진짜예요.' },
+        { type: '엉뚱', text: '합격하면 커피는 제가 쏘겠습니다. 월급 받고요!' },
+      ],
+    },
+    {
+      asker: 'hr', text: '동료와 의견이 다르면 어떻게 하시겠어요~?',
+      answers: [
+        { type: '정석', text: '근거를 정리해 차분히 의견을 맞춰 가겠습니다.' },
+        { type: '솔직', text: '일단 심호흡하고, 그다음에 커피를 사겠습니다.' },
+        { type: '엉뚱', text: '가위바위보로... 아니, 대화로 풀겠습니다!' },
+      ],
+    },
+    {
+      asker: 'leader', text: '급한 일이 생겨 야근이 필요하다면?',
+      answers: [
+        { type: '정석', text: '필요한 일이라면 책임감을 갖고 임하겠습니다.' },
+        { type: '솔직', text: '할 수는 있지만, 습관이 되진 않았으면 해요.' },
+        { type: '엉뚱', text: '야근엔 저의 숨은 야식 레이더가 빛납니다!' },
+      ],
+    },
+    {
+      asker: 'junior', text: '자신을... 동물에 비유하면 뭐예요?',
+      answers: [
+        { type: '정석', text: '꾸준히 걷는 거북이입니다. 끝까지 갑니다.' },
+        { type: '솔직', text: '월요일엔 나무늘보, 금요일엔 치타예요.' },
+        { type: '엉뚱', text: '저는 합격을 물어 오는 리트리버입니다. 멍!' },
+      ],
+    },
+  ],
+  reactions: {
+    정석: {
+      leader: ['흠, 나쁘지 않군요.', '기본기가 탄탄하네요.'],
+      hr: ['어머~ 정말 훌륭하세요!', '역시 준비 많이 하셨네요~'],
+      junior: ['와... 멋있다.', '(짝짝짝...)'],
+    },
+    솔직: {
+      leader: ['...솔직하시군요. 당황스럽게도.', '허, 그런 대답은 처음이라.'],
+      hr: ['어머, 그렇게 말씀하시면... 호호.', '아, 네, 네~ 솔직하시네요~'],
+      junior: ['어, 어떡해...', '헉, 팀장님 눈치가...'],
+    },
+    엉뚱: {
+      leader: ['푸핫! ...크흠, 계속하죠.', '웃음을 참느라 힘듭니다.'],
+      hr: ['꺄하하! 너무 웃겨요~', '호호호, 이건 적어 둘게요~'],
+      junior: ['푸하하, 죄송해요 웃음이...', '저... 방금 웃어도 됐나요?'],
+    },
+  },
+  improvs: [
+    {
+      id: 'paperToss', title: '서류 하늘 던지기',
+      player: ['서류는... 하늘로!', '저는 오늘부로 퇴장하겠습니다!'],
+      leader: '자, 잠깐! 어디 가세요!', hr: '어머나, 서류가 눈처럼...', junior: '제... 제 서류는 안 던지셨죠?',
+    },
+    {
+      id: 'reverse', title: '역질문 폭주',
+      player: ['야근수당은요?', '점심 메뉴는 뭔가요?', '팀장님 MBTI는요?', '혹시 반려동물 키우세요?'],
+      leader: '질문은 우리가... 아니...', hr: '어머, 하나씩 해요~', junior: '저한테도 물어보시는 건가요...?',
+    },
+    {
+      id: 'dance', title: '단체 댄스',
+      player: ['음악 주세요! 다 같이 춤춰요~', '합격~ 합격~ 어깨춤~!'],
+      leader: '뭐 하는... 크흠, 한 번만이다!', hr: '어머~ 같이 춰요~!', junior: '저, 저도 괜찮을까요...?',
+    },
+    {
+      id: 'banzai', title: '책상 위 만세',
+      player: ['취업 만세!!', '만세! 만세! 만세!'],
+      leader: '내려오세요... 일단 박수는...', hr: '어머나, 활기차시네요~', junior: '만세에~!',
+    },
+  ],
+};

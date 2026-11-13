@@ -126,7 +126,7 @@ test('개수와 장애물', () => {
   assert.equal(L.obstacles.filter((o) => o.radius === 0.7).length, 3 + 2 + 1); // 간판 + 벤치 2개 + 파쇄기
   assert.equal(L.obstacles.filter((o) => o.radius === 0.5).length, 3); // 위로 오브젝트
   // 세탁소 건물 외곽 원의 장애물은 따로 센다(laundryLayout.test.js). 세탁기·빨랫줄은 실내(interiors.test.js)로 옮겼다.
-  const laundryR = [L.buildings[0].obstacleRadius];
+  const laundryR = L.buildings.map((b) => b.obstacleRadius); // 세탁소 + 면접장 외곽 원
   const laundryCount = L.obstacles.filter((o) => laundryR.includes(o.radius)).length;
   assert.ok(laundryCount >= 8);
   assert.equal(L.obstacles.length - laundryCount, interiorTrees.length + L.rocks.length + 4 + 3 + 3 + 2 + 1);
@@ -204,9 +204,9 @@ const comfort = L.interactables.filter((i) => i.kind === 'comfort' || i.kind ===
 const seats = L.interactables.filter((i) => i.kind === 'seat');
 const furnaceI = L.interactables.find((i) => i.id === 'furnace');
 
-test('상호작용 대상 8개: 소각로 + 위로 오브젝트 3개 + 벤치 2개 + 세탁소 건물 + 세탁소 문', () => {
-  assert.equal(L.interactables.length, 8);
-  assert.deepEqual(L.interactables.map((i) => i.id), ['furnace', 'comfort-0', 'comfort-1', 'comfort-2', 'seat-0', 'seat-1', 'laundry', 'laundry-door']);
+test('상호작용 대상 10개: 소각로 + 위로 오브젝트 3개 + 벤치 2개 + 세탁소 건물·문 + 면접장 건물·문', () => {
+  assert.equal(L.interactables.length, 10);
+  assert.deepEqual(L.interactables.map((i) => i.id), ['furnace', 'comfort-0', 'comfort-1', 'comfort-2', 'seat-0', 'seat-1', 'laundry', 'laundry-door', 'interview', 'interview-door']);
   assert.deepEqual(furnaceI, {
     id: 'furnace', label: '소각로', kind: 'furnace', x: FURNACE.x, z: FURNACE.z, radius: FURNACE.radius,
     interactRange: FURNACE.radius + PLAYER.radius + 0.8,

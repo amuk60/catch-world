@@ -4,8 +4,9 @@ import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { PLAYER_MODEL } from './config.js';
 import { clipNameForState, findClip, FADE_SECONDS } from './logic/animation.js';
 import { createOutfitLook } from './outfitLook.js';
+import { createFx } from './actor.js';
 
-const ACTION_CLIPS = ['emote-no', 'pick-up', 'attack-melee-right', 'interact-right', 'emote-yes']; // 구역 행동(소각장·세탁소)에 쓰는 클립
+const ACTION_CLIPS = ['emote-no', 'pick-up', 'attack-melee-right', 'interact-right', 'emote-yes', 'interact-left', 'jump']; // 구역 행동(소각장·세탁소·면접장)에 쓰는 클립
 const ACTION_FADE = 0.15; // 행동 클립으로 넘어갈 때 크로스페이드(초)
 const HAND_BONE = /arm[-_ ]?right|right[-_ ]?(hand|arm)|hand[-_ ]?r/i;
 
@@ -20,6 +21,7 @@ export function createPlayer(gltf) {
   });
   group.add(model);
   const look = createOutfitLook(model);
+  const fx = createFx(group); // 면접장 장면의 튀기·돌기·책상 위 이동(begin/end 사이에만 group 위치를 맡는다)
 
   const mixer = new THREE.AnimationMixer(model);
   const actions = {};
@@ -85,6 +87,7 @@ export function createPlayer(gltf) {
 
   return {
     group,
+    fx,
     setState,
     handBoneName: handBone?.name ?? null,
     // 옷 상태('clean' | 'dirty' | 'tank' | 'drying' | 'dry')에 맞춰 겉모습을 바꾼다(정장 / 그을음 / 흰 나시).
@@ -135,6 +138,7 @@ export function createPlayer(gltf) {
         if (k >= 1) turn = null;
       }
       mixer.update(dt);
+      fx.update(dt);
     },
   };
 }

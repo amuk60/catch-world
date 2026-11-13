@@ -1,4 +1,4 @@
-// 브라우저 전용: 공간 전환 오버레이(차원문)·툴팁·말풍선·E 키 안내·포춘쿠키 모달·전역 스트레스 바·행동 막대(구역마다 버튼이 바뀐다)·불멍 안내·감소량(-4) 팝업·측면 팝업(목표 달성)·가운데 팝업(지수 0)·캐치 칩(HTML). 컨테이너(#game) 안에 절대 위치로 놓는다.
+// 브라우저 전용: 공간 전환 오버레이(차원문)·툴팁·말풍선·면접장 말풍선들과 답변 선택 창·E 키 안내·포춘쿠키 모달·전역 스트레스 바·행동 막대(구역마다 버튼이 바뀐다, 구역에 따라 자동 버튼 없음)·불멍 안내·감소량(-4) 팝업·측면 팝업(목표 달성)·가운데 팝업(지수 0)·캐치 칩(HTML). 컨테이너(#game) 안에 절대 위치로 놓는다.
 import { barRatio } from './logic/burn.js';
 import { emptyMessage, goalMessage, readyMessage } from './logic/cta.js';
 
@@ -130,7 +130,34 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
   // 공간 전환 오버레이(차원문): 화면 가장자리에서 가운데로 닫히는 빛의 원. --r 은 구멍 반지름(가장 먼 모서리 거리의 %).
   const portal = document.createElement('div');
   portal.id = 'portal';
-  container.append(tooltip, bubble, prompt, fortune, stress, actionBar, meditate, ctaChip, side, result, portal);
+  // 면접장 말풍선들(말하는 사람마다 하나): 플레이어와 면접관 3명의 머리 위에 main 이 위치를 정해 준다.
+  const speechLayer = document.createElement('div');
+  speechLayer.id = 'speech-layer';
+  const speeches = new Map(); // 말하는 사람 id -> { el, timer }
+  // 답변 선택 창(하단): 질문 + 선택지 3개(실제로 할 말 + 작은 색 라벨) + "다음에 할게요".
+  const choice = document.createElement('div');
+  choice.id = 'choice';
+  choice.setAttribute('role', 'dialog');
+  choice.setAttribute('aria-label', '면접 질문에 답하기');
+  choice.innerHTML = `
+    <div class="choice-card">
+      <div class="choice-q"><b class="choice-who"></b><span class="choice-text"></span></div>
+      <div class="choice-list"></div>
+      <button type="button" class="choice-cancel"><span class="choice-cancel-label"></span><span class="keycap">Esc</span></button>
+    </div>`;
+  const choiceWho = choice.querySelector('.choice-who');
+  const choiceText = choice.querySelector('.choice-text');
+  const choiceList = choice.querySelector('.choice-list');
+  const choiceCancel = choice.querySelector('.choice-cancel');
+  const choiceCancelLabel = choice.querySelector('.choice-cancel-label');
+  let choiceHandlers = {};
+  choice.addEventListener('pointerdown', (e) => { if (e.target.closest('button')) e.preventDefault(); }); // 버튼이 포커스를 가져가지 않게
+  choiceList.addEventListener('click', (e) => {
+    const button = e.target.closest('button');
+    if (button) choiceHandlers.onPick?.(Number(button.dataset.index));
+  });
+  choiceCancel.addEventListener('click', () => choiceHandlers.onCancel?.());
+  container.append(tooltip, bubble, speechLayer, prompt, fortune, stress, actionBar, meditate, ctaChip, side, result, choice, portal);
   let stressStart = 100;
 
   cookieButton.addEventListener('click', () => onCrack());
@@ -146,7 +173,85 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
     fortune.dataset.stage = next ?? '';
   }
 
+  function removeSpeech(id) {
+    const s = speeches.get(id);
+    if (!s) return;
+    clearTimeout(s.timer);
+    s.el.remove();
+    speeches.delete(id);
+  }
+
   return {
+    // 면접장 말풍선. id: 'player' | 면접관 id, name: 이름표(없으면 생략), seconds 뒤에 스스로 사라진다(0 이하면 clearSpeech 로 지울 때까지).
+    // 같은 id 로 다시 부르면 내용을 바꾸고 시간을 새로 센다.
+    say(id, text, { name = '', seconds = 2.3, big = false } = {}) {
+      let s = speeches.get(id);
+      if (!s) {
+        const el = document.createElement('div');
+        el.className = `speech speech-${id}`;
+        speechLayer.append(el);
+        s = { el, timer: 0 };
+        speeches.set(id, s);
+      }
+      clearTimeout(s.timer);
+      s.el.classList.toggle('big', big);
+      s.el.replaceChildren();
+      if (name) {
+        const who = document.createElement('b');
+        who.className = 'speech-who';
+        who.textContent = name;
+        s.el.append(who);
+      }
+      s.el.append(text);
+      if (seconds > 0) s.timer = setTimeout(() => removeSpeech(id), seconds * 1000);
+    },
+    clearSpeech(id) {
+      if (id === undefined) for (const key of [...speeches.keys()]) removeSpeech(key);
+      else removeSpeech(id);
+    },
+    speechIds: () => [...speeches.keys()],
+    // 말풍선은 머리 위 화면 좌표에 놓되, 옆 사람과 겹치지 않게 shift(px) 만큼 비켜 놓고(꼬리는 머리를 가리킨다) 화면 위·옆으로 잘리지 않게 안쪽으로 당긴다.
+    positionSpeech(id, screenX, screenY, shift = 0) {
+      const s = speeches.get(id);
+      if (!s) return;
+      const w = s.el.offsetWidth;
+      const h = s.el.offsetHeight;
+      const x = Math.min(Math.max(screenX + shift, w / 2 + 6), container.clientWidth - w / 2 - 6);
+      const y = Math.max(screenY, h + 16);
+      s.el.style.left = `${x}px`;
+      s.el.style.top = `${y}px`;
+      s.el.style.setProperty('--tail', `${Math.max(-w / 2 + 14, Math.min(w / 2 - 14, screenX - x))}px`);
+    },
+    // 답변 선택 창. choices: [{ key, type, text }]. onPick(선택 번호), onCancel().
+    openChoice({ who, question, choices, cancelLabel, onPick, onCancel }) {
+      choiceWho.textContent = who;
+      choiceText.textContent = question;
+      choiceList.replaceChildren(...choices.map((c, i) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.dataset.index = String(i);
+        button.dataset.type = c.type;
+        const keycap = document.createElement('span');
+        keycap.className = 'keycap';
+        keycap.textContent = c.key;
+        const tag = document.createElement('span');
+        tag.className = `choice-tag tag-${c.type}`;
+        tag.textContent = c.type;
+        const line = document.createElement('span');
+        line.className = 'choice-line';
+        line.textContent = c.text;
+        button.append(keycap, tag, line);
+        return button;
+      }));
+      choiceCancelLabel.textContent = cancelLabel;
+      choiceHandlers = { onPick, onCancel };
+      choice.classList.add('open');
+    },
+    closeChoice() {
+      choice.classList.remove('open');
+      choiceHandlers = {};
+    },
+    isChoiceOpen: () => choice.classList.contains('open'),
     // 전환 오버레이: radius 1 = 활짝(보이지 않음), 0 = 화면 전체가 덮임. 전환 중에만 켜진다.
     setPortal(radius) {
       const open = radius >= 1;
@@ -214,12 +319,13 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
       stressFill.style.width = `${barRatio(value, stressStart) * 100}%`;
     },
     // 행동 막대. showActionBar 로 구역의 버튼(buttons: [{ id, key, label }])을 만들어 보이게 하고 handlers 를 등록, updateActionBar 로 버튼 상태를 갱신(매 프레임 불러도 된다).
-    showActionBar({ zoneId = null, buttons = [], onAction = () => {}, onToggleAuto = () => {} } = {}) {
+    // auto: false 면 자동(R) 버튼을 만들지 않는다(면접장).
+    showActionBar({ zoneId = null, buttons = [], auto = true, onAction = () => {}, onToggleAuto = () => {} } = {}) {
       barHandlers = { onAction, onToggleAuto };
       barZone = zoneId;
       barButtons = {};
       actionBar.replaceChildren();
-      for (const b of [...buttons, AUTO_BUTTON]) {
+      for (const b of auto ? [...buttons, AUTO_BUTTON] : buttons) {
         barButtons[b.id] = makeButton(b);
         actionBar.append(barButtons[b.id]);
       }
@@ -233,8 +339,10 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
         button.setAttribute('aria-disabled', enabled ? 'false' : 'true');
         button.title = enabled ? '' : TOO_FAR;
       }
-      barButtons.auto.classList.toggle('on', Boolean(state.auto));
-      barButtons.auto.setAttribute('aria-pressed', state.auto ? 'true' : 'false');
+      if (barButtons.auto) {
+        barButtons.auto.classList.toggle('on', Boolean(state.auto));
+        barButtons.auto.setAttribute('aria-pressed', state.auto ? 'true' : 'false');
+      }
       actionBar.classList.toggle('busy', Boolean(state.busy));
     },
     hideActionBar() {

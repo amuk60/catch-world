@@ -77,6 +77,43 @@
     @keyframes delta-rise {
       0% { opacity: 1; margin-top: 0; } 70% { opacity: 1; } 100% { opacity: 0; margin-top: -40px; }
     }
+    /* 면접장 말풍선(플레이어·면접관마다 하나, 머리 위. 위치는 JS 가 매 프레임 지정)과 답변 선택 창. */
+    #speech-layer { position: absolute; inset: 0; pointer-events: none; z-index: 3; overflow: hidden; }
+    .speech { position: absolute; left: 0; top: 0; max-width: 170px; padding: 7px 11px; border-radius: 12px; background: #fff; color: #2a2a40;
+      font-size: 14px; line-height: 1.35; text-align: center; word-break: keep-all; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      transform: translate(-50%, -100%); margin-top: -8px; animation: speech-in 0.18s ease-out; }
+    .speech::after { content: ''; position: absolute; left: calc(50% + var(--tail, 0px)); top: 100%; margin-left: -7px; border: 7px solid transparent; border-top-color: #fff; }
+    .speech-who { display: block; margin-bottom: 2px; font-size: 11px; font-weight: 700; color: #8a5a2a; }
+    .speech-player { background: #fff3d6; max-width: 240px; font-size: 15px; font-weight: 600; }
+    .speech-player::after { border-top-color: #fff3d6; }
+    .speech.big { max-width: 280px; padding: 10px 22px; border: 3px solid #f0b429; background: #fff6c8; color: #7a3b00; font-size: 26px; font-weight: 800; }
+    .speech.big::after { border-top-color: #fff6c8; }
+    .speech.big .speech-who { font-size: 12px; }
+    .speech-leader .speech-who { color: #b4382e; }
+    .speech-hr .speech-who { color: #c2569a; }
+    .speech-junior .speech-who { color: #3d7be0; }
+    @keyframes speech-in { from { opacity: 0; margin-top: 4px; } to { opacity: 1; margin-top: -8px; } }
+    #choice { position: absolute; left: 0; right: 0; bottom: 0; display: none; justify-content: center; padding: 0 12px 14px;
+      pointer-events: none; z-index: 3; }
+    #choice.open { display: flex; }
+    .choice-card { width: min(700px, 100%); box-sizing: border-box; padding: 14px 16px 10px; border-radius: 16px; pointer-events: auto;
+      background: rgba(253, 246, 227, 0.97); color: #3a2f1f; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); }
+    .choice-q { margin-bottom: 10px; font-size: 17px; font-weight: 700; line-height: 1.4; }
+    .choice-who { margin-right: 8px; padding: 2px 8px; border-radius: 999px; background: #3a2f1f; color: #fdf6e3; font-size: 13px; }
+    .choice-list { display: flex; flex-direction: column; gap: 7px; }
+    .choice-list button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border: 1px solid #d8c9a4; border-radius: 12px;
+      background: #fff; color: #3a2f1f; font: inherit; font-size: 15px; text-align: left; cursor: pointer; transition: background 0.12s, transform 0.12s; }
+    .choice-list button:hover { background: #fff1d8; transform: translateX(3px); }
+    .choice-list .keycap { flex: none; background: #3a2f1f; color: #fff; box-shadow: 0 2px 0 #1b140a; }
+    .choice-tag { flex: none; padding: 1px 8px; border-radius: 999px; color: #fff; font-size: 11px; font-weight: 700; }
+    .tag-정석 { background: #3d7be0; }
+    .tag-솔직 { background: #2e9d6a; }
+    .tag-엉뚱 { background: #e8833a; }
+    .choice-line { flex: 1; min-width: 0; line-height: 1.35; word-break: keep-all; }
+    .choice-cancel { display: block; margin: 8px 0 0 auto; padding: 4px 8px; border: 0; background: none; color: #6b5d44; font: inherit; font-size: 13px;
+      text-decoration: underline; cursor: pointer; }
+    .choice-cancel:hover { color: #3a2f1f; }
+    .choice-cancel .keycap { margin-left: 6px; min-width: 0; padding: 0 5px; font-size: 11px; text-decoration: none; display: inline-block; }
     /* 클리어 팝업(종료 화면)과 캐치 칩. */
     #result { position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
       background: rgba(10, 10, 20, 0.7); z-index: 4; }

@@ -11,8 +11,8 @@ const d = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const inside = (p, b, m = 0) => p.x >= b.minX + m && p.x <= b.maxX - m && p.z >= b.minZ + m && p.z <= b.maxZ - m;
 const WALK_MARGIN = PLAYER.radius + 0.5;
 
-test('SPACES: yard(원점)와 laundry(멀리 떨어진 실내) 두 공간', () => {
-  assert.deepEqual(Object.keys(SPACES).sort(), ['laundry', 'yard']);
+test('SPACES: yard(원점)와 laundry·interview(멀리 떨어진 실내) 세 공간', () => {
+  assert.deepEqual(Object.keys(SPACES).sort(), ['interview', 'laundry', 'yard']);
   assert.deepEqual(SPACES.yard.origin, { x: 0, z: 0 });
   assert.deepEqual(SPACES.laundry.origin, LAUNDRY_INTERIOR.origin);
   assert.ok(SPACES.laundry.origin.x >= 200, '마당의 안개·그림자와 겹치지 않을 만큼 멀다');
