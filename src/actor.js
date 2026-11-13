@@ -8,13 +8,15 @@ const ease = (k) => k * k * (3 - 2 * k); // smoothstep
 const FADE = 0.2;
 
 // group 의 위치·회전에 얹는 움직임. begin() 부터 end() 까지만 group 위치를 맡는다(앵커 = 기준 위치).
-// bounce: |sin| 로 튀어 오름(진폭은 부드럽게 변한다), spin: 제자리에서 turns 바퀴 돈다(회전에 변화량만 더해 다른 회전과 겹쳐도 된다), moveAnchor: 앵커를 부드럽게 옮긴다(arc 만큼 포물선).
+// bounce: |sin| 로 튀어 오름(진폭은 부드럽게 변한다. lean 이 있으면 튀어 오를 때 몸이 그만큼(라디안) 앞으로 숙는다: 앉아서 답할 때), spin: 제자리에서 turns 바퀴 돈다(회전에 변화량만 더해 다른 회전과 겹쳐도 된다), moveAnchor: 앵커를 부드럽게 옮긴다(arc 만큼 포물선).
 export function createFx(group) {
   let anchor = null;
   let t = 0;
   let amp = 0;
   let ampTarget = 0;
   let freq = 3;
+  let lean = 0; // 앞으로 숙이는 최대 각도(라디안)의 현재값/목표값
+  let leanTarget = 0;
   let spin = null; // { turns, seconds, t, last }
   let move = null; // { from, to, seconds, t, arc }
   const fx = {
@@ -22,16 +24,18 @@ export function createFx(group) {
     get anchor() { return anchor; },
     begin() {
       anchor = { x: group.position.x, y: group.position.y, z: group.position.z };
-      t = 0; amp = 0; ampTarget = 0; spin = null; move = null;
+      t = 0; amp = 0; ampTarget = 0; lean = 0; leanTarget = 0; spin = null; move = null;
+      group.rotation.order = 'YXZ'; // 앞으로 숙이기(x)가 몸의 방향(y)을 따라가게
     },
     // 끝: 앵커 자리로 되돌려 놓고 맡은 것을 놓는다.
     end() {
       if (!anchor) return;
       group.position.set(anchor.x, anchor.y, anchor.z);
-      anchor = null; amp = 0; ampTarget = 0; spin = null; move = null;
+      group.rotation.x = 0;
+      anchor = null; amp = 0; ampTarget = 0; lean = 0; leanTarget = 0; spin = null; move = null;
     },
     setAnchor(patch) { if (anchor) Object.assign(anchor, patch); },
-    setBounce(cfg) { ampTarget = cfg ? cfg.amp : 0; if (cfg) freq = cfg.freq; },
+    setBounce(cfg) { ampTarget = cfg ? cfg.amp : 0; leanTarget = cfg?.lean ?? 0; if (cfg) freq = cfg.freq; },
     startSpin({ turns, seconds }) { spin = { turns, seconds, t: 0, last: 0 }; },
     moveAnchor(to, seconds, arc = 0) {
       if (!anchor) return;
@@ -41,6 +45,7 @@ export function createFx(group) {
       if (!anchor) return;
       t += dt;
       amp += (ampTarget - amp) * (1 - Math.exp(-14 * dt));
+      lean += (leanTarget - lean) * (1 - Math.exp(-14 * dt));
       let arcY = 0;
       if (move) {
         move.t += dt;
@@ -52,8 +57,10 @@ export function createFx(group) {
         arcY = move.arc * Math.sin(Math.PI * k);
         if (k >= 1) move = null;
       }
-      const hop = amp > 1e-4 ? Math.abs(Math.sin(Math.PI * freq * t)) * amp : 0;
+      const beat = Math.abs(Math.sin(Math.PI * freq * t));
+      const hop = amp > 1e-4 ? beat * amp : 0;
       group.position.set(anchor.x, anchor.y + hop + arcY, anchor.z);
+      group.rotation.x = lean > 1e-4 ? beat * lean : 0;
       if (spin) {
         spin.t += dt;
         const k = Math.min(1, spin.t / spin.seconds);

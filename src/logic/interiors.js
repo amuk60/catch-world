@@ -114,7 +114,7 @@ export function buildLaundryInterior() {
 }
 
 // ---- 면접장 실내 ----
-// 안쪽 면 기준 12(x) x 10(z). 북쪽(뒷) 벽 앞에 긴 면접관 책상 + 책상 뒤 면접관 3명(팀장 가운데, 인사담당 서쪽, 막내 동쪽), 책상 앞에 지원자 의자.
+// 안쪽 면 기준 12(x) x 10(z). 북쪽(뒷) 벽 앞에 긴 면접관 책상 + 책상 뒤 면접관 3명(팀장 가운데, 인사담당 서쪽, 예비 사수 동쪽), 책상 앞에 지원자 의자.
 // 서쪽 벽에 출입문과 칠판, 북쪽 벽에 간판 "면접장"·벽시계·창. 책상 양끝은 낮은 책장으로 막아 면접관 자리에는 들어갈 수 없다.
 const INTERVIEW_EXIT = { z: 2 };
 const INTERVIEW_WALL_PIECES = {
@@ -125,8 +125,9 @@ const INTERVIEW_WALL_PIECES = {
 };
 const DESK = { z: -2.0, scale: 1.9, xs: [-1.4, 0, 1.4], top: 0.72, radius: 0.6, circleXs: [-1.8, -0.9, 0, 0.9, 1.8] }; // 책상 3개를 이어 4.2 길이의 긴 책상으로(면접관이 서면 상체가 보이게 낮게)
 const SEAT = { z: -3.0, y: 0.22, chair: { name: 'chairDesk', scale: 1.9 } }; // 면접관 의자(책상 뒤). y 는 앉은 캐릭터 모델 원점 높이(앉는 동작이 몸을 낮춘다)
-const SEAT_ORDER = [['hr', -1.4], ['leader', 0], ['junior', 1.4]];
-const GUEST_CHAIR = { x: 0, z: 0.3, scale: 2.6, radius: 0.4 }; // 지원자 의자(북쪽을 본다)
+const SEAT_ORDER = [['hr', -1.4], ['leader', 0], ['mentor', 1.4]];
+const GUEST_CHAIR = { x: 0, z: 0.3, scale: 2.6, radius: 0.4, seatY: 0.5, seatForward: 0.06, interactRange: 2.0 }; // 지원자 의자(북쪽을 본다). seatY: 앉은 캐릭터 모델 원점 높이, seatForward: 등받이에 안 파묻히게 책상 쪽으로 앉는 거리(둘 다 화면으로 맞춘 값)
+const GUEST_SEAT_ID = 'interview-chair';
 const GUEST_SPOT = { x: 0, z: 1.9 }; // 지원자가 서는 자리(의자 남쪽)
 
 export function buildInterviewInterior() {
@@ -158,7 +159,7 @@ export function buildInterviewInterior() {
   const seats = SEAT_ORDER.map(([id, rx]) => {
     const p = at(rx, SEAT.z);
     return { id, x: p.x, z: p.z, y: SEAT.y, rotY: 0, chair: { ...SEAT.chair, x: p.x, z: p.z, rotY: 0 } };
-  }).sort((a, b) => ['leader', 'hr', 'junior'].indexOf(a.id) - ['leader', 'hr', 'junior'].indexOf(b.id));
+  }).sort((a, b) => ['leader', 'hr', 'mentor'].indexOf(a.id) - ['leader', 'hr', 'mentor'].indexOf(b.id));
 
   // 지원자 의자와 서 있을 자리, 러그, 그 밖의 장식.
   const guest = at(GUEST_CHAIR.x, GUEST_CHAIR.z);
@@ -175,9 +176,14 @@ export function buildInterviewInterior() {
   const exitPos = at(-width / 2, INTERVIEW_EXIT.z);
   const exit = { x: exitPos.x, z: exitPos.z, rotY: Math.PI / 2 };
   const exitSpot = { x: exit.x + INTERACT.inset, z: exit.z };
+  const standSpot = at(GUEST_SPOT.x, GUEST_SPOT.z);
   const interactables = [{
     id: 'interview-exit', label: '출구', kind: 'door', to: 'yard', x: exitSpot.x, z: exitSpot.z, radius: INTERACT.radius,
     interactRange: INTERACT.range, walkTo: { x: exit.x + 1.4, z: exit.z },
+  }, {
+    // 지원자 의자: 마당 벤치와 같은 'seat' 종류(E 앉기, 일어나면 바라보는 쪽 1칸 앞). 책상(북쪽)을 보고 앉는다. 면접 구역은 이 자리에 앉아 있을 때만 켜진다(zones.js 의 seatId).
+    id: GUEST_SEAT_ID, label: '면접 의자', kind: 'seat', x: guest.x, z: guest.z, radius: GUEST_CHAIR.radius, interactRange: GUEST_CHAIR.interactRange,
+    seat: { x: guest.x, z: guest.z + Math.cos(chair.rotY) * GUEST_CHAIR.seatForward, y: GUEST_CHAIR.seatY, rotY: chair.rotY },
   }];
   const arrival = { x: exit.x + ARRIVAL_DISTANCE, z: exit.z, rotY: Math.PI / 2 };
 
@@ -190,7 +196,7 @@ export function buildInterviewInterior() {
   return {
     id: 'interview', origin: { ...origin }, bounds, wallHeight, tile: TILE, walls, exit, arrival, interactables,
     furniture, seats, chair, obstacles, lamps, sign, board, clock, deskTop,
-    standingSpot: at(GUEST_SPOT.x, GUEST_SPOT.z),
+    standingSpot: standSpot, seatId: GUEST_SEAT_ID,
     zoneCenter: at(0, 0.1),
   };
 }

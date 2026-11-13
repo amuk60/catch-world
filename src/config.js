@@ -153,16 +153,16 @@ export const INTERVIEW_FINALE_SECONDS = 3.6;
 export const SPEECH_SECONDS = 2.3;
 
 // 면접장의 모든 글(질문·답변·면접관 반응·돌발행동·첫 대사). 팀이 자유롭게 고쳐 쓴다 (초안).
-// - 면접관 id: leader(엄격한 팀장) / hr(친절한 척하는 인사담당) / junior(눈치만 보는 막내). model 은 캐릭터 모델 이름이다.
+// - 면접관 id: leader(엄격한 팀장) / hr(친절한 척하는 인사담당) / mentor(말수 적은 예비 사수: 같이 일할 선배, 속으론 진심으로 응원하고 가끔 현실적인 한마디). model 은 캐릭터 모델 이름이다.
 // - questions: 12개. asker 가 그 질문을 던지는 면접관. answers 는 정확히 정석/솔직/엉뚱 하나씩, text 는 40자 안팎(버튼과 말풍선에 그대로 뜬다).
 // - reactions: 답변 종류별로 면접관마다 대사 후보(그중 하나를 무작위로). 정석은 박수, 솔직은 당황, 엉뚱은 폭소 연출이 함께 나온다.
-// - improvs: 돌발행동 4개. id 는 코드의 연출 이름이라 바꾸지 말고, 대사(player/leader/hr/junior)만 고친다. player 는 차례로 나오는 말풍선이다.
+// - improvs: 돌발행동 4개. id 는 코드의 연출 이름이라 바꾸지 말고, 대사(player/leader/hr/mentor)만 고친다. player 는 차례로 나오는 말풍선이다.
 // - openings: 면접장에 들어와 자리에 설 때 팀장의 첫 대사. 옷 겉모습(suit 정장 / soot 그을음 / tank 나시)에 따라 다르다.
 export const INTERVIEW = {
   interviewers: [
     { id: 'leader', name: '팀장', model: 'character-male-b', scale: 1.75 },
     { id: 'hr', name: '인사담당', model: 'character-female-e', scale: 1.7 },
-    { id: 'junior', name: '막내', model: 'character-male-f', scale: 1.6 },
+    { id: 'mentor', name: '예비 사수', model: 'character-male-f', scale: 1.6 },
   ],
   openings: {
     suit: '자, 앉으세요. 첫 질문 드리겠습니다.',
@@ -214,7 +214,7 @@ export const INTERVIEW = {
       ],
     },
     {
-      asker: 'junior', text: '저기... 이 볼펜을 팔아 보시겠어요?',
+      asker: 'mentor', text: '이 볼펜, 한번 팔아 보세요. 저도 궁금해서요.',
       answers: [
         { type: '정석', text: '매끄럽게 써져서 일이 즐거워지는 볼펜입니다.' },
         { type: '솔직', text: '쓰다 보면 정이 듭니다. 일단 써 보세요.' },
@@ -222,7 +222,7 @@ export const INTERVIEW = {
       ],
     },
     {
-      asker: 'junior', text: '퇴근 후에 회식이 있으면... 어떠세요?',
+      asker: 'mentor', text: '저희 팀은 가끔 회식을 하는데, 괜찮으세요?',
       answers: [
         { type: '정석', text: '팀워크를 다지는 자리라면 기쁘게 참석하겠습니다.' },
         { type: '솔직', text: '가끔은 좋아요. 다만 2차는 내일의 제가 말려요.' },
@@ -262,7 +262,7 @@ export const INTERVIEW = {
       ],
     },
     {
-      asker: 'junior', text: '자신을... 동물에 비유하면 뭐예요?',
+      asker: 'mentor', text: '같이 일할 사이니까 묻는데, 동물로 치면 뭐예요?',
       answers: [
         { type: '정석', text: '꾸준히 걷는 거북이입니다. 끝까지 갑니다.' },
         { type: '솔직', text: '월요일엔 나무늘보, 금요일엔 치타예요.' },
@@ -274,39 +274,39 @@ export const INTERVIEW = {
     정석: {
       leader: ['흠, 나쁘지 않군요.', '기본기가 탄탄하네요.'],
       hr: ['어머~ 정말 훌륭하세요!', '역시 준비 많이 하셨네요~'],
-      junior: ['와... 멋있다.', '(짝짝짝...)'],
+      mentor: ['좋네요. 같이 일하면 든든하겠어요.', '(조용히 고개를 끄덕인다)'],
     },
     솔직: {
       leader: ['...솔직하시군요. 당황스럽게도.', '허, 그런 대답은 처음이라.'],
       hr: ['어머, 그렇게 말씀하시면... 호호.', '아, 네, 네~ 솔직하시네요~'],
-      junior: ['어, 어떡해...', '헉, 팀장님 눈치가...'],
+      mentor: ['...저는 그런 솔직함, 좋아해요.', '현실적이라 마음에 드네요. 속으로만요.'],
     },
     엉뚱: {
       leader: ['푸핫! ...크흠, 계속하죠.', '웃음을 참느라 힘듭니다.'],
       hr: ['꺄하하! 너무 웃겨요~', '호호호, 이건 적어 둘게요~'],
-      junior: ['푸하하, 죄송해요 웃음이...', '저... 방금 웃어도 됐나요?'],
+      mentor: ['...푸흡. 아, 아닙니다. 계속하세요.', '재밌네요. 우리 팀 분위기에 딱이에요.'],
     },
   },
   improvs: [
     {
       id: 'paperToss', title: '서류 하늘 던지기',
       player: ['서류는... 하늘로!', '저는 오늘부로 퇴장하겠습니다!'],
-      leader: '자, 잠깐! 어디 가세요!', hr: '어머나, 서류가 눈처럼...', junior: '제... 제 서류는 안 던지셨죠?',
+      leader: '자, 잠깐! 어디 가세요!', hr: '어머나, 서류가 눈처럼...', mentor: '서류는 제가 주울게요. 응원은... 하고 있습니다.',
     },
     {
       id: 'reverse', title: '역질문 폭주',
       player: ['야근수당은요?', '점심 메뉴는 뭔가요?', '팀장님 MBTI는요?', '혹시 반려동물 키우세요?'],
-      leader: '질문은 우리가... 아니...', hr: '어머, 하나씩 해요~', junior: '저한테도 물어보시는 건가요...?',
+      leader: '질문은 우리가... 아니...', hr: '어머, 하나씩 해요~', mentor: '저희 팀 야근은... 아, 아닙니다.',
     },
     {
       id: 'dance', title: '단체 댄스',
       player: ['음악 주세요! 다 같이 춤춰요~', '합격~ 합격~ 어깨춤~!'],
-      leader: '뭐 하는... 크흠, 한 번만이다!', hr: '어머~ 같이 춰요~!', junior: '저, 저도 괜찮을까요...?',
+      leader: '뭐 하는... 크흠, 한 번만이다!', hr: '어머~ 같이 춰요~!', mentor: '...춤은 못 춰도 박수는 칠게요.',
     },
     {
       id: 'banzai', title: '책상 위 만세',
       player: ['취업 만세!!', '만세! 만세! 만세!'],
-      leader: '내려오세요... 일단 박수는...', hr: '어머나, 활기차시네요~', junior: '만세에~!',
+      leader: '내려오세요... 일단 박수는...', hr: '어머나, 활기차시네요~', mentor: '내려오실 땐 조심하세요. 만세, 좋았어요.',
     },
   ],
 };

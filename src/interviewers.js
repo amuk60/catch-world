@@ -1,4 +1,4 @@
-// 브라우저 전용: 면접관 3명(팀장·인사담당·막내). 책상 뒤 의자에 앉아 있고(sit 동작), 답변 반응·돌발행동·완주 때 한 번짜리 동작·박수·튀기·돌기·일어서기를 한다.
+// 브라우저 전용: 면접관 3명(팀장·인사담당·예비 사수). 책상 뒤 의자에 앉아 있고(sit 동작), 답변 반응·돌발행동·완주 때 한 번짜리 동작·박수·튀기·돌기·일어서기를 한다.
 // 캐릭터 모델은 config 의 INTERVIEW.interviewers 에서 온다. 모델을 못 불러오면 색 막대 대체물(말풍선·연출 신호는 그대로 동작).
 import * as THREE from 'three';
 import { createActor, createFx } from './actor.js';
@@ -9,7 +9,7 @@ const CHAIR_SECONDS = 0.35;
 const STAND_SECONDS = 0.35;
 const STAND_LIFT = 0.12; // 일어설 때 앉은 높이보다 더 올라오는 거리
 const BUBBLE_SHIFT = 62; // 면접관 말풍선 가로 비킴(px)
-const COLORS = { leader: 0xb4382e, hr: 0xc2569a, junior: 0x3d7be0 };
+const COLORS = { leader: 0xb4382e, hr: 0xc2569a, mentor: 0x3d7be0 };
 
 // 모델이 없을 때의 대체 연기자: 색 막대. 연출 호출은 모두 받되 동작은 없다.
 function fallbackActor(color) {

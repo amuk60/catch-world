@@ -12,13 +12,13 @@ import {
 import { createPlayer } from './player.js';
 import { createFire } from './fire.js';
 import { createHud } from './hud.js';
-import { interactTarget, hoverLabel, nearestInRange, actionOf } from './logic/interaction.js';
-import { nextMode, showPrompt as promptAllowed } from './logic/playerMode.js';
+import { interactTarget, hoverLabel, nearestInRange, actionOf, standPoint } from './logic/interaction.js';
+import { nextMode, holdsSeat, showPrompt as promptAllowed } from './logic/playerMode.js';
 import { pickFortune } from './logic/fortune.js';
 import { createControls } from './controls.js';
 import { createGameState } from './logic/gameState.js';
 import { ACTION_DEFS, createRunner, fitDurations, canPerform } from './logic/actions.js';
-import { buildZones, activeZone, zoneActions, autoActionsOf } from './logic/zones.js';
+import { buildZones, currentZoneFor, zoneActions, autoActionsOf } from './logic/zones.js';
 import { nearestIndex } from './logic/laundry.js';
 import { buildBuildings, buildCleanShirt, buildCrumpledShirt, LAUNDRY_MODEL_ITEMS } from './laundry.js';
 import { buildInteriorLaundry, INTERIOR_MODEL_ITEMS } from './interiorLaundry.js';
@@ -226,13 +226,14 @@ if (isMobileUA(navigator.userAgent)) {
       bonus: () => applyReduction(INTERVIEW_BONUS, false), // 완주 보너스: 한 번 더(행동 횟수에는 넣지 않는다)
       track,
       outfitState: () => outfit.state,
+      seat: () => (seatItem && holdsSeat(mode) ? { ...seatItem.seat, stand: pushOut(standPoint(seatItem.seat)) } : null), // 면접장 의자에 앉아 있는가(앉은 채 답하고, 돌발행동은 일어났다 다시 앉는다)
     },
   });
 
   // ---- 소각장 행동: 러너가 시간을 재고, 여기서 캐릭터 동작·종이·효과를 맡는다. ----
   // 한숨 -> 주머니에서 종이 꺼내기 -> (대상 쪽으로 돌기) -> 던지기/치기 -> 후련. 던지기/치기 클립만 총 길이가 ACTION_TARGET_SECONDS 가 되도록 느려진다.
   const { durations, speeds } = fitDurations(character ? character.getRawClipDurations() : FALLBACK_RAW_DURATIONS, ACTION_TURN_SECONDS, ACTION_TARGET_SECONDS);
-  let currentZone = null; // 플레이어가 안에 있는 행동 구역(자유 상태일 때만). 행동 막대·숫자 키·자동이 이 구역을 따른다.
+  let currentZone = null; // 지금 행동 막대를 보일 구역: 자유 상태면 서 있는 자리의 구역, 앉아 있으면 그 자리에 묶인 구역(면접장 의자). 막대·숫자 키·자동이 이 구역을 따른다.
   const runner = createRunner({
     durations, turnSeconds: ACTION_TURN_SECONDS, effectAt: ACTION_EFFECT_AT, autoGap: AUTO_GAP,
     canStart: (id) => inRangeFor(id), autoActions: () => autoActionsOf(currentZone),
@@ -443,7 +444,7 @@ if (isMobileUA(navigator.userAgent)) {
 
   // 행동 요청(막대 클릭·숫자 키). 막대가 보이는 구역 안의 자유 상태에서 쉬는 중이고 사정거리 안일 때만 시작한다.
   function requestAction(id) {
-    if (mode !== 'free' || runner.isBusy() || !ACTION_DEFS[id] || !currentZone || ACTION_DEFS[id].zone !== currentZone.id || !inRangeFor(id)) return false;
+    if ((mode !== 'free' && mode !== 'seated') || runner.isBusy() || !ACTION_DEFS[id] || !currentZone || ACTION_DEFS[id].zone !== currentZone.id || !inRangeFor(id)) return false;
     stopWalking();
     if (id === 'interview') return interviewScene.openQuestion(); // 면접 보기: 질문 + 답변 선택 창(지수 감소는 답한 순간)
     if (id === 'improv') return interviewScene.startImprov(); // 돌발행동: 선택 없이 바로
@@ -511,7 +512,7 @@ if (isMobileUA(navigator.userAgent)) {
   // 매 프레임: AUTO 유효성 확인 -> 러너 진행(효과/끝 처리) -> 손 소품·날아가는 종이 -> 행동 막대·불멍 안내·불멍 감소.
   function updateActions(dt) {
     // 지금 있는 행동 구역(가장 가까운 구역 안, 없으면 null). 걷는 중에도 구역이 바뀌면 행동 막대가 바뀐다.
-    currentZone = mode === 'free' ? activeZone(player.position, zones, spaceId) : null;
+    currentZone = currentZoneFor({ mode, pos: player.position, seat: seatItem, zones, spaceId });
     // AUTO 해제 조건: 걷기 시작·앉기·포춘·구역 밖(진행 중인 행동은 끝까지 한다). 다음 행동의 사정거리 밖이면 러너가 canStart 로 끈다.
     if (runner.autoOn && (mode !== 'free' || moveTarget || !currentZone)) runner.cancelAuto();
     for (const e of runner.update(dt)) {
@@ -543,7 +544,7 @@ if (isMobileUA(navigator.userAgent)) {
           auto: currentZone.auto !== false, onAction: requestAction, onToggleAuto: toggleAuto,
         });
       }
-      if (currentZone.id === 'interview') interviewScene.maybeOpening(); // 자리에 처음 선 순간 팀장의 첫 대사(방문마다 한 번, 옷에 따라 다르다)
+      if (currentZone.id === 'interview') interviewScene.maybeOpening(); // 의자에 처음 앉은 순간 팀장의 첫 대사(방문마다 한 번, 옷에 따라 다르다)
       const state = { auto: runner.autoOn, busy: runner.isBusy() };
       for (const id of ids) state[id] = inRangeFor(id);
       hud.updateActionBar(state);
@@ -564,17 +565,15 @@ if (isMobileUA(navigator.userAgent)) {
   }
 
   const SEAT_GLIDE_SPEED = 10; // 앉는 자리로 미끄러지는 지수 보간 속도(1/초, 약 0.5초)
-  const STAND_DISTANCE = 1.0; // 일어날 때 벤치 앞(소각로 쪽)으로 놓는 거리
 
   function stopWalking() {
     moveTarget = null;
     marker.visible = false;
   }
 
-  // 일어난다: 높이를 0 으로 되돌리고 벤치 앞에 놓는다(장애물 밖으로 밀어냄).
+  // 일어난다: 높이를 0 으로 되돌리고 앉았던 방향 앞(벤치는 소각로 쪽, 의자는 책상 쪽)에 놓는다(장애물 밖으로 밀어냄).
   function standUp() {
-    const { x, z, rotY } = seatItem.seat;
-    const p = pushOut({ x: x + Math.sin(rotY) * STAND_DISTANCE, z: z + Math.cos(rotY) * STAND_DISTANCE });
+    const p = pushOut(standPoint(seatItem.seat));
     player.position.set(p.x, 0, p.z);
     seatItem = null;
   }
@@ -583,7 +582,7 @@ if (isMobileUA(navigator.userAgent)) {
   function dispatch(event) {
     const next = nextMode(mode, event);
     if (next === mode) return false;
-    if (mode === 'seated') standUp();
+    if (holdsSeat(mode) && !holdsSeat(next)) standUp(); // 앉은 모드 사이(앉기 <-> 면접 선택·연출)를 오갈 때는 일어나지 않는다
     if (mode === 'fortune') hud.closeFortune();
     mode = next;
     if (mode !== 'free') { runner.cancelAuto(); abortAction(); } // 앉기·포춘 모달을 열면 자동이 꺼지고 진행 중인 행동도 취소된다.
@@ -847,7 +846,7 @@ if (isMobileUA(navigator.userAgent)) {
       bubblePoint.set(player.position.x, 1.9, player.position.z).project(camera);
       hud.positionBubble((bubblePoint.x * 0.5 + 0.5) * w, (-bubblePoint.y * 0.5 + 0.5) * h);
     }
-    character?.setState(mode === 'seated' ? 'sit' : moveTarget ? 'walk' : 'idle');
+    character?.setState(holdsSeat(mode) ? 'sit' : moveTarget ? 'walk' : 'idle');
     // E 키 안내: 포춘 모달 중에는 숨기고, 앉아 있으면 "일어나기", 아니면 가장 가까운 대상의 문구.
     // 빨랫줄 곁은 옷 상태가 정한다: 마른 새 셔츠가 있을 때만 E, 마르는 중이면 누를 수 없는 힌트, 그 밖에는 안내 없음.
     let nextPrompt = null;

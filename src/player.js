@@ -122,12 +122,19 @@ export function createPlayer(gltf) {
       crossTo(shot.action, ACTION_FADE);
     },
     // 행동이 끝났거나 취소됐다: 회전을 멈추고 idle 로 크로스페이드하고 기본 상태 전환을 되살린다.
-    endAction() {
+    // state 가 'sit' 이면 끝난 뒤에도 앉은 채다(면접장 의자에서 답한 뒤): 이미 앉은 클립이면 다시 시작하지 않는다.
+    endAction(state = 'idle') {
       if (!acting) return;
       acting = false;
       turn = null;
-      current = 'idle';
-      if (actions.idle) crossTo(actions.idle, FADE_SECONDS);
+      const to = actions[state] ?? actions.idle;
+      current = actions[state] ? state : 'idle';
+      if (to && playing !== to) crossTo(to, FADE_SECONDS);
+    },
+    // 행동 중 제자리에서 앉은 자세로 크로스페이드한다(의자로 돌아와 앉을 때).
+    sitInPlace() {
+      const to = actions.sit;
+      if (to && playing !== to) crossTo(to, FADE_SECONDS);
     },
     isActing: () => acting,
     update(dt) {

@@ -3,20 +3,22 @@
 // 지수 감소는 main 이 넘겨 준 콜백(reduce/bonus)으로만 한다: 답변·돌발행동은 effect 순간에 reduce(= ACTION_REDUCE), 완주는 bonus 순간에 한 번.
 import * as THREE from 'three';
 import {
-  createBagPicker, createRepeatFreePicker, createRound, createTimeline, answerScript, improvScript, openingFor, pickReactions,
+  createBagPicker, createRepeatFreePicker, createRound, createTimeline, answerScript, improvScript, seatedImprov, openingFor, pickReactions,
 } from './logic/interview.js';
 import { headingY } from './logic/movement.js';
 
 const PAPER_COUNT = 12;
 const PAPER_LIFE = 3.2; // 종이가 날려 떨어져 사라지기까지(초)
 const OPENING_SECONDS = 3.4;
-const ASK_CLIPS = { leader: 'interact-right', hr: 'emote-yes', junior: 'interact-left' }; // 질문할 때 면접관 동작(성격별)
-const PLAYER_SPEECH_Y = 1.9; // 플레이어 머리 위 말풍선 높이
+const ASK_CLIPS = { leader: 'interact-right', hr: 'emote-yes', mentor: 'interact-left' }; // 질문할 때 면접관 동작(성격별)
+const PLAYER_SPEECH_Y = 1.9; // 플레이어 머리 위 말풍선 높이(발 기준)
+const SEATED_SPEECH_Y = 1.4; // 앉아 있을 때(앉은 높이가 이미 position.y 에 들어 있다)
 const RAW_FALLBACK = 0.667;
 
 // ctx: { hud, interviewers, character, player, playerFx, interior, root, camera, renderer, config, params, callbacks, rng }
 // params: { round, speech, answerSeconds, improvSeconds, finaleSeconds }
-// callbacks: { dispatch(event) -> bool, reduce(), bonus(), track(name, params), outfitState() }
+// callbacks: { dispatch(event) -> bool, reduce(), bonus(), track(name, params), outfitState(), seat() }
+// seat(): 지금 앉아 있는 의자 { x, y, z, rotY, stand: { x, z } }(없으면 null). 앉은 채면 답변은 앉은 자세로 하고, 돌발행동은 stand 로 일어나 했다가 다시 앉는다.
 export function createInterviewScene(ctx) {
   const { hud, interviewers, character, player, playerFx, interior, root, camera, renderer, config, params, callbacks } = ctx;
   const rng = ctx.rng ?? Math.random;
@@ -47,6 +49,12 @@ export function createInterviewScene(ctx) {
   const faceTarget = (target) => ({
     desk: interior.deskTop, door: interior.exit, camera: camera.position,
   })[target];
+  const seatNow = () => callbacks.seat?.() ?? null;
+  // 지금 의자에 앉은 모습인가(일어나 나와 있는 동안이나 책상 위에서는 아니다). 말풍선 높이가 달라진다.
+  function isSitting() {
+    const seat = seatNow();
+    return Boolean(seat) && player.position.y > 0.3 && Math.hypot(player.position.x - seat.x, player.position.z - seat.z) < 0.3;
+  }
 
   // ---- 종이 효과(서류 던지기) ----
   function spawnPapers() {
@@ -115,11 +123,19 @@ export function createInterviewScene(ctx) {
       }
       case 'move': {
         if (e.to === 'desk') playerFx.moveAnchor({ x: interior.deskTop.x, y: interior.deskTop.y, z: interior.deskTop.z }, e.seconds, 0.6);
+        else if (e.to === 'stand') playerFx.moveAnchor({ x: current.stand.x, y: 0, z: current.stand.z }, e.seconds, 0.05); // 의자에서 앞으로 미끄러져 나온다
+        else if (e.to === 'seat') playerFx.moveAnchor({ x: current.seat.x, y: current.seat.y, z: current.seat.z }, e.seconds, 0);
         else playerFx.moveAnchor({ x: current.home.x, y: 0, z: current.home.z }, e.seconds, 0.4);
         break;
       }
-      case 'stand': interviewers.stand(e.who); break;
-      case 'sit': interviewers.sit(e.who); break;
+      case 'stand':
+        if (e.who === 'player') character?.idleInPlace(); // 의자에서 일어난다: 앉은 자세 -> 서기
+        else interviewers.stand(e.who);
+        break;
+      case 'sit':
+        if (e.who === 'player') { playerIdleAt = -1; character?.sitInPlace(); } // 다시 앉는다
+        else interviewers.sit(e.who);
+        break;
       case 'papers': spawnPapers(); break;
       case 'effect':
         if (current.kind === 'improv') callbacks.track('improv_action', { id: current.improvId });
@@ -139,18 +155,20 @@ export function createInterviewScene(ctx) {
     hud.clearSpeech();
     character?.beginAction();
     playerFx.begin();
-    current = { timeline: createTimeline(events), home: { x: playerFx.anchor.x, z: playerFx.anchor.z }, ...info };
+    const seat = info.seated ? seatNow() : null;
+    current = { timeline: createTimeline(events), home: seat ? { x: seat.stand.x, z: seat.stand.z } : { x: playerFx.anchor.x, z: playerFx.anchor.z }, seat, stand: seat?.stand, ...info };
     playerIdleAt = -1;
     sceneTime = 0;
     for (const e of current.timeline.update(0)) onEvent(e);
   }
 
   function finish() {
+    const seated = Boolean(current?.seat);
     current = null;
     hud.clearSpeech();
     interviewers.reset();
     playerFx.end();
-    character?.endAction();
+    character?.endAction(seated ? 'sit' : 'idle'); // 앉아서 한 장면은 앉은 자세 그대로 돌아온다
     clearPapers();
     callbacks.dispatch('interview:end');
   }
@@ -227,13 +245,14 @@ export function createInterviewScene(ctx) {
       if (!callbacks.dispatch('interview:pick')) return false;
       asking = null;
       hud.closeChoice();
+      const seated = Boolean(seatNow());
       const result = round.answer();
       callbacks.track('interview_answer', { type: answer.type });
       const events = answerScript({
         type: answer.type, line: answer.text, lines: pickReactions(config.reactions, answer.type, rng),
-        speech: params.speech, total: params.answerSeconds, finale: result.finale, finaleSeconds: params.finaleSeconds, finaleText: config.finale,
+        speech: params.speech, total: params.answerSeconds, finale: result.finale, finaleSeconds: params.finaleSeconds, finaleText: config.finale, seated,
       });
-      begin(events, { kind: 'answer', askerId: question.asker });
+      begin(events, { kind: 'answer', askerId: question.asker, seated });
       return true;
     },
 
@@ -241,7 +260,9 @@ export function createInterviewScene(ctx) {
     startImprov() {
       if (current || asking || !callbacks.dispatch('interview:play')) return false;
       const improv = config.improvs[improvPicker.next()];
-      begin(improvScript(improv, { total: params.improvSeconds }), { kind: 'improv', improvId: improv.id });
+      const seated = Boolean(seatNow()); // 앉아 있으면 일어나서 하고 마지막에 다시 앉는다
+      const script = improvScript(improv, { total: params.improvSeconds });
+      begin(seated ? seatedImprov(script) : script, { kind: 'improv', improvId: improv.id, seated });
       return true;
     },
 
@@ -264,7 +285,7 @@ export function createInterviewScene(ctx) {
         const w = renderer.domElement.clientWidth;
         const h = renderer.domElement.clientHeight;
         for (const id of ids) {
-          if (id === 'player') point.set(player.position.x, player.position.y + PLAYER_SPEECH_Y, player.position.z);
+          if (id === 'player') point.set(player.position.x, player.position.y + (isSitting() ? SEATED_SPEECH_Y : PLAYER_SPEECH_Y), player.position.z);
           else interviewers.headPoint(id, point);
           point.project(camera);
           hud.positionSpeech(id, (point.x * 0.5 + 0.5) * w, (-point.y * 0.5 + 0.5) * h, id === 'player' ? 0 : interviewers.bubbleShift(id));

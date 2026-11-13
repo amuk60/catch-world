@@ -6,6 +6,12 @@ export function interactTarget(item) {
   return { x: to.x, z: to.z };
 }
 
+// 의자·벤치에서 일어날 때 서는 지점: 앉은 방향(rotY, 모델의 앞은 (sin, cos))으로 distance 만큼 앞. 장애물 밖으로 밀어내는 것은 부르는 쪽이 한다.
+export const STAND_DISTANCE = 1.0;
+export function standPoint(seat, distance = STAND_DISTANCE) {
+  return { x: seat.x + Math.sin(seat.rotY) * distance, z: seat.z + Math.cos(seat.rotY) * distance };
+}
+
 // x-z 평면 거리가 상호작용 범위 이내인가(경계 포함).
 export function inRange(playerPos, item) {
   return Math.hypot(playerPos.x - item.x, playerPos.z - item.z) <= item.interactRange;

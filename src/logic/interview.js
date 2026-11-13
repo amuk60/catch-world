@@ -2,13 +2,13 @@
 // 연출 대본은 [{ t(초), type, ... }] 이벤트 목록이고, 시간표(createTimeline)가 시간만 보고 때가 된 이벤트를 내보낸다(렌더링·상태 변경은 main.js 가 한다).
 import { appearanceOf } from './outfit.js';
 
-const ID_LIST = ['leader', 'hr', 'junior']; // 면접관 id(팀장 / 인사담당 / 막내)
+const ID_LIST = ['leader', 'hr', 'mentor']; // 면접관 id(팀장 / 인사담당 / 예비 사수)
 const TYPES = ['정석', '솔직', '엉뚱'];
 export const IMPROV_IDS = ['paperToss', 'reverse', 'dance', 'banzai']; // 돌발행동 연출 이름(코드에 대본이 있다)
 
 // 대본 이벤트 종류. who: 'player' | 면접관 id.
-// say(말풍선, big 이면 큰 글씨) clip(한 번짜리 동작) pose(자세 'clap' 또는 null) fx(튀기·돌기 같은 덧입힘) face(방향 돌기) move(플레이어 이동 'desk'|'home')
-// stand/sit(면접관 일어나기·앉기) papers(종이 흩날리기) effect(지수 감소 순간) bonus(완주 보너스 순간) end(끝)
+// say(말풍선, big 이면 큰 글씨) clip(한 번짜리 동작) pose(자세 'clap' 또는 null) fx(튀기·돌기 같은 덧입힘) face(방향 돌기) move(플레이어 이동 'desk'|'home'|'stand'(의자에서 일어나 설 자리)|'seat'(의자))
+// stand/sit(면접관 일어나기·앉기. who 가 'player' 면 지원자가 의자에서 일어나 서는 자세 / 다시 앉는 자세) papers(종이 흩날리기) effect(지수 감소 순간) bonus(완주 보너스 순간) end(끝)
 export const EVENT_TYPES = ['say', 'clip', 'pose', 'fx', 'face', 'move', 'stand', 'sit', 'papers', 'effect', 'bonus', 'end'];
 
 // ---- 뽑기 ----
@@ -115,6 +115,8 @@ const fx = (t, who, patch) => ({ t, type: 'fx', who, fx: patch });
 const pose = (t, who, name) => ({ t, type: 'pose', who, name });
 
 const PLAYER_CLIP = { 정석: 'emote-yes', 솔직: 'interact-right', 엉뚱: 'jump' }; // 당당하게 답하는 동작(엉뚱은 더 크게)
+// 의자에 앉은 채 답할 때: 서서 하는 동작 클립은 앉은 높이에서 어색하므로 쓰지 않고, 앉은 자세 그대로 몸통을 튀기며(위아래 + 앞으로 숙임) 당당함을 나타낸다. 엉뚱이 가장 크다.
+const SEATED_BOB = { 정석: { amp: 0.06, freq: 3, lean: 0.12, seconds: 1.0 }, 솔직: { amp: 0.05, freq: 2.5, lean: 0.09, seconds: 0.9 }, 엉뚱: { amp: 0.12, freq: 3, lean: 0.25, seconds: 1.6 } };
 const REACT = {
   정석: { clip: 'emote-yes', clap: true }, // 박수
   솔직: { clip: 'emote-no' }, // 당황
@@ -124,7 +126,7 @@ const REACT = {
 // 답변 한 번의 대본. line: 플레이어가 하는 말, lines: 면접관별 반응 대사, speech: 말풍선 최소 시간, total: 최소 전체 길이.
 // finale 이면 끝에 "면접관 3명이 일어나 박수 + 최종 합격! + 보너스" 연출(finaleSeconds)이 이어진다.
 // 지수 감소(effect)는 답하는 말풍선이 뜨는 순간 한 번이며 답변 종류와 무관하다.
-export function answerScript({ type, line, lines, speech = 2.3, total = 5, finale = false, finaleSeconds = 3.6, finaleText = '최종 합격!' }) {
+export function answerScript({ type, line, lines, speech = 2.3, total = 5, finale = false, finaleSeconds = 3.6, finaleText = '최종 합격!', seated = false }) {
   if (!TYPES.includes(type)) throw new Error(`알 수 없는 답변 종류: ${type}`);
   const react = REACT[type];
   const SAY_AT = 0.3;
@@ -132,12 +134,15 @@ export function answerScript({ type, line, lines, speech = 2.3, total = 5, final
   const reactAt = SAY_AT + sayDur + 0.15;
   const ev = [
     { t: 0, type: 'face', who: 'player', target: 'desk', seconds: 0.3 },
-    clip(SAY_AT, 'player', PLAYER_CLIP[type]),
     say(SAY_AT, 'player', line, sayDur),
     { t: SAY_AT, type: 'effect' },
   ];
-  if (type === '엉뚱') {
-    ev.push(fx(SAY_AT, 'player', { bounce: { amp: 0.1, freq: 3 } }), fx(SAY_AT + sayDur, 'player', { bounce: null }));
+  if (seated) {
+    const { seconds, ...bob } = SEATED_BOB[type];
+    ev.push(fx(SAY_AT, 'player', { bounce: bob }), fx(SAY_AT + Math.min(seconds, sayDur), 'player', { bounce: null }));
+  } else {
+    ev.push(clip(SAY_AT, 'player', PLAYER_CLIP[type]));
+    if (type === '엉뚱') ev.push(fx(SAY_AT, 'player', { bounce: { amp: 0.1, freq: 3 } }), fx(SAY_AT + sayDur, 'player', { bounce: null }));
   }
   let reactEnd = reactAt;
   ID_LIST.forEach((id, i) => {
@@ -218,8 +223,8 @@ export function improvScript(improv, { total = 5 } = {}) {
       gasp(1.5, 'leader', improv.leader);
       ev.push(clip(1.8, 'hr', 'emote-yes'), pose(1.8, 'hr', 'clap'), pose(3.9, 'hr', null));
       talk(1.8, 'hr', improv.hr);
-      ev.push(clip(2.1, 'junior', 'emote-yes'), fx(2.1, 'junior', { bounce: { amp: 0.06, freq: 4 } }), fx(3.9, 'junior', { bounce: null }));
-      talk(2.1, 'junior', improv.junior);
+      ev.push(clip(2.1, 'mentor', 'emote-yes'), fx(2.1, 'mentor', { bounce: { amp: 0.06, freq: 4 } }), fx(3.9, 'mentor', { bounce: null }));
+      talk(2.1, 'mentor', improv.mentor);
       ev.push(fx(3.9, 'player', { bounce: null }), { t: 3.9, type: 'move', who: 'player', to: 'home', seconds: 0.6 }, face(4.5, 'desk', 0.4));
       tail = 0.6;
       break;
@@ -228,6 +233,20 @@ export function improvScript(improv, { total = 5 } = {}) {
   }
   const end = Math.max(total, last + tail);
   return sortStable([...ev, { t: end, type: 'end' }]);
+}
+
+// 앉은 채 시작하는 돌발행동 대본: 앞에 "의자에서 일어나 설 자리로 나오기"를, 뒤에 "다시 의자로 돌아와 앉기"를 붙이고 원래 대본(improvScript 결과)은 standSeconds 만큼 늦춘다.
+// 원래 대본의 end 는 떼어 내고 새 end 를 맨 끝에 둔다. 이벤트 'stand'/'sit'(who 'player')와 move 의 'stand'/'seat' 는 그리는 쪽(interviewScene)이 처리한다.
+export function seatedImprov(events, { standSeconds = 0.5, sitSeconds = 0.5 } = {}) {
+  const body = events.filter((e) => e.type !== 'end').map((e) => ({ ...e, t: e.t + standSeconds }));
+  const oldEnd = events.reduce((m, e) => (e.type === 'end' ? Math.max(m, e.t) : m), 0);
+  const sitAt = Math.max(oldEnd, ...events.map((e) => e.t)) + standSeconds;
+  return sortStable([
+    { t: 0, type: 'stand', who: 'player' }, { t: 0, type: 'move', who: 'player', to: 'stand', seconds: standSeconds },
+    ...body,
+    { t: sitAt, type: 'sit', who: 'player' }, { t: sitAt, type: 'move', who: 'player', to: 'seat', seconds: sitSeconds },
+    { t: sitAt + sitSeconds + 0.05, type: 'end' },
+  ]);
 }
 
 // ---- 설정 검증 ----

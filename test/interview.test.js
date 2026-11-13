@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createBagPicker, createRepeatFreePicker, createRound, openingFor, pickReactions, createTimeline,
-  answerScript, improvScript, EVENT_TYPES, validateInterview, IMPROV_IDS,
+  answerScript, improvScript, seatedImprov, EVENT_TYPES, validateInterview, IMPROV_IDS,
 } from '../src/logic/interview.js';
 import { INTERVIEW, INTERVIEW_ROUND, INTERVIEW_BONUS, INTERVIEW_ANSWER_SECONDS, INTERVIEW_IMPROV_SECONDS, INTERVIEW_FINALE_SECONDS, SPEECH_SECONDS, ACTION_REDUCE } from '../src/config.js';
 import { mulberry32 } from '../src/logic/rng.js';
@@ -126,7 +126,7 @@ test('openingFor: 세 겉모습의 대사가 서로 다르고 비어 있지 않�
 test('pickReactions: 세 면접관 모두의 대사를 돌려주고 모두 설정에 있는 후보다', () => {
   for (const type of INTERVIEW.types) {
     const lines = pickReactions(INTERVIEW.reactions, type, mulberry32(7));
-    assert.deepEqual(Object.keys(lines).sort(), ['hr', 'junior', 'leader']);
+    assert.deepEqual(Object.keys(lines).sort(), ['hr', 'leader', 'mentor']);
     for (const [id, text] of Object.entries(lines)) assert.ok(INTERVIEW.reactions[type][id].includes(text), `${type} ${id}`);
   }
   assert.throws(() => pickReactions(INTERVIEW.reactions, '없는종류', Math.random), /없는종류/);
@@ -151,8 +151,8 @@ test('createTimeline: 같은 시각 이벤트는 넘겨 준 순서를 지킨다'
 });
 
 // ---- 연출 대본 ----
-const WHO = new Set(['player', 'leader', 'hr', 'junior']);
-const LINES = { leader: '팀장 반응', hr: '인사 반응', junior: '막내 반응' };
+const WHO = new Set(['player', 'leader', 'hr', 'mentor']);
+const LINES = { leader: '팀장 반응', hr: '인사 반응', mentor: '사수 반응' };
 const opts = { speech: SPEECH_SECONDS, total: INTERVIEW_ANSWER_SECONDS, finaleSeconds: INTERVIEW_FINALE_SECONDS, finaleText: INTERVIEW.finale };
 
 function assertScript(events, label) {
@@ -181,7 +181,7 @@ test('answerScript: 종류마다 효과(감소)가 정확히 한 번, 말풍선�
     const says = ev.filter((e) => e.type === 'say');
     assert.equal(says[0].who, 'player');
     assert.equal(says[0].text, '내가 할 말');
-    assert.deepEqual(says.slice(1).map((e) => e.who).sort(), ['hr', 'junior', 'leader']);
+    assert.deepEqual(says.slice(1).map((e) => e.who).sort(), ['hr', 'leader', 'mentor']);
     for (const s of says.slice(1)) assert.equal(s.text, LINES[s.who]);
     // 효과는 플레이어가 답하는 순간(반응보다 먼저), 종류와 무관하게 같은 시각.
     const effect = ev.find((e) => e.type === 'effect');
@@ -215,7 +215,7 @@ test('answerScript: finale 이면 일어나 박수 -> 최종 합격! 말풍선 -
   assert.equal(fin.filter((e) => e.type === 'effect').length, 1, '답변 감소는 그대로 한 번');
   assert.equal(fin.filter((e) => e.type === 'bonus').length, 1, '보너스 한 번');
   const stand = fin.filter((e) => e.type === 'stand');
-  assert.deepEqual(stand.map((e) => e.who).sort(), ['hr', 'junior', 'leader']);
+  assert.deepEqual(stand.map((e) => e.who).sort(), ['hr', 'leader', 'mentor']);
   const bonus = fin.find((e) => e.type === 'bonus');
   const say = fin.filter((e) => e.type === 'say').find((e) => e.text === INTERVIEW.finale);
   assert.ok(say && say.who === 'leader');
@@ -242,7 +242,7 @@ test('improvScript: 돌발행동 4개 모두 — 정렬·유효 이벤트·효�
     assert.ok(end >= INTERVIEW_IMPROV_SECONDS - 1e-9 && end <= INTERVIEW_IMPROV_SECONDS + 1.5, `${improv.id} 길이 ${end}`);
     const says = ev.filter((e) => e.type === 'say');
     for (const line of improv.player) assert.ok(says.some((s) => s.who === 'player' && s.text === line), `${improv.id} ${line}`);
-    for (const id of ['leader', 'hr', 'junior']) assert.ok(says.some((s) => s.who === id && s.text === improv[id]), `${improv.id} ${id}`);
+    for (const id of ['leader', 'hr', 'mentor']) assert.ok(says.some((s) => s.who === id && s.text === improv[id]), `${improv.id} ${id}`);
     const effect = ev.find((e) => e.type === 'effect');
     assert.ok(effect.t > 0 && effect.t < end - 1, `${improv.id} 효과는 중간 순간`);
   }
@@ -253,7 +253,7 @@ test('improvScript: 연출 특징 — 서류 던지기는 종이가 날고, 춤�
   assert.ok(by('paperToss').some((e) => e.type === 'papers'));
   assert.ok(by('paperToss').some((e) => e.type === 'face' && e.target === 'door'));
   const dance = by('dance');
-  for (const who of ['player', 'leader', 'hr', 'junior']) {
+  for (const who of ['player', 'leader', 'hr', 'mentor']) {
     assert.ok(dance.some((e) => e.type === 'fx' && e.who === who && e.fx.bounce), `${who} bounce`);
     assert.ok(dance.some((e) => e.type === 'fx' && e.who === who && e.fx.spin), `${who} spin`);
   }
@@ -265,7 +265,7 @@ test('improvScript: 연출 특징 — 서류 던지기는 종이가 날고, 춤�
 });
 
 test('improvScript: 모르는 id 는 오류', () => {
-  assert.throws(() => improvScript({ id: 'nope', player: ['a'], leader: 'b', hr: 'c', junior: 'd' }, { total: 5 }), /nope/);
+  assert.throws(() => improvScript({ id: 'nope', player: ['a'], leader: 'b', hr: 'c', mentor: 'd' }, { total: 5 }), /nope/);
 });
 
 // ---- INTERVIEW 설정 검증 ----
@@ -273,7 +273,7 @@ test('INTERVIEW: 질문 12개, 각 질문은 정석·솔직·엉뚱 하나씩, �
   assert.deepEqual(validateInterview(INTERVIEW), []);
   assert.equal(INTERVIEW.questions.length, 12);
   const ids = INTERVIEW.interviewers.map((i) => i.id);
-  assert.deepEqual(ids, ['leader', 'hr', 'junior']);
+  assert.deepEqual(ids, ['leader', 'hr', 'mentor']);
   assert.equal(new Set(INTERVIEW.interviewers.map((i) => i.model)).size, 3, '서로 다른 캐릭터 모델');
   for (const q of INTERVIEW.questions) {
     assert.ok(ids.includes(q.asker));
@@ -311,4 +311,88 @@ test('answerScript: 최종 합격! 말풍선만 큰 글씨(big)이고 다른 말
   const fin = answerScript({ type: '정석', line: '대사', lines: LINES, ...opts, finale: true });
   const bigs = fin.filter((e) => e.type === 'say' && e.big);
   assert.deepEqual(bigs.map((e) => e.text), [INTERVIEW.finale]);
+});
+
+// ---- 의자에 앉아서 하는 면접 ----
+test('answerScript(seated): 서서 하는 동작 클립 없이 앉은 자세 그대로 몸을 튀겨 답한다 — 엉뚱이 가장 크고, 감소·반응·완주 규칙은 그대로', () => {
+  const seatedOf = (type, extra = {}) => answerScript({ type, line: '대사', lines: LINES, ...opts, seated: true, ...extra });
+  for (const type of INTERVIEW.types) {
+    const ev = seatedOf(type);
+    assertScript(ev, `seated ${type}`);
+    assert.ok(!ev.some((e) => e.type === 'clip' && e.who === 'player'), `${type}: 플레이어 클립(서서 하는 동작) 없음`);
+    const bob = ev.find((e) => e.type === 'fx' && e.who === 'player' && e.fx.bounce);
+    assert.ok(bob && bob.fx.bounce.amp > 0 && bob.fx.bounce.lean > 0, `${type}: 위아래 + 앞으로 숙임`);
+    const off = ev.filter((e) => e.type === 'fx' && e.who === 'player' && e.fx.bounce === null);
+    assert.equal(off.length, 1, `${type}: 튀기를 끈다`);
+    assert.ok(off[0].t > bob.t);
+    assert.equal(ev.filter((e) => e.type === 'effect').length, 1);
+    const plain = answerScript({ type, line: '대사', lines: LINES, ...opts });
+    assert.deepEqual(ev.filter((e) => e.type === 'say'), plain.filter((e) => e.type === 'say'), `${type}: 말풍선은 그대로`);
+    assert.equal(ev[ev.length - 1].t, plain[plain.length - 1].t, `${type}: 길이는 그대로`);
+  }
+  const amp = (type) => seatedOf(type).find((e) => e.type === 'fx' && e.who === 'player' && e.fx.bounce).fx.bounce;
+  assert.ok(amp('엉뚱').amp > amp('정석').amp && amp('엉뚱').amp > amp('솔직').amp);
+  assert.ok(amp('엉뚱').lean > amp('정석').lean);
+  const fin = seatedOf('정석', { finale: true });
+  assertScript(fin, 'seated finale');
+  assert.equal(fin.filter((e) => e.type === 'bonus').length, 1);
+  assert.deepEqual(fin.filter((e) => e.type === 'stand').map((e) => e.who).sort(), ['hr', 'leader', 'mentor'], '일어서는 건 면접관뿐');
+  assert.ok(!seatedOf('정석').some((e) => e.type === 'stand' || e.type === 'sit'));
+});
+
+test('seatedImprov: 앞에 일어나 나오기, 뒤에 돌아와 앉기를 붙이고 원래 대본은 그만큼 늦춘다(효과 한 번, 순서·end 규칙 유지)', () => {
+  for (const improv of INTERVIEW.improvs) {
+    const base = improvScript(improv, { total: INTERVIEW_IMPROV_SECONDS });
+    const ev = seatedImprov(base, { standSeconds: 0.5, sitSeconds: 0.5 });
+    assertScript(ev, `seated ${improv.id}`);
+    assert.equal(ev.filter((e) => e.type === 'effect').length, 1, `${improv.id} effect`);
+    assert.equal(ev.filter((e) => e.type === 'bonus').length, 0);
+    const stand = ev.find((e) => e.type === 'stand' && e.who === 'player');
+    const out = ev.find((e) => e.type === 'move' && e.to === 'stand');
+    assert.equal(stand.t, 0);
+    assert.equal(out.t, 0);
+    assert.equal(out.seconds, 0.5);
+    const back = ev.find((e) => e.type === 'move' && e.to === 'seat');
+    const sit = ev.find((e) => e.type === 'sit' && e.who === 'player');
+    assert.equal(sit.t, back.t);
+    assert.equal(back.seconds, 0.5);
+    const rest = ev.filter((e) => e !== stand && e !== out && e !== back && e !== sit && e.type !== 'end');
+    assert.equal(rest.length, base.filter((e) => e.type !== 'end').length, `${improv.id} 원래 이벤트가 모두 남는다`);
+    for (const e of rest) assert.ok(e.t >= 0.5 - 1e-9, `${improv.id} 일어난 뒤에 시작`);
+    const lastOld = Math.max(...base.map((e) => e.t));
+    assert.ok(back.t >= lastOld + 0.5 - 1e-9, `${improv.id} 원래 연출이 다 끝난 뒤에 앉는다`);
+    assert.ok(ev.filter((e) => e.t > back.t && e.type !== 'end').length === 0, '앉은 뒤에는 다른 연출 없음');
+    const end = ev[ev.length - 1];
+    assert.ok(end.t >= back.t + back.seconds - 1e-9, '다 앉은 뒤에 끝');
+    // 원래 시간차(효과 순간 등)는 그대로 유지된다.
+    const eff = ev.find((e) => e.type === 'effect');
+    assert.ok(Math.abs(eff.t - base.find((e) => e.type === 'effect').t - 0.5) < 1e-9);
+  }
+});
+
+test('seatedImprov: 만세는 책상 위로 올라갔다(desk) 서 있던 자리로 내려온다(home) — 일어난 자리가 home, 마지막에 의자(seat)', () => {
+  const banzai = INTERVIEW.improvs.find((i) => i.id === 'banzai');
+  const moves = seatedImprov(improvScript(banzai, { total: INTERVIEW_IMPROV_SECONDS })).filter((e) => e.type === 'move').map((e) => e.to);
+  assert.deepEqual(moves, ['stand', 'desk', 'home', 'seat']);
+});
+
+test('seatedImprov: 입력 대본을 바꾸지 않는다', () => {
+  const base = improvScript(INTERVIEW.improvs[0], { total: INTERVIEW_IMPROV_SECONDS });
+  const copy = JSON.parse(JSON.stringify(base));
+  seatedImprov(base);
+  assert.deepEqual(base, copy);
+});
+
+test('예비 사수: 설정 이름·id, 말투에서 막내 느낌이 나는 대사가 없다', () => {
+  const m = INTERVIEW.interviewers.find((i) => i.id === 'mentor');
+  assert.equal(m.name, '예비 사수');
+  assert.ok(!INTERVIEW.interviewers.some((i) => i.id === 'junior' || i.name === '막내'));
+  const texts = [
+    ...INTERVIEW.questions.filter((q) => q.asker === 'mentor').map((q) => q.text),
+    ...Object.values(INTERVIEW.reactions).flatMap((r) => r.mentor),
+    ...INTERVIEW.improvs.map((i) => i.mentor),
+  ];
+  assert.ok(texts.length >= 3 + 6 + 4);
+  for (const t of texts) assert.ok(!/저, 저도|어떡해|죄송해요|괜찮을까요|눈치/.test(t), t);
+  assert.equal(INTERVIEW.questions.filter((q) => q.asker === 'mentor').length, 3, '질문 던지기 차례 유지');
 });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { interactTarget, inRange, hoverLabel, nearestInRange, actionOf } from '../src/logic/interaction.js';
+import { interactTarget, inRange, hoverLabel, nearestInRange, actionOf, standPoint, STAND_DISTANCE } from '../src/logic/interaction.js';
 
 const stump = { id: 'comfort-0', label: '쉬어가는 그루터기', kind: 'comfort', x: 2, z: 3, radius: 0.5, interactRange: 1.7 };
 const furnace = { id: 'furnace', label: '소각로', kind: 'furnace', x: -6, z: 0, radius: 1.6, interactRange: 2.8 };
@@ -117,4 +117,13 @@ test('interactTarget: walkTo 가 있으면 그 지점(건물은 문 앞)으로 �
 
 test('actionOf: 빨랫줄은 새 셔츠 입기(wear)', () => {
   assert.deepEqual(actionOf({ kind: 'clothesline' }), { type: 'wear', prompt: '새 셔츠 입기' });
+});
+
+test('standPoint: 앉은 방향(모델의 앞 = (sin, cos)) 앞쪽 한 칸에 선다(벤치는 소각로 쪽, 의자는 책상 쪽), 거리는 바꿀 수 있다', () => {
+  assert.equal(STAND_DISTANCE, 1);
+  const near = (a, b) => assert.ok(Math.abs(a.x - b.x) < 1e-9 && Math.abs(a.z - b.z) < 1e-9, JSON.stringify(a));
+  near(standPoint({ x: 5, z: 7, rotY: 0 }), { x: 5, z: 8 });
+  near(standPoint({ x: 5, z: 7, rotY: Math.PI }), { x: 5, z: 6 });
+  near(standPoint({ x: 5, z: 7, rotY: Math.PI / 2 }), { x: 6, z: 7 });
+  near(standPoint({ x: 5, z: 7, rotY: Math.PI }, 2.5), { x: 5, z: 4.5 });
 });
