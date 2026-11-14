@@ -22,3 +22,12 @@ export function channelPrefix(search, cfg) {
   if (dev && /^[A-Za-z0-9]{1,16}$/.test(dev)) return `catch-world-dev-${dev}:`;
   return cfg.channelPrefix;
 }
+
+// 주소의 숫자 옵션(?name=3)을 min~max 로 읽는다. 없거나 숫자가 아니면 fallback. 시험용(?mpcap=)에 쓴다. 시작할 때 한 번만 읽는다.
+export function numberParam(search, name, fallback, min, max) {
+  let raw = null;
+  try { raw = new URLSearchParams(search || '').get(name); } catch { /* 무시 */ }
+  if (raw === null || raw === '' || !/^\d+$/.test(raw)) return fallback;
+  const n = Number(raw);
+  return n >= min && n <= max ? n : fallback;
+}

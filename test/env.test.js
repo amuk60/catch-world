@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isMobileUA, multiplayerMode, channelPrefix } from '../src/env.js';
+import { isMobileUA, multiplayerMode, channelPrefix, numberParam } from '../src/env.js';
 
 test('안드로이드·아이폰은 모바일로 판별한다', () => {
   assert.equal(isMobileUA('Mozilla/5.0 (Linux; Android 13; SM-S918N) Mobile Safari'), true);
@@ -42,4 +42,15 @@ test('channelPrefix: ?mpdev= 는 시험용 채널로, 이상한 값은 무시', 
   assert.equal(channelPrefix('?mpdev=' + 'x'.repeat(17), cfg), 'catch-world:');
   assert.equal(channelPrefix('?mpdev=', cfg), 'catch-world:');
   assert.equal(channelPrefix(undefined, cfg), 'catch-world:');
+});
+
+test('numberParam: 범위 안의 정수만, 아니면 기본값', () => {
+  assert.equal(numberParam('?mpcap=2', 'mpcap', 8, 1, 50), 2);
+  assert.equal(numberParam('?mpcap=0', 'mpcap', 8, 1, 50), 8);
+  assert.equal(numberParam('?mpcap=51', 'mpcap', 8, 1, 50), 8);
+  assert.equal(numberParam('?mpcap=x', 'mpcap', 8, 1, 50), 8);
+  assert.equal(numberParam('?mpcap=-3', 'mpcap', 8, 1, 50), 8);
+  assert.equal(numberParam('?mpcap=', 'mpcap', 8, 1, 50), 8);
+  assert.equal(numberParam('', 'mpcap', 8, 1, 50), 8);
+  assert.equal(numberParam(undefined, 'mpcap', 8, 1, 50), 8);
 });

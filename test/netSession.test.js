@@ -21,7 +21,7 @@ function fakeTransport() {
   return t;
 }
 
-const cfg = { ...MULTIPLAYER, minRecvGapMs: 0 };
+const cfg = { ...MULTIPLAYER, minRecvGapMs: 0, shardProbeMs: 0 }; // 방 인원 세기(샤딩)는 아래 별도 시험에서
 const me = { id: 'me0000001', nick: '나' };
 const local = (o = {}) => ({ space: 'yard', x: 0, z: 0, y: 0, rotY: 0, anim: 'idle', outfit: 'clean', seat: false, ...o });
 const msg = (id, o = {}) => ({ id, nick: `닉-${id}`, space: 'yard', x: 1, z: 1, y: 0, rotY: 0, anim: 'idle', outfit: 'clean', seat: false, t: 1, ...o });
@@ -40,14 +40,14 @@ async function joined(x) {
 test('session: 첫 update 에서 공간 방에 들어가고, 공간이 바뀌면 나왔다가 다시 들어간다', async () => {
   const x = setup();
   x.s.update(local());
-  assert.deepEqual(x.tr.rooms, [{ room: 'catch-world:yard', id: me.id }]);
+  assert.deepEqual(x.tr.rooms, [{ room: 'catch-world:yard-1', id: me.id }]);
   assert.equal(x.s.status, 'connecting');
   x.tr.emitStatus('ready');
   assert.equal(x.s.status, 'ready');
   x.s.update(local());
   assert.equal(x.tr.rooms.length, 1, '같은 공간이면 다시 들어가지 않는다');
   x.s.update(local({ space: 'laundry', x: 300 }));
-  assert.equal(x.tr.rooms.at(-1).room, 'catch-world:laundry');
+  assert.equal(x.tr.rooms.at(-1).room, 'catch-world:laundry-1');
   assert.equal(x.s.status, 'connecting');
   assert.ok(x.tr.disconnects >= 2);
 });
@@ -75,7 +75,7 @@ test('session: 받은 메시지는 검사해서 보간 버퍼에 쌓고 sample �
   x.at(1000); x.tr.emitMsg(msg('peer00001', { x: 0, z: 0, anim: 'walk', t: 1 }));
   x.at(1200); x.tr.emitMsg(msg('peer00001', { x: 2, z: 0, anim: 'walk', t: 2 }));
   x.at(1400); x.tr.emitMsg(msg('peer00001', { x: 4, z: 0, anim: 'walk', t: 3 }));
-  const out = x.s.sample(1500);
+  const out = x.s.sample(1550); // 보간 지연 250ms -> 1300 시점
   assert.equal(out.length, 1);
   assert.equal(out[0].id, 'peer00001');
   assert.equal(out[0].nick, '닉-peer00001');
@@ -115,9 +115,9 @@ test('session: 소식이 staleMs 넘게 없으면 지우고, presence leave 는 
   assert.equal(x.s.sample(1000).length, 2);
   x.at(5000); x.tr.emitMsg(msg('peer00002', { t: 2 }));
   assert.equal(x.s.sample(6000).length, 2, '6초 안');
-  assert.equal(x.s.sample(6500).length, 1, 'peer1 은 6.5초 소식 없음');
+  assert.equal(x.s.sample(9500).length, 1, 'peer1 은 9.5초 소식 없음');
   x.tr.emitPresence({ type: 'leave', id: 'peer00002' });
-  assert.equal(x.s.sample(6600).length, 0);
+  assert.equal(x.s.sample(9600).length, 0);
 });
 
 test('session: 한 번에 maxRemote 명만(가까운 순), maxTracked 를 넘는 새 방문자는 기억하지 않는다', async () => {
@@ -187,4 +187,119 @@ test('session: 방을 옮기면 이전 공간의 방문자는 사라진다', asy
   assert.deepEqual(x.s.sample(1000), []);
   x.tr.emitMsg(msg('peer00002', { space: 'interview', x: 600 }));
   assert.equal(x.s.sample(1000).length, 1);
+});
+
+// ---- 샤딩 ----
+const shardCfg = { ...MULTIPLAYER, minRecvGapMs: 0, shardProbeMs: 700, roomCap: 2, maxShards: 3, fullRetryMs: 60000 };
+const presence = (x, ids) => ids.forEach((id) => x.tr.emitPresence({ type: 'join', id }));
+
+test('샤딩: 1번 방에 자리가 있으면 probe 시간이 지난 뒤에 머문다', () => {
+  const x = setup(shardCfg);
+  x.at(0); x.s.update(local(), 0);
+  assert.equal(x.tr.rooms.at(-1).room, 'catch-world:yard-1');
+  x.at(10); x.tr.emitStatus('ready');
+  presence(x, ['peer00001']);
+  assert.equal(x.s.status, 'connecting', '인원을 세는 동안은 준비 아님');
+  x.s.update(local(), 500);
+  assert.equal(x.s.status, 'connecting');
+  assert.equal(x.tr.sent.length, 0);
+  x.s.update(local(), 800);
+  assert.equal(x.s.status, 'ready');
+  assert.equal(x.s.shard, 1);
+  assert.equal(x.s.room, 'catch-world:yard-1');
+  x.s.update(local({ x: 5 }), 900);
+  assert.equal(x.tr.sent.length, 1, '머문 뒤 곧바로 한 번 보낸다');
+});
+
+test('샤딩: 1번 방이 차 있으면(cap 명) 2번 방으로, 거기도 차면 3번 방으로', () => {
+  const x = setup(shardCfg);
+  x.at(0); x.s.update(local(), 0);
+  x.at(10); x.tr.emitStatus('ready');
+  presence(x, ['peer00001', 'peer00002']);
+  x.s.update(local(), 800);
+  assert.equal(x.tr.rooms.at(-1).room, 'catch-world:yard-2');
+  assert.equal(x.s.shard, 2);
+  assert.equal(x.s.status, 'connecting');
+  x.at(900); x.tr.emitStatus('ready');
+  presence(x, ['peer00003', 'peer00004']);
+  x.s.update(local(), 1000);
+  assert.equal(x.s.shard, 2, '새 방도 probe 시간을 다시 기다린다');
+  x.s.update(local(), 1700);
+  assert.equal(x.tr.rooms.at(-1).room, 'catch-world:yard-3');
+  x.at(1800); x.tr.emitStatus('ready');
+  presence(x, ['peer00005']);
+  x.s.update(local(), 2600);
+  assert.equal(x.s.status, 'ready');
+  assert.equal(x.s.shard, 3);
+});
+
+test('샤딩: 모든 방이 차면 full: 연결을 끊고 보내지 않으며, fullRetryMs 뒤에 다시 1번 방부터 시도', () => {
+  const x = setup({ ...shardCfg, maxShards: 1 });
+  x.at(0); x.s.update(local(), 0);
+  x.at(10); x.tr.emitStatus('ready');
+  presence(x, ['peer00001', 'peer00002']);
+  const before = x.tr.disconnects;
+  x.s.update(local(), 800);
+  assert.equal(x.s.status, 'full');
+  assert.ok(x.tr.disconnects > before);
+  assert.deepEqual(x.s.sample(900), []);
+  assert.equal(x.s.ingest(msg('peer00009'), 900), false);
+  x.s.update(local({ x: 3 }), 30000);
+  assert.equal(x.tr.sent.length, 0);
+  assert.equal(x.tr.rooms.length, 1);
+  x.s.update(local(), 60900);
+  assert.equal(x.tr.rooms.length, 2, '재시도');
+  assert.equal(x.s.status, 'connecting');
+});
+
+test('샤딩: 공간을 옮기면 그 공간의 1번 방부터 다시 세고, 이미 머문 사람은 쫓겨나지 않는다', () => {
+  const x = setup(shardCfg);
+  x.at(0); x.s.update(local(), 0);
+  x.at(10); x.tr.emitStatus('ready');
+  x.s.update(local(), 800);
+  assert.equal(x.s.status, 'ready');
+  presence(x, ['peer00001', 'peer00002', 'peer00003']); // 나중에 인원이 cap 을 넘어도
+  x.s.update(local(), 900);
+  assert.equal(x.s.status, 'ready', '재판단하지 않는다');
+  assert.equal(x.s.shard, 1);
+  x.s.update(local({ space: 'laundry', x: 300 }), 1000);
+  assert.equal(x.tr.rooms.at(-1).room, 'catch-world:laundry-1');
+});
+
+test('샤딩: probe 중 연결이 끊겼다 돌아오면 probe 시간을 다시 기다린다', () => {
+  const x = setup(shardCfg);
+  x.at(0); x.s.update(local(), 0);
+  x.at(10); x.tr.emitStatus('ready');
+  x.tr.emitStatus('lost');
+  assert.equal(x.s.status, 'lost');
+  x.at(2000); x.tr.emitStatus('ready');
+  x.s.update(local(), 2500);
+  assert.equal(x.s.status, 'connecting');
+  x.s.update(local(), 2800);
+  assert.equal(x.s.status, 'ready');
+});
+
+// ---- 숨김/유휴 ----
+test('setActive(false) 면 보내지 않고, 다시 켜면 곧바로 한 번 보낸다(heartbeat 만 남지도 않는다)', async () => {
+  const x = setup();
+  await joined(x);
+  x.tr.emitPresence({ type: 'join', id: 'peer00001' });
+  x.s.update(local(), 100);
+  const n = x.tr.sent.length;
+  x.s.setActive(false);
+  for (let t = 200; t < 20000; t += 200) x.s.update(local({ x: t / 100 }), t);
+  assert.equal(x.tr.sent.length, n);
+  assert.equal(x.s.status, 'ready', '연결과 presence 는 유지');
+  x.s.setActive(true);
+  x.s.update(local({ x: 1 }), 20100);
+  assert.equal(x.tr.sent.length, n + 1);
+});
+
+test('전송량: 기본 설정(3Hz)에서 계속 걸어도 초당 3번 이하, 서 있으면 3초에 한 번', () => {
+  const p = MULTIPLAYER;
+  assert.equal(p.sendHz, 3);
+  assert.equal(p.heartbeatMs, 3000);
+  assert.ok(p.interpDelayMs >= 250);
+  assert.ok(p.staleMs > p.heartbeatMs * 2);
+  assert.equal(p.idleMs, 5 * 60 * 1000, '입력이 5분 없으면 유휴');
 });

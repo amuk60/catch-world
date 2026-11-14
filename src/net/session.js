@@ -3,6 +3,7 @@
 import {
   buildState, validateState, createSendPolicy, createInterpBuffer, isStale, nearestN,
 } from '../logic/net.js';
+import { shardRoom, nextShard } from '../logic/shards.js';
 
 // transport: net/transport.js 의 인터페이스. self: { id, nick }. cfg: config 의 MULTIPLAYER. now: () => ms.
 export function createSession({ transport, self, cfg, now = () => performance.now(), clock = () => Date.now() }) {
@@ -11,7 +12,16 @@ export function createSession({ transport, self, cfg, now = () => performance.no
   const policy = createSendPolicy({ hz: cfg.sendHz, heartbeatMs: cfg.heartbeatMs, epsPos: cfg.epsPos, epsRot: cfg.epsRot, minGapMs: cfg.minGapMs });
   const validateOpts = { adjectives: cfg.nickAdjectives, nouns: cfg.nickNouns, nickMax: cfg.nickMax };
   let space = null; // 지금 들어가 있는(또는 들어가는 중인) 공간
-  let status = 'connecting'; // 'connecting' | 'ready' | 'lost' | 'off'
+  let shard = 1; // 지금 들어가 있는(또는 살펴보는 중인) 방 번호
+  let tState = 'connecting'; // 전송 상태: 'connecting' | 'ready' | 'lost'
+  let phase = 'probing'; // 'probing'(방 인원을 세는 중) | 'joined' | 'full'(모든 방이 참: 멀티플레이만 끈다)
+  let probeUntil = 0;
+  let fullAt = 0;
+  let active = true; // 숨김·유휴가 아닐 때만 내 상태를 보낸다
+  const cap = cfg.roomCap ?? 8;
+  const maxShards = cfg.maxShards ?? 6;
+  const probeMs = cfg.shardProbeMs ?? 0;
+  let status = 'connecting'; // 'connecting' | 'ready' | 'lost' | 'full' | 'off'
   let disposed = false;
   let rejected = 0;
   let sent = 0;
@@ -20,10 +30,13 @@ export function createSession({ transport, self, cfg, now = () => performance.no
   const listeners = new Set();
   const notify = () => { for (const fn of listeners) { try { fn(api); } catch { /* 표시 쪽 오류는 무시 */ } } };
 
-  function setStatus(next) {
+  // 전송 상태와 단계에서 겉으로 보이는 상태를 정한다. 준비(ready)가 아니면 방문자는 모두 지운다.
+  function refreshStatus() {
+    if (disposed) return;
+    const next = phase === 'full' ? 'full' : tState === 'lost' ? 'lost' : tState === 'ready' && phase === 'joined' ? 'ready' : 'connecting';
     if (status === next) return;
     status = next;
-    if (next !== 'ready') { remotes.clear(); peers.clear(); }
+    if (next !== 'ready') remotes.clear();
     notify();
   }
 
@@ -44,34 +57,68 @@ export function createSession({ transport, self, cfg, now = () => performance.no
 
   function onStatus(s) {
     if (disposed) return;
-    if (s === 'ready') { policy.force(); setStatus('ready'); } else if (s === 'lost') setStatus('lost');
+    if (s === 'ready') {
+      tState = 'ready';
+      policy.force();
+      if (phase === 'probing') {
+        if (probeMs <= 0) phase = 'joined'; else probeUntil = now() + probeMs;
+      }
+    } else if (s === 'lost') {
+      tState = 'lost';
+      peers.clear();
+    }
+    refreshStatus();
   }
 
   transport.onMessage(onMessage);
   transport.onPresence(onPresence);
   transport.onStatus?.(onStatus);
 
-  function join(nextSpace) {
+  // space 의 shard 번 방에 들어간다(이전 방은 나온다). 들어간 뒤 probeMs 동안 다른 사람 수를 세어 머물지 정한다(update 가 판단).
+  function join(nextSpace, nextShardNo = 1) {
     space = nextSpace;
+    shard = nextShardNo;
     joinGen++;
     remotes.clear();
     peers.clear();
     policy.reset();
-    status = 'connecting';
+    tState = 'connecting';
+    phase = 'probing';
+    refreshStatus();
     notify();
     try {
       transport.disconnect();
-      const p = transport.connect(`${cfg.channelPrefix ?? ''}${nextSpace}`, { id: self.id });
+      const p = transport.connect(shardRoom(cfg.channelPrefix ?? '', nextSpace, nextShardNo), { id: self.id });
       const gen = joinGen;
-      Promise.resolve(p).catch(() => { if (gen === joinGen) setStatus('lost'); });
+      Promise.resolve(p).catch(() => { if (gen === joinGen) { tState = 'lost'; refreshStatus(); } });
     } catch {
-      setStatus('lost');
+      tState = 'lost';
+      refreshStatus();
+    }
+  }
+
+  // 방 인원을 센 결과로 머물거나 다음 방으로 가거나 멀티플레이를 끈다.
+  function decide(nowMs) {
+    const r = nextShard({ shard, others: peers.size, cap, maxShards });
+    if (r.action === 'stay') {
+      phase = 'joined';
+      policy.force();
+      refreshStatus();
+    } else if (r.action === 'try') {
+      join(space, r.shard);
+    } else {
+      phase = 'full';
+      fullAt = nowMs;
+      peers.clear();
+      remotes.clear();
+      try { transport.disconnect(); } catch { /* 무시 */ }
+      refreshStatus();
     }
   }
 
   // 받은 원본 메시지를 검사해 방문자 상태로 반영한다. 반환: 받아들였는가.
   function ingest(raw, at = now()) {
-    if (disposed) return false;
+    if (disposed || phase !== 'joined') return false;
     const s = validateState(raw, validateOpts);
     if (!s) { rejected++; return false; }
     if (s.id === self.id || s.space !== space) return false;
@@ -102,7 +149,9 @@ export function createSession({ transport, self, cfg, now = () => performance.no
     if (disposed) return;
     try {
       if (local.space !== space) join(local.space);
-      if (status !== 'ready' || !transport.isReady) return;
+      else if (phase === 'full' && nowMs - fullAt >= (cfg.fullRetryMs ?? 60000)) join(space);
+      if (phase === 'probing' && tState === 'ready' && probeMs > 0 && nowMs >= probeUntil) decide(nowMs);
+      if (status !== 'ready' || !transport.isReady || !active) return;
       if (policy.update(nowMs, local, peers.size > 0 || remotes.size > 0)) {
         transport.send(buildState(self, local, Math.round(clock())));
         sent++;
@@ -140,6 +189,12 @@ export function createSession({ transport, self, cfg, now = () => performance.no
     update, sample, ingest, dispose,
     get status() { return status; },
     get space() { return space; },
+    get shard() { return shard; },
+    get room() { return space ? shardRoom(cfg.channelPrefix ?? '', space, shard) : null; },
+    get phase() { return phase; },
+    // 숨김·유휴일 때 false: 상태 전송을 멈춘다(연결·presence 는 유지). 다시 true 가 되면 곧바로 한 번 보낸다.
+    setActive(on) { if (on && !active) policy.force(); active = Boolean(on); },
+    get active() { return active; },
     // 접속 중인 사람 수(이 공간, 나 포함).
     get count() { return 1 + Math.max(peers.size, remotes.size); },
     get stats() { return { sent, received, rejected, remotes: remotes.size, peers: peers.size }; },

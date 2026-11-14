@@ -22,6 +22,7 @@ export function createNetHud(container, { enabled, onToggle }) {
     chip.dataset.state = on ? status : 'off';
     if (!on) text.textContent = '혼자 보는 중';
     else if (status === 'ready') text.textContent = `접속 중 ${count}명`;
+    else if (status === 'full') text.textContent = '지금 사람이 많아 혼자 둘러보는 중';
     else if (status === 'lost') text.textContent = '연결이 끊겼어요. 다시 연결 중…';
     else text.textContent = '연결 중…';
   }

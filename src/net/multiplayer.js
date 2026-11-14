@@ -1,14 +1,16 @@
 // 브라우저 전용: 멀티플레이를 게임에 붙이는 얇은 접착제. main.js 는 멀티플레이가 켜져 있을 때만 이 모듈을 불러온다.
 // 전송 선택(transport.js) -> 세션(session.js) -> 다른 방문자 아바타(remotePlayers.js) + 안내 칩(netHud.js). 어떤 오류도 게임 루프로 던지지 않는다.
 import { MULTIPLAYER as BASE_CFG } from '../config.js';
-import { channelPrefix } from '../env.js';
+import { channelPrefix, numberParam } from '../env.js';
 import { makeId, nickFor } from '../logic/net.js';
 import { pickTransport } from './transport.js';
 import { createSession } from './session.js';
 import { createRemotePlayers } from '../remotePlayers.js';
 import { createNetHud } from '../netHud.js';
 
-const MULTIPLAYER = { ...BASE_CFG, channelPrefix: channelPrefix(globalThis.location?.search ?? '', BASE_CFG) }; // 시작할 때 한 번 읽는다(?mpdev= 시험 채널)
+const SEARCH = globalThis.location?.search ?? '';
+// 시작할 때 한 번 읽는 시험용 주소 옵션: ?mpdev=<태그>(시험 채널), ?mpcap=<명>(방 정원)
+const MULTIPLAYER = { ...BASE_CFG, channelPrefix: channelPrefix(SEARCH, BASE_CFG), roomCap: numberParam(SEARCH, 'mpcap', BASE_CFG.roomCap, 1, 50) };
 const PREF_KEY = 'catch-world-mp';
 const FOOTER_NOTICE = '접속 중에는 닉네임과 위치가 다른 방문자에게 공유됩니다(개인정보 아님).';
 
@@ -67,11 +69,19 @@ export function createMultiplayer(ctx) {
   function toggle() {
     on = !on;
     writePref(on);
-    if (on) start();
+  if (on) start();
     else stop();
     refresh();
   }
 
+  // 숨김·유휴(입력 없음 idleMs 이상)이면 상태 전송을 멈춘다(연결은 유지). 돌아오면 곧바로 재개.
+  let lastInput = performance.now();
+  const touch = () => { lastInput = performance.now(); };
+  for (const ev of ['keydown', 'pointerdown', 'pointermove', 'wheel']) window.addEventListener(ev, touch, { passive: true });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) touch();
+    session?.setActive(!document.hidden);
+  });
   window.addEventListener('pagehide', () => { try { session?.dispose(); } catch { /* 무시 */ } });
   if (on) start();
 
@@ -83,6 +93,7 @@ export function createMultiplayer(ctx) {
       if (!session) return;
       try {
         const now = performance.now();
+        session.setActive(!document.hidden && now - lastInput < MULTIPLAYER.idleMs);
         session.update(local, now);
         remotes.update(dt, session.sample(now, local), local.space, renderer.domElement.clientWidth, renderer.domElement.clientHeight);
       } catch (err) {
