@@ -373,3 +373,34 @@ export const INTERVIEW = {
     },
   ],
 };
+
+// ---- 멀티플레이(다른 방문자 아바타 보기) ----
+// 같은 공간(마당·세탁소·면접장)에 동시에 있는 방문자를 실시간 아바타로 보여 준다. 채팅·충돌·이펙트 공유는 없고, 스트레스 지수는 각자 개인 것이다.
+// 공유되는 정보는 임의로 만든 닉네임·위치·방향·동작·옷 상태뿐이다(개인정보 아님). 끄려면 enabled: false. 접속 주소 뒤에 ?mp=off 를 붙이면 그 탭에서만 끈다.
+// transport: 'supabase'(실서비스: Supabase Realtime) | 'local'(같은 브라우저의 탭끼리 BroadcastChannel, 개발·시험용. 접속 주소에 ?mp=local 을 붙이면 이 탭에서만 local 로 바꾼다. 시작할 때 한 번만 읽는다).
+//   'supabase' 인데 아래 SUPABASE_URL / SUPABASE_ANON_KEY 가 비어 있으면 아무 일도 하지 않고(요청도 없다) 조용히 꺼진다.
+// sendHz: 내 상태를 보내는 최대 횟수(회/초, 바뀐 것이 있을 때만). heartbeatMs: 가만히 있어도 이 간격(ms)마다 한 번은 보낸다. 같은 공간에 다른 사람이 없으면 아무것도 보내지 않는다.
+// epsPos / epsRot: 이만큼(단위 / 라디안) 이상 바뀌어야 "움직였다"로 본다. minGapMs: 동작·옷·공간이 바뀌어 즉시 보낼 때도 이 간격(ms)은 둔다.
+// maxRemote: 한 번에 그리는 다른 방문자 수의 최대(가까운 순). maxTracked: 메시지를 받아 기억해 두는 방문자 수의 최대(악의적 폭주 방지). minRecvGapMs: 한 방문자가 이 간격보다 촘촘히 보내는 메시지는 버린다.
+// interpDelayMs: 다른 방문자를 이만큼(ms) 과거 위치로 그려 부드럽게 보이게 한다(5Hz 전송이라 약 한 주기). extrapolateMs: 다음 메시지가 늦을 때 걷는 방향으로 더 내다보는 최대 시간(ms). teleportDist: 이 거리(단위) 이상 한 번에 움직이면 보간 없이 곧장 옮긴다(공간이 바뀌어도 마찬가지).
+// staleMs: 이 시간(ms) 동안 메시지가 없으면 그 방문자를 지운다. nickMax: 닉네임 최대 글자 수.
+// retryBaseMs / retryMaxMs: 연결이 끊기면 이 간격(ms)에서 시작해 두 배씩(최대 retryMaxMs) 늘려 가며 다시 연결한다.
+// nickAdjectives / nickNouns: 닉네임은 임의 id 로 만든 "형용사 명사 #숫자". 개인정보는 절대 쓰지 않는다.
+export const MULTIPLAYER = {
+  enabled: true,
+  transport: 'supabase',
+  sendHz: 5, heartbeatMs: 1000, epsPos: 0.05, epsRot: 0.05, minGapMs: 40,
+  maxRemote: 20, maxTracked: 60, minRecvGapMs: 30,
+  interpDelayMs: 200, extrapolateMs: 120, teleportDist: 8,
+  staleMs: 6000, nickMax: 24,
+  retryBaseMs: 1000, retryMaxMs: 30000,
+  supabaseSdkUrl: 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm',
+  channelPrefix: 'catch-world:',
+  nickAdjectives: ['야근 마스터', '퇴사 준비생', '합격 기원', '자소서 장인', '면접 베테랑', '커피 수혈', '월급 루팡', '출근 거부', '스펙 쌓는', '포트폴리오', '이력서 탈주', '긴장 만렙', '불합격 초월', '연봉 협상', '인턴 출신', '신입 사원'],
+  nickNouns: ['너구리', '펭귄', '고양이', '다람쥐', '호랑이', '수달', '부엉이', '토끼', '판다', '오리', '곰', '여우', '거북이', '고슴도치', '카피바라', '미어캣'],
+};
+
+// Supabase Realtime 접속 정보. 프로젝트를 만든 뒤 Project Settings > API 의 Project URL 과 anon public 키를 넣는다(publishable/anon 키는 공개해도 되는 키다. secret/service_role 키는 절대 넣지 않는다).
+// 둘 중 하나라도 비어 있으면 멀티플레이는 조용히 꺼진다.
+export const SUPABASE_URL = 'https://gwdyiczmxdzbtenhtlsd.supabase.co';
+export const SUPABASE_ANON_KEY = 'sb_publishable_idHVy3M8kBSOIxkIvAMgCA_I5sQnMvN';

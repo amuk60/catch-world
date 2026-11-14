@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { isMobileUA } from './env.js';
+import { isMobileUA, multiplayerMode } from './env.js';
 import { createStage } from './stage.js';
 import { applyAtmosphere } from './atmosphere.js';
 import { loadModels, loadGltf } from './assets.js';
@@ -42,6 +42,7 @@ import {
   ACTION_REDUCE, ACTION_EFFECT_AT, ACTION_TARGET_SECONDS, ACTION_TURN_SECONDS, AUTO_GAP, PASSIVE,
   FIRE_RANGE, SHREDDER_RANGE, WASHER_RANGE, CLOTHESLINE_RANGE, FIRE_ZONE_RADIUS, CATCH_URL, GA_MEASUREMENT_ID, WEAR_SECONDS, WEAR_SWAP_AT,
   INTERVIEW, INTERVIEW_ROUND, INTERVIEW_BONUS, INTERVIEW_ZONE_RADIUS, INTERVIEW_ANSWER_SECONDS, INTERVIEW_IMPROV_SECONDS, INTERVIEW_FINALE_SECONDS, SPEECH_SECONDS,
+  MULTIPLAYER, SUPABASE_URL, SUPABASE_ANON_KEY,
 } from './config.js';
 import { applyDrag, applyZoom, orbitPosition, frontAzimuthDeg } from './logic/orbit.js';
 import { createCameraClear, buildingBoxes } from './logic/cameraClear.js';
@@ -813,6 +814,17 @@ if (isMobileUA(navigator.userAgent)) {
     },
   });
 
+  // 멀티플레이(다른 방문자 아바타 보기, config 의 MULTIPLAYER): 켜져 있을 때만 관련 모듈을 불러온다. 꺼져 있거나 Supabase 키가 비어 있으면 아무것도 불러오지 않는다.
+  let net = null;
+  if (multiplayerMode(location.search, MULTIPLAYER, { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY })) {
+    try {
+      const { createMultiplayer } = await import('./net/multiplayer.js');
+      net = createMultiplayer({ scene, camera, renderer, container: document.getElementById('game'), gltf: characterGltf });
+    } catch (err) {
+      console.warn('멀티플레이를 시작하지 못했습니다.', err);
+    }
+  }
+
   let time = 0;
   onFrame((rawDt) => {
     const dt = Math.min(rawDt, MAX_DT);
@@ -882,6 +894,7 @@ if (isMobileUA(navigator.userAgent)) {
     }
     character?.update(dt);
     if (!character) playerFx.update(dt);
+    net?.update(dt, { space: spaceId, x: player.position.x, z: player.position.z, y: player.position.y, rotY: player.rotation.y, anim: character ? character.getAnim() : 'idle', outfit: outfit.state, seat: holdsSeat(mode) });
     laundry.update(dt);
     interviewers.update(dt);
     interviewScene.update(dt);

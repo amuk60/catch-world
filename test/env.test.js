@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isMobileUA } from '../src/env.js';
+import { isMobileUA, multiplayerMode, channelPrefix } from '../src/env.js';
 
 test('안드로이드·아이폰은 모바일로 판별한다', () => {
   assert.equal(isMobileUA('Mozilla/5.0 (Linux; Android 13; SM-S918N) Mobile Safari'), true);
@@ -14,4 +14,32 @@ test('데스크톱 브라우저는 모바일이 아니다', () => {
 test('빈 값은 모바일이 아니다', () => {
   assert.equal(isMobileUA(''), false);
   assert.equal(isMobileUA(undefined), false);
+});
+
+test('multiplayerMode: 꺼짐·?mp=off·키 없는 supabase 는 null, ?mp=local 은 local', () => {
+  const keys = { url: 'u', anonKey: 'k' };
+  const none = { url: '', anonKey: '' };
+  const cfg = { enabled: true, transport: 'supabase' };
+  assert.equal(multiplayerMode('', { ...cfg, enabled: false }, keys), null);
+  assert.equal(multiplayerMode('?mp=off', cfg, keys), null);
+  assert.equal(multiplayerMode('?mp=off', { ...cfg, transport: 'local' }, keys), null);
+  assert.equal(multiplayerMode('', cfg, none), null);
+  assert.equal(multiplayerMode('', cfg, { url: 'u', anonKey: '' }), null);
+  assert.equal(multiplayerMode('', cfg, undefined), null);
+  assert.equal(multiplayerMode('', cfg, keys), 'supabase');
+  assert.equal(multiplayerMode('?mp=local', cfg, none), 'local');
+  assert.equal(multiplayerMode('?a=1&mp=local', cfg, keys), 'local');
+  assert.equal(multiplayerMode('', { ...cfg, transport: 'local' }, none), 'local');
+  assert.equal(multiplayerMode('', { ...cfg, transport: 'weird' }, keys), null);
+  assert.equal(multiplayerMode(undefined, cfg, keys), 'supabase');
+});
+
+test('channelPrefix: ?mpdev= 는 시험용 채널로, 이상한 값은 무시', () => {
+  const cfg = { channelPrefix: 'catch-world:' };
+  assert.equal(channelPrefix('', cfg), 'catch-world:');
+  assert.equal(channelPrefix('?mpdev=abc1', cfg), 'catch-world-dev-abc1:');
+  assert.equal(channelPrefix('?mpdev=a b', cfg), 'catch-world:');
+  assert.equal(channelPrefix('?mpdev=' + 'x'.repeat(17), cfg), 'catch-world:');
+  assert.equal(channelPrefix('?mpdev=', cfg), 'catch-world:');
+  assert.equal(channelPrefix(undefined, cfg), 'catch-world:');
 });

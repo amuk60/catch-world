@@ -119,6 +119,19 @@
       text-decoration: underline; cursor: pointer; }
     .choice-cancel:hover { color: #3a2f1f; }
     .choice-cancel .keycap { margin-left: 6px; min-width: 0; padding: 0 5px; font-size: 11px; text-decoration: none; display: inline-block; }
+    /* 멀티플레이(켜져 있을 때만 생긴다): 다른 방문자 이름표와 왼쪽 아래 접속 칩. 이름표 층은 플레이어 말풍선·팝업보다 아래. */
+    .mp-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 1; }
+    .mp-label { position: absolute; left: 0; top: 0; max-width: 180px; padding: 2px 9px; border-radius: 999px; background: rgba(40, 70, 96, 0.72);
+      color: #e8f6ff; font-size: 12px; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: -4px;
+      border: 1px solid rgba(143, 216, 255, 0.55); will-change: transform; }
+    #mp-chip { position: absolute; left: 14px; bottom: 14px; display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border-radius: 999px;
+      background: rgba(18, 18, 31, 0.72); color: #dfeaf5; font-size: 12px; z-index: 2; }
+    .mp-dot { width: 8px; height: 8px; border-radius: 50%; background: #e6b94a; flex: none; }
+    #mp-chip[data-state="ready"] .mp-dot { background: #5fd38d; }
+    #mp-chip[data-state="lost"] .mp-dot { background: #e2483d; }
+    #mp-chip[data-state="off"] .mp-dot { background: #8a8aa0; }
+    .mp-toggle { padding: 3px 10px; border: 0; border-radius: 999px; background: rgba(255, 255, 255, 0.14); color: #fff; font: inherit; cursor: pointer; white-space: nowrap; }
+    .mp-toggle:hover { background: rgba(255, 255, 255, 0.26); }
     /* 클리어 팝업(종료 화면)과 캐치 칩. */
     #result { position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
       background: rgba(10, 10, 20, 0.7); z-index: 4; }

@@ -29,6 +29,8 @@ export function createPlayer(gltf) {
     const clip = findClip(gltf.animations, name);
     if (clip) actions[name] = mixer.clipAction(clip);
   }
+  const animNames = new Map(); // 액션 -> 클립 이름(멀티플레이로 내 동작을 알릴 때 쓴다)
+  for (const [name, action] of Object.entries(actions)) animNames.set(action, name);
   const oneShots = {}; // 행동 클립 이름 -> { action, raw(원래 길이, 초) }
   for (const name of ACTION_CLIPS) {
     const clip = findClip(gltf.animations, name);
@@ -37,6 +39,7 @@ export function createPlayer(gltf) {
     action.setLoop(THREE.LoopOnce, 1);
     action.clampWhenFinished = true;
     oneShots[name] = { action, raw: clip.duration };
+    animNames.set(action, name);
   }
   let current = 'idle'; // 기본 상태 이름(행동 중에는 마지막으로 재생하던 기본 상태)
   let playing = actions.idle ?? null; // 지금 가장 비중이 큰 액션
@@ -137,6 +140,8 @@ export function createPlayer(gltf) {
       if (to && playing !== to) crossTo(to, FADE_SECONDS);
     },
     isActing: () => acting,
+    // 지금 재생 중(크로스페이드 중이면 가는 쪽)인 클립 이름. 'idle' | 'walk' | 'sit' | 행동 클립 이름.
+    getAnim: () => animNames.get(playing) ?? 'idle',
     update(dt) {
       if (turn) {
         turn.t += dt;
