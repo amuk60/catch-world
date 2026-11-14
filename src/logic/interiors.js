@@ -1,7 +1,7 @@
 // 실내 공간 데이터 (순수). 좌표는 월드 좌표(마당과 멀리 떨어진 같은 씬 안)이고 y=0 이 바닥이다.
 // 세탁소 실내: 안쪽 면 기준 12(x) x 10(z)의 코인세탁소. 북쪽(뒷) 벽에 세탁기·건조기 한 줄, 서쪽 벽에 출입문, 동쪽에 빨랫줄.
 // 오브젝트 방향: rotY 는 three.js rotation.y 이며 모델의 앞(+z)이 (sin, cos) 방향을 본다.
-import { LAUNDRY_INTERIOR, INTERVIEW_INTERIOR } from '../config.js';
+import { LAUNDRY_INTERIOR, INTERVIEW_INTERIOR, CLOTHESLINE_SLOTS } from '../config.js';
 
 const TILE = 2; // 벽·바닥 조각 한 칸(월드 단위). Furniture Kit 벽(폭 1, 높이 1.29)을 2배로 쓴다.
 const WALL_OFFSET = 0.07; // 벽 조각 중심이 방 경계에서 바깥쪽으로 떨어진 거리(안쪽 면이 경계에 닿도록 두께의 반)
@@ -16,7 +16,7 @@ const WASHER_ROW = {
   z: -4.2, scales: { washer: 2.6, dryer: 2.2 },
   slots: [['dryer', -3.75], ['washer', -2.25], ['washer', -0.75], ['washer', 0.75], ['washer', 2.25], ['dryer', 3.75]],
 };
-const CLOTHESLINE = { x: 4.6, z1: -1.7, z2: 1.7, y: 1.8, postHeight: 2.0, postRadius: 0.25, slots: 6 };
+const CLOTHESLINE = { x: 4.6, z1: -3.6, z2: 3.6, y: 1.8, postHeight: 2.0, postRadius: 0.25, slots: CLOTHESLINE_SLOTS.shared + CLOTHESLINE_SLOTS.personal, shared: CLOTHESLINE_SLOTS.shared, personal: CLOTHESLINE_SLOTS.personal }; // 동쪽 벽을 따라 긴 줄(칸 간격 0.6)
 
 // 벽 한 면의 조각 이름(좌표가 커지는 쪽으로: 북·남 벽은 x, 서·동 벽은 z 순서).
 const WALL_PIECES = {
@@ -65,7 +65,7 @@ export function buildLaundryInterior() {
 
   const clothesline = {
     x1: origin.x + CLOTHESLINE.x, z1: origin.z + CLOTHESLINE.z1, x2: origin.x + CLOTHESLINE.x, z2: origin.z + CLOTHESLINE.z2, y: CLOTHESLINE.y,
-    postHeight: CLOTHESLINE.postHeight, postRadius: CLOTHESLINE.postRadius, slots: CLOTHESLINE.slots,
+    postHeight: CLOTHESLINE.postHeight, postRadius: CLOTHESLINE.postRadius, slots: CLOTHESLINE.slots, shared: CLOTHESLINE.shared, personal: CLOTHESLINE.personal,
     centre: { x: origin.x + CLOTHESLINE.x, z: origin.z + (CLOTHESLINE.z1 + CLOTHESLINE.z2) / 2 },
   };
   circle('clothesline-post-a', clothesline.x1, clothesline.z1, clothesline.postRadius);

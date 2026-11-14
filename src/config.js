@@ -98,6 +98,8 @@ export const SHREDDER_RANGE = 4.0;
 export const LAUNDRY_ZONE_RADIUS = 4.5; // 구역 중심은 실내 세탁기 줄과 빨랫줄 사이(logic/zones.js)
 export const WASHER_RANGE = 4.0;
 export const CLOTHESLINE_RANGE = 4.0;
+// 빨랫줄 칸 수: 파스텔 셔츠가 돌려 쓰는 공용 칸(shared) + 방 정원(MULTIPLAYER.roomCap)만큼의 개인 "내 셔츠" 칸(personal). 여러 명이 한 줄을 같이 쓰므로 줄이 길다(interiors.js 가 칸 수에 맞춰 줄 길이를 정한다).
+export const CLOTHESLINE_SLOTS = { shared: 6, personal: 6 };
 // 옷 상태 연동(소각 -> 그을음 옷 -> 세탁 -> 나시 -> 새 셔츠 널기 -> 마르면 입기).
 // DRY_SECONDS: 새 흰 셔츠를 빨랫줄에 널고 마르기까지 걸리는 시간(초, 실시간. 밖에 나가 있어도 센다).
 // WEAR_SECONDS: 마른 새 셔츠를 입는 동작의 길이(초, 이동·입력은 잠긴다). WEAR_SWAP_AT: 그중 셔츠가 줄에서 사라지고 옷이 바뀌는 순간의 비율.

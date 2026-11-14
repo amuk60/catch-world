@@ -107,11 +107,11 @@ test('그 밖의 가구: 접이식 테이블·벤치·화분과 러그, 모두 �
   for (const n of ['table', 'benchCushion', 'pottedPlant']) assert.ok(I.obstacles.some((o) => o.id === n), `${n} 은 장애물`);
 });
 
-test('빨랫줄: 동쪽에 두 기둥 + 줄(길이 ~3.4, 높이 ~1.8, 6칸), 중심은 두 기둥의 가운데, 기둥은 장애물(반경 0.25)', () => {
+test('빨랫줄: 동쪽에 두 기둥 + 긴 줄(길이 ~7.2, 높이 ~1.8, 공용 6칸 + 개인 6칸 = 12칸), 중심은 두 기둥의 가운데, 기둥은 장애물(반경 0.25)', () => {
   const c = I.clothesline;
   assert.ok(Math.abs(c.centre.x - (c.x1 + c.x2) / 2) < 1e-9 && Math.abs(c.centre.z - (c.z1 + c.z2) / 2) < 1e-9);
-  assert.ok(Math.abs(Math.hypot(c.x2 - c.x1, c.z2 - c.z1) - 3.4) < 0.05);
-  assert.ok(c.y >= 1.6 && c.y <= 2.0 && c.postHeight >= 1.9 && c.postHeight <= 2.1 && c.postRadius === 0.25 && c.slots === 6);
+  assert.ok(Math.abs(Math.hypot(c.x2 - c.x1, c.z2 - c.z1) - 7.2) < 0.05);
+  assert.ok(c.y >= 1.6 && c.y <= 2.0 && c.postHeight >= 1.9 && c.postHeight <= 2.1 && c.postRadius === 0.25 && c.slots === 12 && c.shared === 6 && c.personal === 6);
   assert.ok(c.centre.x > LAUNDRY_INTERIOR.origin.x + 3, '동쪽');
   for (const [x, z] of [[c.x1, c.z1], [c.x2, c.z2]]) {
     assert.ok(I.obstacles.some((o) => o.x === x && o.z === z && o.radius === c.postRadius), `post ${x},${z}`);

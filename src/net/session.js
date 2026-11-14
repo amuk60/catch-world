@@ -1,13 +1,14 @@
 // 멀티플레이 세션(THREE 없음, 시험 가능): 전송(transport)을 감싸 공간별 방에 들어가고, 내 상태를 정책에 맞춰 보내고,
 // 받은 메시지를 검사·보간 버퍼에 쌓고, 오래 소식 없는 방문자를 지운다. 게임 루프로는 절대 예외를 던지지 않는다.
 import {
-  buildState, validateState, createSendPolicy, createInterpBuffer, isStale, nearestN, buildSay, validateSay, createSayLimiter,
+  buildState, validateState, createSendPolicy, createInterpBuffer, isStale, nearestN, buildSay, validateSay, createSayLimiter, buildRoomMsg, validateRoomMsg,
 } from '../logic/net.js';
 import { shardRoom, nextShard } from '../logic/shards.js';
 
 // transport: net/transport.js 의 인터페이스. self: { id, nick }. cfg: config 의 MULTIPLAYER. now: () => ms.
+// roomLimits: 세탁소 빨랫줄·세탁기 효과 메시지(k: 'line' | 'lines' | 'fx')를 받을 때의 허용 범위 { slots, shared, washers }. 없으면 보내지도 받지도 않는다.
 // sayLimits: 면접 답변·돌발행동 한마디(k: 'say')를 받을 때의 허용 범위 { questions, answers, improvs }. 없으면 한마디는 보내지도 받지도 않는다.
-export function createSession({ transport, self, cfg, now = () => performance.now(), clock = () => Date.now(), sayLimits = null }) {
+export function createSession({ transport, self, cfg, now = () => performance.now(), clock = () => Date.now(), sayLimits = null, roomLimits = null }) {
   const remotes = new Map(); // id -> { id, nick, buffer, lastSeen, lastT, lastRecv }
   const peers = new Set(); // 지금 방에 있는 다른 방문자 id(전송 쪽 presence)
   const policy = createSendPolicy({ hz: cfg.sendHz, heartbeatMs: cfg.heartbeatMs, epsPos: cfg.epsPos, epsRot: cfg.epsRot, minGapMs: cfg.minGapMs });
@@ -32,6 +33,11 @@ export function createSession({ transport, self, cfg, now = () => performance.no
   const sayListeners = new Set();
   const sayIn = createSayLimiter(cfg.sayGapMs ?? 1500); // 보낸 사람마다 받는 간격
   const sayOut = createSayLimiter(cfg.sayGapMs ?? 1500); // 내가 보내는 간격
+  const roomListeners = new Set();
+  const ROOM_GAP = { line: cfg.lineGapMs ?? 150, lines: cfg.linesGapMs ?? 1500, fx: cfg.fxGapMs ?? 700 }; // 종류별 최소 간격(ms): 보낸 사람마다 받고, 나도 이 간격으로만 보낸다
+  const roomIn = Object.fromEntries(Object.entries(ROOM_GAP).map(([k, gap]) => [k, createSayLimiter(gap)]));
+  const roomOut = Object.fromEntries(Object.entries(ROOM_GAP).map(([k, gap]) => [k, createSayLimiter(gap)]));
+  const roomLimitsAt = () => (roomLimits ? { ...roomLimits, maxT: clock() + 60000 } : null); // 시각 t 는 지금보다 1분 넘게 앞서면 버린다
   const notify = () => { for (const fn of listeners) { try { fn(api); } catch { /* 표시 쪽 오류는 무시 */ } } };
 
   // 전송 상태와 단계에서 겉으로 보이는 상태를 정한다. 준비(ready)가 아니면 방문자는 모두 지운다.
@@ -86,6 +92,7 @@ export function createSession({ transport, self, cfg, now = () => performance.no
     remotes.clear();
     peers.clear();
     sayIn.clear();
+    for (const l of Object.values(roomIn)) l.clear();
     policy.reset();
     tState = 'connecting';
     phase = 'probing';
@@ -125,6 +132,7 @@ export function createSession({ transport, self, cfg, now = () => performance.no
   function ingest(raw, at = now()) {
     if (disposed || phase !== 'joined') return false;
     if (raw && typeof raw === 'object' && raw.k === 'say') return ingestSay(raw, at);
+    if (raw && typeof raw === 'object' && (raw.k === 'line' || raw.k === 'lines' || raw.k === 'fx')) return ingestRoom(raw, at);
     const s = validateState(raw, validateOpts);
     if (!s) { rejected++; return false; }
     if (s.id === self.id || s.space !== space) return false;
@@ -163,6 +171,33 @@ export function createSession({ transport, self, cfg, now = () => performance.no
     const ev = { id: m.id, nick: r.nick, ty: m.ty, q: m.q, a: m.a, imp: m.imp };
     for (const fn of sayListeners) { try { fn(ev); } catch { /* 표시 쪽 오류는 무시 */ } }
     return true;
+  }
+
+  // 받은 세탁소 메시지(빨랫줄 칸·전체 목록·세탁기 효과)를 검사해 구독자에게 알린다. 내 공간(세탁소)에서 상태를 보낸 적이 있는 방문자의 것만, 종류별 간격을 두고 받는다.
+  function ingestRoom(raw, at) {
+    if (!roomLimits || roomListeners.size === 0) return false;
+    const m = validateRoomMsg(raw, roomLimitsAt());
+    if (!m) { rejected++; return false; }
+    if (m.id === self.id || m.space !== space || !remotes.has(m.id)) return false;
+    if (!roomIn[m.k].allow(m.id, at)) return false;
+    for (const fn of roomListeners) { try { fn(m); } catch { /* 표시 쪽 오류는 무시 */ } }
+    return true;
+  }
+
+  // 세탁소 메시지를 보낸다: { k:'line', slot, c, t } | { k:'lines', e } | { k:'fx', i }. 연결되지 않았거나 듣는 사람이 없거나 간격 안이면 보내지 않는다. 반환: 보냈는가.
+  function sendRoom(msg, nowMs = now()) {
+    try {
+      if (disposed || !roomLimits || space !== 'laundry' || status !== 'ready' || !transport.isReady || !active) return false;
+      if (peers.size === 0 && remotes.size === 0) return false;
+      const out = buildRoomMsg(self, space, msg);
+      if (!validateRoomMsg(out, roomLimitsAt())) return false;
+      if (!roomOut[out.k].allow(self.id, nowMs)) return false;
+      transport.send(out);
+      sent++;
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   // 내 한마디를 보낸다: { ty:'ans', q, a } | { ty:'imp', imp }. 연결·방 상태가 안 되었거나 듣는 사람이 없거나 간격(cfg.sayGapMs) 안이면 보내지 않는다. 반환: 보냈는가.
@@ -223,7 +258,8 @@ export function createSession({ transport, self, cfg, now = () => performance.no
   }
 
   const api = {
-    update, sample, ingest, dispose, say,
+    update, sample, ingest, dispose, say, sendRoom,
+    onRoom(fn) { roomListeners.add(fn); return () => roomListeners.delete(fn); },
     onSay(fn) { sayListeners.add(fn); return () => sayListeners.delete(fn); },
     get status() { return status; },
     get space() { return space; },

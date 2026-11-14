@@ -1,12 +1,11 @@
 // 옷 상태 (순수). 입은 옷은 꾸미기일 뿐 스트레스 계산에는 쓰이지 않는다(세탁·널기·소각은 옷과 상관없이 늘 지수를 줄인다).
-// clean(원래 정장) -[소각]-> dirty(그을음) -[세탁]-> tank(흰 나시만 입음) -[널기]-> drying(새 흰 셔츠가 줄에서 마르는 중)
+// clean(원래 정장) -[소각]-> dirty(그을음), 세탁은 clean 이든 dirty 든 셔츠를 벗어 세탁기에 넣어 tank(흰 나시만 입음)가 된다.
+// clean|dirty -[세탁]-> tank(흰 나시만 입음) -[널기]-> drying(새 흰 셔츠가 줄에서 마르는 중)
 //   -[DRY_SECONDS 경과]-> dry(마름) -[입기(E)]-> clean.
 // 파쇄는 옷을 바꾸지 않고, 상태에 맞지 않는 행동은 옷에 아무 영향이 없다. 타이머는 update(dt) 로 실시간만큼 센다.
 import { DRY_SECONDS } from '../config.js';
 
-export const MY_SHIRT_SLOT = 3; // 빨랫줄 6칸 중 "내 셔츠"가 쓰는 칸(널린 파스텔 셔츠가 덮어쓰지 않는다)
-
-const NEXT = { burn: ['clean', 'dirty'], wash: ['dirty', 'tank'], hang: ['tank', 'drying'] }; // 행동 -> [필요한 상태, 다음 상태]
+const NEXT = { burn: [['clean'], 'dirty'], wash: [['clean', 'dirty'], 'tank'], hang: [['tank'], 'drying'] }; // 행동 -> [필요한 상태들, 다음 상태]
 
 export function createOutfit({ drySeconds = DRY_SECONDS } = {}) {
   let state = 'clean';
@@ -17,7 +16,7 @@ export function createOutfit({ drySeconds = DRY_SECONDS } = {}) {
     // 행동 효과 순간에 부른다. 옷이 바뀌면 새 상태를, 아니면 null.
     onAction(id) {
       const rule = NEXT[id];
-      if (!rule || rule[0] !== state) return null;
+      if (!rule || !rule[0].includes(state)) return null;
       state = rule[1];
       if (state === 'drying') left = drySeconds;
       return state;

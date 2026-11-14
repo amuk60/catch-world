@@ -230,3 +230,47 @@ export function createSayLimiter(minGapMs = 1500) {
     clear() { last.clear(); },
   };
 }
+
+// ---- 세탁소 빨랫줄·세탁기 효과 메시지 ----
+// 같은 방(세탁소)의 방문자끼리만 의미가 있다. 숫자뿐이고 글은 없다. k: 'line'(칸 하나) | 'lines'(내가 널어 둔 전체) | 'fx'(세탁기 효과).
+//   { k:'line', id, space:'laundry', slot, c(-1 걷음, 0..5 파스텔, 6 흰 셔츠), t }
+//   { k:'lines', id, space:'laundry', e:[[slot, c, t], ...] }
+//   { k:'fx', id, space:'laundry', ty:'wash', i(세탁기 번호) }
+export const ROOM_KINDS = ['line', 'lines', 'fx'];
+
+export function buildRoomMsg(self, space, msg) {
+  if (msg?.k === 'line') return { k: 'line', id: self.id, space, slot: msg.slot, c: msg.c, t: msg.t };
+  if (msg?.k === 'lines') return { k: 'lines', id: self.id, space, e: msg.e };
+  return { k: 'fx', id: self.id, space, ty: 'wash', i: msg?.i };
+}
+
+// limits: { slots(전체 칸 수), shared(공용 파스텔 칸 수), washers(세탁기 수), maxT(t 의 상한: 지금 + 여유) }. 틀리면 null.
+// 칸 종류 규칙: 흰 셔츠(6)는 개인 칸(slot >= shared)에만, 파스텔(0..5)은 공용 칸(slot < shared)에만.
+export function validateRoomMsg(raw, limits) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !limits || !ROOM_KINDS.includes(raw.k)) return null;
+  const { id, space } = raw;
+  if (typeof id !== 'string' || !ID_RE.test(id)) return null;
+  if (space !== 'laundry') return null;
+  const slotOk = (s) => Number.isInteger(s) && s >= 0 && s < limits.slots;
+  const entryOk = (slot, c, t) => slotOk(slot) && Number.isInteger(c) && c >= 0 && c <= 6 && (c === 6) === (slot >= limits.shared) && isNum(t) && t >= 0 && t <= limits.maxT;
+  if (raw.k === 'line') {
+    const { slot, c, t } = raw;
+    if (c === -1) return slotOk(slot) && isNum(t) && t >= 0 && t <= limits.maxT ? { k: 'line', id, space, slot, c, t } : null;
+    return entryOk(slot, c, t) ? { k: 'line', id, space, slot, c, t } : null;
+  }
+  if (raw.k === 'lines') {
+    const { e } = raw;
+    if (!Array.isArray(e) || e.length > limits.slots) return null;
+    const seen = new Set();
+    const out = [];
+    for (const row of e) {
+      if (!Array.isArray(row) || row.length !== 3 || !entryOk(row[0], row[1], row[2]) || seen.has(row[0])) return null;
+      seen.add(row[0]);
+      out.push([row[0], row[1], row[2]]);
+    }
+    return { k: 'lines', id, space, e: out };
+  }
+  const { ty, i } = raw;
+  if (ty !== 'wash' || !Number.isInteger(i) || i < 0 || i >= limits.washers) return null;
+  return { k: 'fx', id, space, ty, i };
+}

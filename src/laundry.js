@@ -2,11 +2,11 @@
 // 건물은 layout(logic/layout.js)의 buildings 에서, 세탁기·빨랫줄은 실내 데이터(logic/interiors.js)에서 온다(실내는 interiorLaundry.js 가 이 모듈의 buildWashers/buildClothesline 을 쓴다).
 import * as THREE from 'three';
 import {
-  hangSlot, shirtColor, slotPoint, wobbleAmount, WOBBLE_SECONDS, foamBubble, FOAM_COUNT, FOAM_SECONDS, swingAngle, SWING_SECONDS,
+  PASTELS, slotPoint, wobbleAmount, WOBBLE_SECONDS, foamBubble, FOAM_COUNT, FOAM_SECONDS, swingAngle, SWING_SECONDS,
 } from './logic/laundry.js';
 import { buildOfficeTower, buildShop } from './buildingExterior.js';
 
-const MY_SHIRT_COLOR = 0xffffff; // 내 새 셔츠(흰색. 파스텔 셔츠와 구별된다)
+const MY_SHIRT_COLOR = 0xffffff; // 흰 "내 셔츠"(logic/line.js 의 WHITE. 파스텔 셔츠와 구별된다)
 const MY_SHIRT_GLOW = 0xb0b0b0;
 
 // 건물 외관은 모델 없이 만든다(buildingExterior.js). main 이 미리 불러올 모델 조각은 없다.
@@ -246,39 +246,30 @@ export function buildClothesline(scene, line, style = {}) {
     return { pivot, shirt, t: -1 };
   });
 
-  let mine = -1; // 내 새 셔츠가 걸린 칸(없으면 -1)
+  const shown = slots.map(() => null); // 칸마다 지금 그려진 항목의 키(c:t). 바뀐 칸만 다시 그리고 흔든다
   return {
     slots: slots.length,
-    // count 번째(0부터) 널기: 칸 hangSlot(count) 에 파스텔 셔츠를 건다(가득 차면 가장 오래된 것을 바꾼다). 건 칸 번호를 돌려준다.
-    // reserved(0 이상)는 건너뛸 칸(내 새 셔츠가 걸려 있는 동안 그 칸).
-    hang(count, reserved = -1) {
-      const i = hangSlot(count, slots.length, reserved);
-      const s = slots[i];
-      s.shirt.material.color.setHex(shirtColor(count));
-      s.shirt.material.emissive.setHex(0x000000);
-      s.pivot.visible = true;
-      s.t = 0;
-      return i;
+    // 공유된 줄 상태를 그린다. view: logic/line.js 의 view() — 칸마다 { c(0~5 파스텔 색 번호, 6 흰 내 셔츠), t } 또는 null. 새로 걸리거나 바뀐 칸은 한 번 흔들린다.
+    show(view) {
+      for (let i = 0; i < slots.length; i++) {
+        const e = view[i];
+        const key = e ? `${e.c}:${e.t}` : null;
+        if (key === shown[i]) continue;
+        shown[i] = key;
+        const s = slots[i];
+        if (!e) {
+          s.pivot.visible = false;
+          s.t = -1;
+          s.pivot.rotation.x = 0;
+          continue;
+        }
+        const white = e.c === 6;
+        s.shirt.material.color.setHex(white ? MY_SHIRT_COLOR : PASTELS[e.c % PASTELS.length]);
+        s.shirt.material.emissive.setHex(white ? MY_SHIRT_GLOW : 0x000000); // 실내 조명이 약해 흰 천이 회색으로 보이므로 살짝 스스로 빛나게 한다
+        s.pivot.visible = true;
+        s.t = 0;
+      }
     },
-    // "내 셔츠": 새 흰 와이셔츠를 전용 칸 slot 에 건다(그 칸에 걸려 있던 파스텔 셔츠는 대체된다). 흰색이고 흔들린다.
-    hangMine(slot) {
-      const s = slots[slot];
-      s.shirt.material.color.setHex(MY_SHIRT_COLOR);
-      s.shirt.material.emissive.setHex(MY_SHIRT_GLOW); // 실내 조명이 약해 흰 천이 회색으로 보이므로 살짝 스스로 빛나게 한다
-      s.pivot.visible = true;
-      s.t = 0;
-      mine = slot;
-      return slot;
-    },
-    // 내 셔츠를 줄에서 내린다(입었거나 다시 하기). 칸은 비워 둔다.
-    removeMine() {
-      if (mine < 0) return;
-      slots[mine].pivot.visible = false;
-      slots[mine].t = -1;
-      slots[mine].pivot.rotation.x = 0;
-      mine = -1;
-    },
-    mineSlot: () => mine,
     visibleCount: () => slots.filter((s) => s.pivot.visible).length,
     update(dt) {
       for (const s of slots) {

@@ -4,6 +4,7 @@ import { MULTIPLAYER as BASE_CFG, INTERVIEW } from '../config.js';
 import { channelPrefix, numberParam } from '../env.js';
 import { makeId, nickFor } from '../logic/net.js';
 import { IMPROV_IDS } from '../logic/interview.js';
+import { buildLaundryInterior } from '../logic/interiors.js';
 import { pickTransport } from './transport.js';
 import { createSession } from './session.js';
 import { createRemotePlayers } from '../remotePlayers.js';
@@ -14,6 +15,9 @@ const SEARCH = globalThis.location?.search ?? '';
 const MULTIPLAYER = { ...BASE_CFG, channelPrefix: channelPrefix(SEARCH, BASE_CFG), roomCap: numberParam(SEARCH, 'mpcap', BASE_CFG.roomCap, 1, 50) };
 // 면접 답변·돌발행동 한마디를 받을 때의 허용 범위(내 설정의 질문 수·답변 수·돌발행동 id). 이 밖의 값은 버린다.
 const SAY_LIMITS = { questions: INTERVIEW.questions.length, answers: 3, improvs: [...IMPROV_IDS] };
+// 세탁소 빨랫줄·세탁기 효과 메시지의 허용 범위(칸 수·공용 칸 수·세탁기 수는 세탁소 데이터에서).
+const LAUNDRY = buildLaundryInterior();
+const ROOM_LIMITS = { slots: LAUNDRY.clothesline.slots, shared: LAUNDRY.clothesline.shared, washers: LAUNDRY.washers.length };
 const PREF_KEY = 'catch-world-mp';
 const FOOTER_NOTICE = '접속 중에는 닉네임과 위치가 다른 방문자에게 공유됩니다(개인정보 아님).';
 
@@ -24,12 +28,12 @@ function writePref(on) {
   try { localStorage.setItem(PREF_KEY, on ? 'on' : 'off'); } catch { /* 저장소를 못 써도 이번 방문에는 동작한다 */ }
 }
 
-// ctx: { scene, camera, renderer, container(#game), gltf(캐릭터 모델 또는 null) }. 쓰지 않는 설정이면 null.
+// ctx: { scene, camera, renderer, container(#game), gltf(캐릭터 모델 또는 null), id(선택: 내 방문자 id. 빨랫줄 소유자 표시와 같게 맞출 때) }. 쓰지 않는 설정이면 null.
 export function createMultiplayer(ctx) {
   const pick = pickTransport();
   if (!pick) return null;
   const { scene, camera, renderer, container, gltf } = ctx;
-  const self = { id: makeId(), nick: '' };
+  const self = { id: ctx.id ?? makeId(), nick: '' };
   self.nick = nickFor(self.id, MULTIPLAYER.nickAdjectives, MULTIPLAYER.nickNouns);
   const footer = document.querySelector('footer');
   if (footer && !footer.textContent.includes(FOOTER_NOTICE)) footer.textContent = `${footer.textContent} ${FOOTER_NOTICE}`;
@@ -42,6 +46,8 @@ export function createMultiplayer(ctx) {
   let unsub = null;
   let warned = false;
   let lastList = []; // 마지막으로 그린 방문자들(보간된 위치·seat 여부: 좌석 점유 판정과 말풍선 위치에 쓴다)
+  const roomHandlers = new Set(); // 세탁소 메시지 구독
+  let roomUnsub = null;
   const sayHandlers = new Set(); // 한마디 구독(세션이 다시 만들어져도 유지한다)
   let sayUnsub = null;
   const hud = createNetHud(container, { enabled: on, onToggle: toggle });
@@ -53,9 +59,10 @@ export function createMultiplayer(ctx) {
     try {
       transport ??= await pick.create();
       if (!on) return;
-      session = createSession({ transport, self, cfg: MULTIPLAYER, sayLimits: SAY_LIMITS });
+      session = createSession({ transport, self, cfg: MULTIPLAYER, sayLimits: SAY_LIMITS, roomLimits: ROOM_LIMITS });
       unsub = session.subscribe(refresh);
       sayUnsub = session.onSay((ev) => { for (const fn of sayHandlers) fn(ev); });
+      roomUnsub = session.onRoom((ev) => { for (const fn of roomHandlers) fn(ev); });
     } catch (err) {
       console.warn('멀티플레이를 시작하지 못했습니다.', err);
       session = null;
@@ -70,6 +77,8 @@ export function createMultiplayer(ctx) {
     unsub = null;
     sayUnsub?.();
     sayUnsub = null;
+    roomUnsub?.();
+    roomUnsub = null;
     session?.dispose();
     session = null;
     lastList = [];
@@ -102,6 +111,9 @@ export function createMultiplayer(ctx) {
     get remotes() { return lastList; },
     // 내 한마디 보내기({ ty:'ans', q, a } | { ty:'imp', imp }). 보냈으면 true.
     say(msg) { return session ? session.say(msg) : false; },
+    // 세탁소 메시지 보내기: { k:'line', slot, c, t } | { k:'lines', e } | { k:'fx', i }. 보냈으면 true. 다른 방문자의 것은 onRoom(fn) 으로 받는다(fn({ k, id, ... })).
+    sendRoom(msg) { return session ? session.sendRoom(msg) : false; },
+    onRoom(fn) { roomHandlers.add(fn); return () => roomHandlers.delete(fn); },
     // 다른 방문자의 한마디 구독: fn({ id, nick, ty, q, a, imp }). 해제 함수를 돌려준다.
     onSay(fn) { sayHandlers.add(fn); return () => sayHandlers.delete(fn); },
     // 매 프레임. local: { space, x, z, y, rotY, anim, outfit, seat }.

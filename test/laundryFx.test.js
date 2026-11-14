@@ -24,9 +24,9 @@ test('shirtColor: 행동 횟수에서 정해지는 파스텔, 같은 횟수는 �
   for (const c of PASTELS) for (const shift of [16, 8, 0]) assert.ok(((c >> shift) & 255) >= 0xa0);
 });
 
-test('slotPoint: 6칸이 두 기둥 사이를 고르게 나누고 줄 높이에 있다', () => {
+test('slotPoint: 12칸(공용 6 + 개인 6)이 두 기둥 사이를 고르게 나누고 줄 높이에 있다', () => {
   const pts = Array.from({ length: line.slots }, (_, i) => slotPoint(line, i));
-  assert.equal(pts.length, 6);
+  assert.equal(pts.length, 12);
   for (const p of pts) {
     assert.equal(p.y, line.y);
     assert.ok(p.z > Math.min(line.z1, line.z2) && p.z < Math.max(line.z1, line.z2));
@@ -34,8 +34,8 @@ test('slotPoint: 6칸이 두 기둥 사이를 고르게 나누고 줄 높이에 
   const gaps = pts.slice(1).map((p, i) => Math.hypot(p.x - pts[i].x, p.z - pts[i].z));
   for (const g of gaps) assert.ok(Math.abs(g - gaps[0]) < 1e-9);
   assert.ok(gaps[0] >= 0.5, `칸 간격 ${gaps[0]}`); // 0.5 폭의 셔츠가 겹치지 않는다
-  // 줄의 가운데는 3번째와 4번째 칸 사이.
-  assert.ok(Math.abs((pts[2].z + pts[3].z) / 2 - line.centre.z) < 1e-9);
+  // 줄의 가운데는 6번째와 7번째 칸 사이.
+  assert.ok(Math.abs((pts[5].z + pts[6].z) / 2 - line.centre.z) < 1e-9);
 });
 
 test('wobbleAmount: 0 에서 시작해 흔들리다 줄어들어 ~1.2초 뒤 0, 범위 -1~1', () => {

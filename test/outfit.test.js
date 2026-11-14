@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createOutfit, appearanceOf, outfitPrompt, hasMyShirt, MY_SHIRT_SLOT } from '../src/logic/outfit.js';
+import { createOutfit, appearanceOf, outfitPrompt, hasMyShirt } from '../src/logic/outfit.js';
 import { DRY_SECONDS } from '../src/config.js';
 
 test('DRY_SECONDS 는 8초', () => {
@@ -25,6 +25,19 @@ test('onAction: 정상 전이 clean -> dirty -> tank -> drying', () => {
   assert.equal(o.secondsLeft, DRY_SECONDS);
 });
 
+test('onAction: 깨끗한 정장(clean)도 세탁하면 tank 가 되고(그을림 없이도 셔츠를 벗어 빤다), 이어서 널면 drying', () => {
+  const o = createOutfit({ drySeconds: 4 });
+  assert.equal(o.onAction('wash'), 'tank');
+  assert.equal(o.state, 'tank');
+  assert.equal(o.onAction('wash'), null, '이미 나시면 세탁해도 그대로');
+  assert.equal(o.state, 'tank');
+  assert.equal(o.onAction('hang'), 'drying');
+  assert.equal(o.secondsLeft, 4);
+  o.update(4);
+  assert.equal(o.wear(), true);
+  assert.equal(o.state, 'clean');
+});
+
 test('onAction: shred 는 옷을 바꾸지 않는다', () => {
   const o = createOutfit();
   assert.equal(o.onAction('shred'), null);
@@ -32,7 +45,7 @@ test('onAction: shred 는 옷을 바꾸지 않는다', () => {
 });
 
 test('onAction: 해당 상태가 아니면 아무 일도 없다(모든 조합)', () => {
-  const ok = { clean: ['burn'], dirty: ['wash'], tank: ['hang'], drying: [], dry: [] };
+  const ok = { clean: ['burn', 'wash'], dirty: ['wash'], tank: ['hang'], drying: [], dry: [] }; // 깨끗한 정장도 세탁하면 나시가 된다(규칙 변경)
   const setup = {
     clean: [], dirty: ['burn'], tank: ['burn', 'wash'], drying: ['burn', 'wash', 'hang'], dry: ['burn', 'wash', 'hang', 'tick'],
   };
@@ -151,8 +164,4 @@ test('outfitPrompt: dry 에서만 E 안내, drying 은 안 눌리는 힌트', ()
   assert.deepEqual(outfitPrompt('drying', 4.2), { text: '셔츠가 마르는 중… (5초)', actionable: false });
   assert.deepEqual(outfitPrompt('drying', 0.01), { text: '셔츠가 마르는 중… (1초)', actionable: false });
   for (const s of ['clean', 'dirty', 'tank']) assert.equal(outfitPrompt(s, 0), null);
-});
-
-test('MY_SHIRT_SLOT: 빨랫줄 칸 번호(0~5)', () => {
-  assert.ok(Number.isInteger(MY_SHIRT_SLOT) && MY_SHIRT_SLOT >= 0 && MY_SHIRT_SLOT < 6);
 });

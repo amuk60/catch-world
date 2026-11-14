@@ -34,7 +34,9 @@ import { createTransition } from './logic/transition.js';
 import { createPassive } from './logic/passive.js';
 import { createOnce } from './logic/once.js';
 import { shareLines, shareFilename, shareUrl, resultPlan } from './logic/cta.js';
-import { createOutfit, hasMyShirt, outfitPrompt, MY_SHIRT_SLOT } from './logic/outfit.js';
+import { createOutfit, outfitPrompt } from './logic/outfit.js';
+import { createLine } from './logic/line.js';
+import { makeId } from './logic/net.js';
 import { initAnalytics, track } from './analytics.js';
 import { renderShareCard, saveShareCard, copyText } from './share.js';
 import { easeInOut } from './logic/burn.js';
@@ -43,7 +45,7 @@ import {
   ACTION_REDUCE, ACTION_EFFECT_AT, ACTION_TARGET_SECONDS, ACTION_TURN_SECONDS, AUTO_GAP, PASSIVE,
   FIRE_RANGE, SHREDDER_RANGE, WASHER_RANGE, CLOTHESLINE_RANGE, FIRE_ZONE_RADIUS, CATCH_URL, GA_MEASUREMENT_ID, WEAR_SECONDS, WEAR_SWAP_AT,
   INTERVIEW, INTERVIEW_ROUND, INTERVIEW_BONUS, INTERVIEW_ZONE_RADIUS, INTERVIEW_ANSWER_SECONDS, INTERVIEW_IMPROV_SECONDS, INTERVIEW_FINALE_SECONDS, SPEECH_SECONDS,
-  MULTIPLAYER, SUPABASE_URL, SUPABASE_ANON_KEY,
+  MULTIPLAYER, SUPABASE_URL, SUPABASE_ANON_KEY, CLOTHESLINE_SLOTS,
 } from './config.js';
 import { applyDrag, applyZoom, orbitPosition, frontAzimuthDeg } from './logic/orbit.js';
 import { createCameraClear, buildingBoxes } from './logic/cameraClear.js';
@@ -292,7 +294,43 @@ if (isMobileUA(navigator.userAgent)) {
   const pocketPos = new THREE.Vector3(...POCKET.pos);
   const pocketQuat = new THREE.Quaternion(); // 주머니에서의 방향(소품의 손 방향과 같다: 종이는 세워서 앞(+z)을 향하게)
   let washIndex = 0; // 세탁이 향하는 세탁기(돌기 단계에서 가장 가까운 것으로 정한다)
-  let hangCount = 0; // 지금까지 널은 횟수(널린 셔츠 칸과 색을 정한다)
+  let hangCount = 0; // 지금까지 널은 횟수(파스텔 셔츠 색을 정한다)
+  // 빨랫줄 공유(logic/line.js): 줄 상태는 여기 하나이고, 내가 널거나 걷은 것은 같은 세탁소의 다른 방문자에게 알린다(멀티플레이가 꺼져 있으면 혼자 쓰는 줄이다).
+  const selfId = makeId(); // 내 방문자 id(멀티플레이와 같은 값을 쓴다: 줄에서 내 것을 구분)
+  const lineState = createLine({ ...CLOTHESLINE_SLOTS, selfId });
+  const LINE_SNAP_SECONDS = 4; // 내가 널어 둔 목록 전체를 다시 알리는 간격(새로 들어온 방문자가 받도록)
+  const LINE_DIRTY_MS = 12000; // 줄이 비어도 걷은 직후 이만큼은 목록을 보낸다(놓친 걷기 이벤트 보정)
+  let lineSnapDue = 0; // 다음 목록 전송까지(초)
+  let lineDirtyUntil = 0;
+  let lineKnown = new Set(); // 지금 보이는 다른 방문자(새로 보이면 목록을 곧 보낸다)
+  function announceLine(ev) {
+    if (!ev) return;
+    net?.sendRoom({ k: 'line', slot: ev.slot, c: ev.c, t: ev.t });
+    lineSnapDue = Math.min(lineSnapDue, 1);
+    lineDirtyUntil = performance.now() + LINE_DIRTY_MS;
+  }
+  // 받은 빨랫줄 메시지를 반영하고(내 빨래가 졌으면 옮기고), 세탁기 효과는 그대로 보여 준다. 글은 없고 번호뿐이다.
+  function onRoomMessage(m) {
+    let moved = [];
+    if (m.k === 'line') moved = lineState.ingestEvent(m.id, m.slot, m.c, m.t, Date.now());
+    else if (m.k === 'lines') moved = lineState.ingestSnapshot(m.id, m.e, Date.now());
+    else if (m.k === 'fx' && spaceId === 'laundry') laundry.washers.splash(m.i);
+    if (moved.length) { lineSnapDue = 0; lineDirtyUntil = performance.now() + LINE_DIRTY_MS; }
+  }
+  // 매 프레임: 사라진 방문자의 빨래를 걷고, 주기적으로 내 목록을 보내고, 줄을 그린다.
+  function updateLine(dt) {
+    const alive = new Set(net ? net.remotes.map((r) => r.id) : []);
+    lineState.prune(alive, Date.now());
+    if (net && spaceId === 'laundry') {
+      for (const id of alive) if (!lineKnown.has(id)) lineSnapDue = Math.min(lineSnapDue, 0.4); // 새로 보이는 방문자에게 곧 알린다
+      lineSnapDue -= dt;
+      if (lineSnapDue <= 0 && (lineState.ownCount > 0 || performance.now() < lineDirtyUntil)) {
+        lineSnapDue = net.sendRoom({ k: 'lines', e: lineState.snapshot() }) ? LINE_SNAP_SECONDS : 0.5;
+      } else if (lineSnapDue <= 0) lineSnapDue = LINE_SNAP_SECONDS;
+    }
+    lineKnown = alive;
+    laundry.clothesline.show(lineState.view());
+  }
   const tmpHeld = new THREE.Vector3();
   const tmpQuat = new THREE.Quaternion();
   const tmpQuat2 = new THREE.Quaternion();
@@ -371,8 +409,8 @@ if (isMobileUA(navigator.userAgent)) {
     if (id === 'hang') {
       // 깨끗한 셔츠가 줄에 걸려 흔들린다. 손의 셔츠는 사라진다. 나시만 입은 채 널면 내 새 흰 셔츠가 전용 칸에 걸리고,
       // 아니면 파스텔 셔츠(가득 차면 가장 오래된 것을 바꾼다. 내 셔츠 칸은 건너뛴다)가 걸린다.
-      if (outfit.state === 'drying' && laundry.clothesline.mineSlot() < 0) laundry.clothesline.hangMine(MY_SHIRT_SLOT);
-      else laundry.clothesline.hang(hangCount++, hasMyShirt(outfit.state) ? MY_SHIRT_SLOT : -1);
+      const now = Date.now();
+      announceLine(outfit.state === 'drying' && lineState.ownWhiteSlot() < 0 ? lineState.hangWhite(now) : lineState.hangPastel(hangCount++ % 6, now));
       held.visible = false;
       return;
     }
@@ -388,6 +426,7 @@ if (isMobileUA(navigator.userAgent)) {
       flight.to.set(FURNACE.x, PAPER_FIRE_Y, FURNACE.z);
     } else if (id === 'wash') {
       laundry.washers.entryWorld(washIndex, flight.to);
+      net?.sendRoom({ k: 'fx', i: washIndex }); // 같은 세탁소의 다른 방문자 화면에서도 그 세탁기가 흔들린다
     } else {
       shredder.slotWorld(flight.to);
       shredder.wiggle();
@@ -426,7 +465,7 @@ if (isMobileUA(navigator.userAgent)) {
     if (!wearing.swapped && wearing.t >= WEAR_SECONDS * WEAR_SWAP_AT) {
       wearing.swapped = true;
       outfit.wear();
-      laundry.clothesline.removeMine();
+      announceLine(lineState.removeWhite(Date.now()));
       character?.applyOutfit(outfit.state);
       track('outfit_ready');
     }
@@ -640,7 +679,7 @@ if (isMobileUA(navigator.userAgent)) {
     interviewScene.resetRound(); // 면접장 진행 횟수도 처음으로
     outfit.reset(); // 옷도 처음으로: 정장, 줄의 내 셔츠 제거, 마르는 시간 취소
     wearing = null;
-    laundry.clothesline.removeMine();
+    announceLine(lineState.removeWhite(Date.now()));
     character?.applyOutfit(outfit.state);
     track('game_restart');
   }
@@ -828,11 +867,12 @@ if (isMobileUA(navigator.userAgent)) {
   if (multiplayerMode(location.search, MULTIPLAYER, { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY })) {
     try {
       const { createMultiplayer } = await import('./net/multiplayer.js');
-      net = createMultiplayer({ scene, camera, renderer, container: document.getElementById('game'), gltf: characterGltf });
+      net = createMultiplayer({ scene, camera, renderer, container: document.getElementById('game'), gltf: characterGltf, id: selfId });
       if (net) {
         const { createRemoteSpeech } = await import('./remoteSpeech.js');
         remoteSpeech = createRemoteSpeech({ hud, interviewers, camera, renderer, config: INTERVIEW, busy: () => interviewScene.busy });
         // 받은 한마디는 말풍선·면접관 반응으로만 보여 준다. 내 지수·라운드·보너스는 건드리지 않는다(분석은 보았다는 횟수만).
+        net.onRoom(onRoomMessage);
         net.onSay((ev) => { if (remoteSpeech.show(ev)) track('remote_say_seen', { type: ev.ty }); });
       }
     } catch (err) {
@@ -915,6 +955,7 @@ if (isMobileUA(navigator.userAgent)) {
     if (!character) playerFx.update(dt);
     net?.update(dt, { space: spaceId, x: player.position.x, z: player.position.z, y: player.position.y, rotY: player.rotation.y, anim: character ? character.getAnim() : 'idle', outfit: outfit.state, seat: holdsSeat(mode) });
     remoteSpeech?.update(dt, net.remotes, spaceId);
+    updateLine(dt);
     laundry.update(dt);
     interviewers.update(dt);
     interviewScene.update(dt);
