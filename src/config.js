@@ -397,7 +397,7 @@ export const MULTIPLAYER = {
   maxRemote: 20, maxTracked: 60, minRecvGapMs: 30,
   interpDelayMs: 250, extrapolateMs: 150, teleportDist: 8,
   staleMs: 9000, nickMax: 24,
-  roomCap: 8, maxShards: 6, shardProbeMs: 700, fullRetryMs: 60000, idleMs: 5 * 60 * 1000,
+  roomCap: 6, maxShards: 8, shardProbeMs: 700, fullRetryMs: 60000, idleMs: 5 * 60 * 1000,
   retryBaseMs: 1000, retryMaxMs: 30000,
   supabaseSdkUrl: 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm',
   channelPrefix: 'catch-world:',
