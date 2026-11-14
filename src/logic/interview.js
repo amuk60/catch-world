@@ -281,3 +281,46 @@ export function validateInterview(cfg, { questions = 12, improvs = 4, maxLength 
   if (!cfg.finale) problems.push('최종 합격 문구가 필요합니다.');
   return problems;
 }
+
+// ---- 다른 방문자의 답변·돌발행동 보기(멀티플레이) ----
+// 받은 말 한마디(logic/net.js 의 validateSay 결과)를 내 config 로 풀어 말풍선 글과 면접관의 가벼운 반응을 정한다. 보낸 쪽 글은 쓰지 않는다. 번호·id 가 config 에 없으면 null.
+export const REMOTE_BUBBLE_SECONDS = 3; // 보낸 방문자 머리 위 말풍선이 떠 있는 시간
+export const REMOTE_REACT_SECONDS = 1.4; // 면접관 반응(박수·튀기)이 이어지는 시간
+export const REMOTE_REACT_STEP = 0.18; // 면접관마다 반응이 시작되는 간격(동시에 하지 않아 덜 튄다)
+export const REMOTE_LINE_SECONDS = 2; // 면접관 한마디 말풍선 시간
+const REMOTE_REACT = { // 내 장면의 REACT 와 같은 동작 종류, 튀는 폭은 작게
+  정석: { clip: 'emote-yes', clap: true },
+  솔직: { clip: 'emote-no' },
+  엉뚱: { clip: 'emote-yes', bounce: { amp: 0.035, freq: 5 } },
+};
+const REMOTE_IMPROV_REACT = { clip: 'emote-no', bounce: { amp: 0.03, freq: 4 } };
+
+// 방문자 머리 위에 띄울 글: { text, type('정석'|'솔직'|'엉뚱'|null), asker(질문한 면접관 id | null), improvId(돌발행동 id | null) }.
+export function remoteSayLine(config, say) {
+  if (!say) return null;
+  if (say.ty === 'ans') {
+    const question = config.questions?.[say.q];
+    const answer = question?.answers?.[say.a];
+    if (!answer || typeof answer.text !== 'string' || !TYPES.includes(answer.type)) return null;
+    return { text: answer.text, type: answer.type, asker: question.asker, improvId: null };
+  }
+  if (say.ty === 'imp') {
+    const improv = config.improvs?.find((im) => im.id === say.imp);
+    const text = improv?.player?.[0];
+    if (typeof text !== 'string' || !text) return null;
+    return { text, type: null, asker: null, improvId: improv.id };
+  }
+  return null;
+}
+
+// 면접관 반응: { clip, clap?, bounce?, who(한마디를 하는 면접관 id), text(그 한마디) }. 답변은 질문한 면접관이, 돌발행동은 팀장이 한마디한다. line 이 null 이면 null.
+export function remoteReaction(config, line, rng = Math.random) {
+  if (!line) return null;
+  if (line.type) {
+    const who = ID_LIST.includes(line.asker) ? line.asker : 'leader';
+    return { ...REMOTE_REACT[line.type], who, text: pickReactions(config.reactions, line.type, rng)[who] };
+  }
+  const improv = config.improvs?.find((im) => im.id === line.improvId);
+  if (!improv?.leader) return null;
+  return { ...REMOTE_IMPROV_REACT, who: 'leader', text: improv.leader };
+}

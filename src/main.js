@@ -14,6 +14,7 @@ import { createFire } from './fire.js';
 import { createHud } from './hud.js';
 import { interactTarget, hoverLabel, nearestInRange, actionOf, standPoint } from './logic/interaction.js';
 import { nextMode, holdsSeat, showPrompt as promptAllowed } from './logic/playerMode.js';
+import { occupiedSeats, seatPromptFor, SEAT_OCCUPIED_RADIUS } from './logic/seats.js';
 import { pickFortune } from './logic/fortune.js';
 import { createControls } from './controls.js';
 import { createGameState } from './logic/gameState.js';
@@ -229,10 +230,16 @@ if (isMobileUA(navigator.userAgent)) {
       reduce: () => applyReduction(ACTION_REDUCE), // 답변·돌발행동의 감소: 다른 행동과 같은 양, 같은 경로(gameState.apply -> 팝업)
       bonus: () => applyReduction(INTERVIEW_BONUS, false), // 완주 보너스: 한 번 더(행동 횟수에는 넣지 않는다)
       track,
+      say: (msg) => net?.say(msg), // 멀티플레이: 내 답변·돌발행동을 같은 방의 다른 방문자에게 번호로 알린다(꺼져 있으면 아무 일 없다)
       outfitState: () => outfit.state,
       seat: () => (seatItem && holdsSeat(mode) ? { ...seatItem.seat, stand: pushOut(standPoint(seatItem.seat)) } : null), // 면접장 의자에 앉아 있는가(앉은 채 답하고, 돌발행동은 일어났다 다시 앉는다)
     },
   });
+
+  // 면접장 의자 점유(멀티플레이): 다른 방문자가 앉아 있는 의자는 "사용 중"이라 앉을 수 없다. 멀티플레이가 꺼져 있으면 항상 비어 있다. 이미 앉은 나는 쫓겨나지 않는다.
+  const interviewSeatPoints = interviewData.interactables.filter((i) => i.kind === 'seat').map((i) => ({ id: i.id, x: i.seat.x, z: i.seat.z }));
+  const NO_SEATS = new Set();
+  const seatsTaken = () => (net && spaceId === 'interview' ? occupiedSeats(interviewSeatPoints, net.remotes, SEAT_OCCUPIED_RADIUS) : NO_SEATS);
 
   // ---- 소각장 행동: 러너가 시간을 재고, 여기서 캐릭터 동작·종이·효과를 맡는다. ----
   // (소각장만 한숨 ->) 주머니에서 종이 꺼내기 -> (대상 쪽으로 돌기) -> 던지기/치기 -> 후련. 던지기/치기 클립만 총 길이가 ACTION_TARGET_SECONDS 가 되도록 느려진다(행동별 표: 세탁소 행동은 한숨이 없다).
@@ -729,6 +736,7 @@ if (isMobileUA(navigator.userAgent)) {
     else if (type === 'wear') startWear();
     else if (type === 'comfort') hud.showBubble(COMFORT_MESSAGES[item.messageIndex]);
     else if (type === 'seat') {
+      if (seatsTaken().has(item.id)) return; // 다른 방문자가 앉아 있다("사용 중")
       if (!dispatch('interact:seat')) return;
       stopWalking();
       seatItem = item;
@@ -816,10 +824,17 @@ if (isMobileUA(navigator.userAgent)) {
 
   // 멀티플레이(다른 방문자 아바타 보기, config 의 MULTIPLAYER): 켜져 있을 때만 관련 모듈을 불러온다. 꺼져 있거나 Supabase 키가 비어 있으면 아무것도 불러오지 않는다.
   let net = null;
+  let remoteSpeech = null; // 다른 방문자의 답변·돌발행동 말풍선과 면접관 반응(멀티플레이가 켜져 있을 때만)
   if (multiplayerMode(location.search, MULTIPLAYER, { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY })) {
     try {
       const { createMultiplayer } = await import('./net/multiplayer.js');
       net = createMultiplayer({ scene, camera, renderer, container: document.getElementById('game'), gltf: characterGltf });
+      if (net) {
+        const { createRemoteSpeech } = await import('./remoteSpeech.js');
+        remoteSpeech = createRemoteSpeech({ hud, interviewers, camera, renderer, config: INTERVIEW, busy: () => interviewScene.busy });
+        // 받은 한마디는 말풍선·면접관 반응으로만 보여 준다. 내 지수·라운드·보너스는 건드리지 않는다(분석은 보았다는 횟수만).
+        net.onSay((ev) => { if (remoteSpeech.show(ev)) track('remote_say_seen', { type: ev.ty }); });
+      }
     } catch (err) {
       console.warn('멀티플레이를 시작하지 못했습니다.', err);
     }
@@ -883,6 +898,10 @@ if (isMobileUA(navigator.userAgent)) {
           const p = outfitPrompt(outfit.state, outfit.secondsLeft);
           nextPrompt = p ? p.text : null;
           actionable = p?.actionable ?? true;
+        } else if (act?.type === 'seat') {
+          const sp = seatPromptFor(near, seatsTaken(), act.prompt);
+          nextPrompt = sp.text;
+          actionable = sp.actionable;
         } else nextPrompt = act ? act.prompt : null;
       }
     }
@@ -895,6 +914,7 @@ if (isMobileUA(navigator.userAgent)) {
     character?.update(dt);
     if (!character) playerFx.update(dt);
     net?.update(dt, { space: spaceId, x: player.position.x, z: player.position.z, y: player.position.y, rotY: player.rotation.y, anim: character ? character.getAnim() : 'idle', outfit: outfit.state, seat: holdsSeat(mode) });
+    remoteSpeech?.update(dt, net.remotes, spaceId);
     laundry.update(dt);
     interviewers.update(dt);
     interviewScene.update(dt);

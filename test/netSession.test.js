@@ -303,3 +303,110 @@ test('전송량: 기본 설정(3Hz)에서 계속 걸어도 초당 3번 이하, �
   assert.ok(p.staleMs > p.heartbeatMs * 2);
   assert.equal(p.idleMs, 5 * 60 * 1000, '입력이 5분 없으면 유휴');
 });
+
+// ---- 면접 답변·돌발행동 한마디(k: 'say') ----
+const sayLimits = { questions: 12, answers: 3, improvs: ['paperToss', 'reverse', 'dance', 'banzai'] };
+const sayMsg = (id, o = {}) => ({ k: 'say', id, space: 'interview', ty: 'ans', q: 2, a: 1, ...o });
+async function hall({ limits = sayLimits, c = cfg } = {}) {
+  const tr = fakeTransport();
+  let nowMs = 0;
+  const s = createSession({ transport: tr, self: me, cfg: c, now: () => nowMs, clock: () => 777, sayLimits: limits });
+  s.update(local({ space: 'interview', x: 600 }));
+  tr.emitStatus('ready');
+  await Promise.resolve();
+  const seen = [];
+  s.onSay((e) => seen.push(e));
+  const at = (v) => { nowMs = v; return v; };
+  // 방문자 한 명을 알린다(상태 메시지를 먼저 받은 사람만 한마디가 통한다).
+  const meet = (id, t = at(1000)) => tr.emitMsg(msg(id, { space: 'interview', x: 600, z: 0, t }));
+  return { tr, s, seen, at, meet };
+}
+
+test('session: 상태를 보낸 적 있는 방문자의 한마디는 검사 후 구독자에게 전달된다(보낸이 닉네임 포함, 글은 없다)', async () => {
+  const x = await hall();
+  x.meet('peer00001');
+  x.at(1100); x.tr.emitMsg(sayMsg('peer00001', { q: 5, a: 2 }));
+  assert.deepEqual(x.seen, [{ id: 'peer00001', nick: '닉-peer00001', ty: 'ans', q: 5, a: 2, imp: undefined }]);
+  x.at(3000); x.tr.emitMsg(sayMsg('peer00001', { ty: 'imp', imp: 'dance', q: undefined, a: undefined }));
+  assert.equal(x.seen.length, 2);
+  assert.equal(x.seen[1].ty, 'imp');
+  assert.equal(x.seen[1].imp, 'dance');
+});
+
+test('session: 한마디는 1.5초에 한 번만 통과하고(보낸 사람마다), 한마디가 상태 보간·검사 통계에 섞이지 않는다', async () => {
+  const x = await hall();
+  x.meet('peer00001');
+  x.meet('peer00002');
+  const rejectedBefore = x.s.stats.rejected;
+  x.at(2000); x.tr.emitMsg(sayMsg('peer00001'));
+  x.at(2500); x.tr.emitMsg(sayMsg('peer00001'));
+  x.at(2600); x.tr.emitMsg(sayMsg('peer00002'));
+  x.at(3499); x.tr.emitMsg(sayMsg('peer00001'));
+  assert.deepEqual(x.seen.map((e) => e.id), ['peer00001', 'peer00002']);
+  x.at(3500); x.tr.emitMsg(sayMsg('peer00001'));
+  assert.equal(x.seen.length, 3);
+  assert.equal(x.s.stats.rejected, rejectedBefore, '정상 한마디는 거부 통계가 아니다');
+  assert.equal(x.s.sample(4000).length, 2);
+});
+
+test('session: 모르는 방문자·다른 공간·내 메시지·범위 밖 번호·목록 밖 돌발행동의 한마디는 무시한다', async () => {
+  const x = await hall();
+  x.meet('peer00001');
+  x.at(2000);
+  x.tr.emitMsg(sayMsg('stranger01')); // 상태를 보낸 적이 없다
+  x.tr.emitMsg(sayMsg('peer00001', { space: 'laundry' })); // 다른 공간 표시
+  x.tr.emitMsg(sayMsg(me.id)); // 나 자신
+  assert.equal(x.seen.length, 0);
+  const r0 = x.s.stats.rejected;
+  x.at(4000); x.tr.emitMsg(sayMsg('peer00001', { q: 12 }));
+  x.at(6000); x.tr.emitMsg(sayMsg('peer00001', { a: 3 }));
+  x.at(8000); x.tr.emitMsg(sayMsg('peer00001', { ty: 'imp', imp: 'rm -rf' }));
+  x.at(10000); x.tr.emitMsg(sayMsg('peer00001', { text: '<b>hi</b>', q: 'x' }));
+  assert.equal(x.seen.length, 0);
+  assert.equal(x.s.stats.rejected, r0 + 4);
+  x.at(12000); x.tr.emitMsg(sayMsg('peer00001'));
+  assert.equal(x.seen.length, 1, '앞의 거부가 정상 한마디를 막지 않는다');
+});
+
+test('session: 내가 다른 공간으로 가면(방을 옮기면) 그 방문자를 잊어 한마디도 받지 않는다. 구독을 풀면 더 오지 않는다', async () => {
+  const x = await hall();
+  x.meet('peer00001');
+  x.s.update(local({ space: 'yard' }), 1500);
+  x.tr.emitStatus('ready');
+  x.at(3000); x.tr.emitMsg(sayMsg('peer00001'));
+  assert.equal(x.seen.length, 0);
+  const y = await hall();
+  const extra = [];
+  const off = y.s.onSay((e) => extra.push(e));
+  y.meet('peer00001');
+  y.at(2000); y.tr.emitMsg(sayMsg('peer00001'));
+  off();
+  y.at(4000); y.tr.emitMsg(sayMsg('peer00001'));
+  assert.equal(extra.length, 1);
+  assert.equal(y.seen.length, 2);
+});
+
+test('session: sayLimits 가 없으면 한마디를 받지도 보내지도 않는다(기존 동작 그대로)', async () => {
+  const x = await hall({ limits: null });
+  x.meet('peer00001');
+  x.at(2000); x.tr.emitMsg(sayMsg('peer00001'));
+  assert.equal(x.seen.length, 0);
+  assert.equal(x.s.say({ ty: 'ans', q: 0, a: 0 }), false);
+  assert.equal(x.tr.sent.filter((m) => m.k === 'say').length, 0);
+});
+
+test('session.say: 연결되고 듣는 사람이 있을 때 번호만 담아 보내고, 1.5초 안의 연속 전송·잘못된 값·듣는 사람 없음은 보내지 않는다', async () => {
+  const x = await hall();
+  assert.equal(x.s.say({ ty: 'ans', q: 1, a: 1 }, 1000), false, '듣는 사람이 없다');
+  x.meet('peer00001');
+  assert.equal(x.s.say({ ty: 'ans', q: 4, a: 0, text: '자유 글' }, 2000), true);
+  assert.deepEqual(x.tr.sent.at(-1), { k: 'say', id: me.id, space: 'interview', ty: 'ans', q: 4, a: 0 });
+  assert.equal(x.s.say({ ty: 'imp', imp: 'banzai' }, 3000), false, '간격 안');
+  assert.equal(x.s.say({ ty: 'imp', imp: 'banzai' }, 3500), true);
+  assert.deepEqual(x.tr.sent.at(-1), { k: 'say', id: me.id, space: 'interview', ty: 'imp', imp: 'banzai' });
+  assert.equal(x.s.say({ ty: 'ans', q: 99, a: 0 }, 9000), false);
+  assert.equal(x.s.say({ ty: 'imp', imp: 'nope' }, 9000), false);
+  assert.equal(x.s.say(null, 9000), false);
+  x.s.dispose();
+  assert.equal(x.s.say({ ty: 'ans', q: 1, a: 1 }, 20000), false);
+});

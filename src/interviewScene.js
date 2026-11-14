@@ -17,7 +17,8 @@ const RAW_FALLBACK = 0.667;
 
 // ctx: { hud, interviewers, character, player, playerFx, interior, root, camera, renderer, config, params, callbacks, rng }
 // params: { round, speech, answerSeconds, improvSeconds, finaleSeconds }
-// callbacks: { dispatch(event) -> bool, reduce(), bonus(), track(name, params), outfitState(), seat() }
+// callbacks: { dispatch(event) -> bool, reduce(), bonus(), track(name, params), outfitState(), seat(), say?(msg) }
+// say(msg): (멀티플레이) 내가 답하거나 돌발행동을 시작했다고 알린다. msg 는 { ty:'ans', q(질문 번호), a(답변 번호) } | { ty:'imp', imp(돌발행동 id) }(번호·id 만, 글은 없다). 없으면 알리지 않는다.
 // seat(): 지금 앉아 있는 의자 { x, y, z, rotY, stand: { x, z } }(없으면 null). 앉은 채면 답변은 앉은 자세로 하고, 돌발행동은 stand 로 일어나 했다가 다시 앉는다.
 export function createInterviewScene(ctx) {
   const { hud, interviewers, character, player, playerFx, interior, root, camera, renderer, config, params, callbacks } = ctx;
@@ -240,7 +241,7 @@ export function createInterviewScene(ctx) {
     // 선택지를 골랐다(0~2): 답변 연출이 시작된다. 지수 감소는 연출의 effect 순간에 일어난다.
     pick(i) {
       if (!asking || !asking.question.answers[i]) return false;
-      const { question } = asking;
+      const { question, index } = asking;
       const answer = question.answers[i];
       if (!callbacks.dispatch('interview:pick')) return false;
       asking = null;
@@ -248,6 +249,7 @@ export function createInterviewScene(ctx) {
       const seated = Boolean(seatNow());
       const result = round.answer();
       callbacks.track('interview_answer', { type: answer.type });
+      callbacks.say?.({ ty: 'ans', q: index, a: i }); // 같은 방의 다른 방문자 화면에 내 답변 말풍선이 뜬다(번호만 보낸다)
       const events = answerScript({
         type: answer.type, line: answer.text, lines: pickReactions(config.reactions, answer.type, rng),
         speech: params.speech, total: params.answerSeconds, finale: result.finale, finaleSeconds: params.finaleSeconds, finaleText: config.finale, seated,
@@ -261,6 +263,7 @@ export function createInterviewScene(ctx) {
       if (current || asking || !callbacks.dispatch('interview:play')) return false;
       const improv = config.improvs[improvPicker.next()];
       const seated = Boolean(seatNow()); // 앉아 있으면 일어나서 하고 마지막에 다시 앉는다
+      callbacks.say?.({ ty: 'imp', imp: improv.id });
       const script = improvScript(improv, { total: params.improvSeconds });
       begin(seated ? seatedImprov(script) : script, { kind: 'improv', improvId: improv.id, seated });
       return true;
@@ -286,7 +289,8 @@ export function createInterviewScene(ctx) {
         const h = renderer.domElement.clientHeight;
         for (const id of ids) {
           if (id === 'player') point.set(player.position.x, player.position.y + (isSitting() ? SEATED_SPEECH_Y : PLAYER_SPEECH_Y), player.position.z);
-          else interviewers.headPoint(id, point);
+          else if (interviewers.byId[id]) interviewers.headPoint(id, point);
+          else continue; // 다른 방문자의 말풍선은 remoteSpeech.js 가 위치를 정한다
           point.project(camera);
           hud.positionSpeech(id, (point.x * 0.5 + 0.5) * w, (-point.y * 0.5 + 0.5) * h, id === 'player' ? 0 : interviewers.bubbleShift(id));
         }

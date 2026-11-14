@@ -56,7 +56,7 @@ test('출구: kind door, to yard, 문 가까이에서만 E 안내, 도착 지점
   assert.ok(Math.abs(Math.sin(I.arrival.rotY) - 1) < 1e-9, '방 안쪽(+x)을 본다');
   assert.equal(nearestInRange(I.arrival, I.interactables), null);
   assert.equal(nearestInRange({ x: I.exit.x + 1.0, z: I.exit.z }, I.interactables), door);
-  assert.equal(I.interactables.length, 2, '출구 + 지원자 의자');
+  assert.equal(I.interactables.length, 7, '출구 + 지원자 의자 3 + 대기 의자 3');
 });
 
 test('면접관 책상: 북쪽 절반에 긴 책상(폭 4 이상), 방 가운데를 가로지르고 장애물로 막혀 있다', () => {
@@ -98,43 +98,84 @@ test('면접관 자리는 걸어 들어갈 수 없다: 책상 양끝이 낮은 �
   }
 });
 
-test('플레이어 의자: 책상 앞(남쪽), 북쪽(책상)을 보고, 서 있을 자리는 의자 남쪽 근처의 빈 자리', () => {
-  assert.ok(I.chair.z > I.furniture.find((f) => f.name === 'desk').z + 1);
-  assert.ok(Math.abs(Math.cos(I.chair.rotY) + 1) < 1e-9, '북쪽(-z)을 본다');
-  assert.ok(I.obstacles.some((o) => o.id === 'interviewChair'));
+test('지원자 의자 3개: 책상 앞(남쪽)에 나란히, 북쪽(책상)을 보고, 서 있을 자리는 가운데 의자 남쪽 근처의 빈 자리', () => {
+  const deskZ = I.furniture.find((f) => f.name === 'desk').z;
+  assert.equal(I.chairs.length, 3);
+  assert.deepEqual(I.chairs.map((c) => c.id), ['interview-chair-0', 'interview-chair-1', 'interview-chair-2']);
+  assert.deepEqual(I.seatIds, I.chairs.map((c) => c.id));
+  for (const c of I.chairs) {
+    assert.ok(c.z > deskZ + 1);
+    assert.ok(Math.abs(Math.cos(c.rotY) + 1) < 1e-9, '북쪽(-z)을 본다');
+    assert.equal(c.name, 'chairModernCushion');
+  }
+  assert.equal(new Set(I.chairs.map((c) => c.z)).size, 1, '한 줄');
+  I.chairs.forEach((c, i) => assert.ok(Math.abs(c.x - I.origin.x - [-1.7, 0, 1.7][i]) < 1e-9));
+  assert.equal(I.obstacles.filter((o) => o.id === 'interviewChair').length, 3);
+  const mid = I.chairs[1];
   assert.ok(free(I.standingSpot));
-  assert.ok(d(I.standingSpot, I.chair) <= 2.2 && I.standingSpot.z > I.chair.z, '의자 앞(남쪽)에 선다');
+  assert.ok(d(I.standingSpot, mid) <= 2.2 && I.standingSpot.z > mid.z, '가운데 의자 앞(남쪽)에 선다');
 });
 
-const chairSeat = () => I.interactables.find((i) => i.id === I.seatId);
+test('러그: 의자 줄 밑에 깔려 3개 의자를 모두 덮는다(장애물이 아니다)', () => {
+  const rug = I.furniture.find((f) => f.name === 'rugRectangle');
+  assert.ok(rug);
+  const half = (1.57 * rug.scale) / 2; // rugRectangle 모델 가로 1.57 (glb 범위)
+  for (const c of I.chairs) assert.ok(Math.abs(c.x - rug.x) + 0.3 <= half, c.id);
+  assert.ok(!I.obstacles.some((o) => o.id === 'rugRectangle'));
+});
 
-test('지원자 의자: 마당 벤치와 같은 seat 종류(E 앉기), 책상(북쪽)을 보고 앉고, 의자 위에 놓인 앉는 자리, 가까이에서만 안내', () => {
-  const item = chairSeat();
-  assert.ok(item);
-  assert.equal(item.kind, 'seat');
-  assert.deepEqual(actionOf(item), { type: 'seat', prompt: '앉기' });
-  assert.equal(item.label, '면접 의자');
-  assert.equal(item.x, I.chair.x);
-  assert.equal(item.z, I.chair.z);
-  assert.ok(Math.abs(Math.cos(item.seat.rotY) + 1) < 1e-9, '북쪽(-z, 책상 쪽)을 본다');
-  assert.equal(item.seat.rotY, I.chair.rotY);
-  assert.equal(item.seat.x, I.chair.x);
-  assert.ok(item.seat.z < I.chair.z && I.chair.z - item.seat.z < 0.2, '방석 위, 등받이에서 살짝 책상 쪽으로');
-  assert.ok(item.seat.y > 0.2 && item.seat.y < 1, '의자 방석 높이 근처');
-  const desk = I.furniture.find((f) => f.name === 'desk');
-  assert.ok(item.seat.z - desk.z > 1.5, '책상 앞에 앉아 책상과 겹치지 않는다');
-  assert.ok(nearestInRange(I.standingSpot, I.interactables) === item, '서 있을 자리(의자 남쪽)에서 안내가 뜬다');
-  assert.ok(nearestInRange(interactTarget(item), I.interactables) === item);
+const seatItem = (id) => I.interactables.find((i) => i.id === id);
+const chairSeat = (i = 1) => seatItem(I.seatIds[i]);
+
+test('지원자 의자마다: 마당 벤치와 같은 seat 종류(E 앉기), 책상(북쪽)을 보고 앉고, 의자 위에 놓인 앉는 자리, 가까이에서만 안내', () => {
+  I.chairs.forEach((c, i) => {
+    const item = chairSeat(i);
+    assert.ok(item, c.id);
+    assert.equal(item.kind, 'seat');
+    assert.deepEqual(actionOf(item), { type: 'seat', prompt: '앉기' });
+    assert.equal(item.label, '면접 의자');
+    assert.equal(item.x, c.x);
+    assert.equal(item.z, c.z);
+    assert.ok(Math.abs(Math.cos(item.seat.rotY) + 1) < 1e-9, '북쪽(-z, 책상 쪽)을 본다');
+    assert.equal(item.seat.rotY, c.rotY);
+    assert.equal(item.seat.x, c.x);
+    assert.ok(item.seat.z < c.z && c.z - item.seat.z < 0.2, '방석 위, 등받이에서 살짝 책상 쪽으로');
+    assert.ok(item.seat.y > 0.2 && item.seat.y < 1, '의자 방석 높이 근처');
+    const desk = I.furniture.find((f) => f.name === 'desk');
+    assert.ok(item.seat.z - desk.z > 1.5, '책상 앞에 앉아 책상과 겹치지 않는다');
+    assert.ok(nearestInRange(interactTarget(item), I.interactables) === item);
+    // 일어서면 책상 쪽 한 칸 앞이고 그 자리는 장애물 밖(책상 원·의자 원과 겹치지 않는다).
+    const up = standPoint(item.seat);
+    assert.ok(Math.abs(up.x - item.x) < 1e-9 && Math.abs(up.z - (item.seat.z - 1)) < 1e-9);
+    assert.ok(free(up), JSON.stringify(up));
+  });
+  assert.ok(nearestInRange(I.standingSpot, I.interactables) === chairSeat(1), '서 있을 자리(가운데 의자 남쪽)에서 안내가 뜬다');
   assert.equal(nearestInRange(I.arrival, I.interactables), null, '들어오자마자는 안내 없음');
   assert.equal(nearestInRange({ x: I.exit.x + 1.0, z: I.exit.z }, I.interactables).id, 'interview-exit', '출구 앞에서는 출구');
-  // 일어서면 책상 쪽 한 칸 앞이고 그 자리는 장애물 밖(책상 원·의자 원과 겹치지 않는다).
-  const up = standPoint(item.seat);
-  assert.ok(Math.abs(up.x - item.x) < 1e-9 && Math.abs(up.z - (item.seat.z - 1)) < 1e-9);
-  assert.ok(free(up), JSON.stringify(up));
-  assert.equal(I.seatId, 'interview-chair');
 });
 
-test('면접 구역: 지원자 의자에 앉아 있을 때만 켜진다(서 있을 때는 어디서도 안 켜진다), 사정거리는 앉은 자리 기준', () => {
+test('대기 의자 3개: 지원자 의자 줄 뒤(남쪽)에서 책상을 보는 seat(E 앉기), 면접 구역과 묶이지 않는다', () => {
+  assert.equal(I.waitChairs.length, 3);
+  assert.deepEqual(I.waitSeatIds, ['interview-wait-0', 'interview-wait-1', 'interview-wait-2']);
+  const rowZ = I.chairs[0].z;
+  const zones = buildZones(buildLayout(SEED));
+  for (const c of I.waitChairs) {
+    const item = seatItem(c.id);
+    assert.ok(item && item.kind === 'seat' && item.label === '대기 의자', c.id);
+    assert.deepEqual(actionOf(item), { type: 'seat', prompt: '앉기' });
+    assert.ok(c.z > rowZ + 2.5, '지원자 줄 뒤(남쪽)');
+    assert.ok(Math.abs(Math.cos(item.seat.rotY) + 1) < 1e-9, '책상 쪽을 본다');
+    assert.ok(free(standPoint(item.seat)), '일어서는 자리가 비어 있다');
+    assert.equal(seatZone(item, zones), null, '면접 구역 없음');
+    assert.equal(currentZoneFor({ mode: 'seated', pos: item.seat, seat: item, zones, spaceId: 'interview' }), null);
+    assert.ok(nearestInRange(interactTarget(item), I.interactables) === item, `${c.id} 를 클릭해 도착하면 그 의자 안내`);
+  }
+  // 모든 의자(지원자 3 + 대기 3)는 서로 1.5 이상 떨어져 있어 이웃 의자와 헷갈리지 않는다.
+  const all = [...I.chairs, ...I.waitChairs];
+  all.forEach((x, i) => all.slice(i + 1).forEach((y) => assert.ok(d(x, y) >= 1.5, `${x.id} ${y.id}`)));
+});
+
+test('면접 구역: 지원자 의자 3개 중 어디에 앉아도 켜진다(서 있을 때는 어디서도 안 켜진다), 사정거리는 앉은 자리 기준', () => {
   const zones = buildZones(buildLayout(SEED));
   const zone = zones.find((z) => z.id === 'interview');
   assert.ok(zone);
@@ -142,21 +183,24 @@ test('면접 구역: 지원자 의자에 앉아 있을 때만 켜진다(서 있�
   assert.equal(zone.radius, INTERVIEW_ZONE_RADIUS);
   assert.deepEqual(zone.actions, ['interview', 'improv']);
   assert.equal(zone.auto, false);
-  assert.equal(zone.seatId, I.seatId);
+  assert.deepEqual(zone.seatIds, I.seatIds);
   // 서 있는 동안: 의자 곁·서 있을 자리·방 안 어디서도 구역이 없다.
-  for (const pos of [I.standingSpot, { x: I.chair.x, z: I.chair.z + 1.2 }, standPoint(chairSeat().seat), I.zoneCenter, I.arrival]) {
+  for (const pos of [I.standingSpot, { x: I.chairs[1].x, z: I.chairs[1].z + 1.2 }, standPoint(chairSeat().seat), I.zoneCenter, I.arrival, ...I.waitChairs]) {
     assert.equal(activeZone(pos, zones, 'interview'), null, JSON.stringify(pos));
     assert.equal(currentZoneFor({ mode: 'free', pos, seat: null, zones, spaceId: 'interview' }), null);
   }
   // 앉으면 켜진다. 선택 창·연출 중에는 막대를 숨긴다(모드가 seated 가 아니면 null).
-  const seat = chairSeat();
-  assert.equal(seatZone(seat, zones), zone);
-  assert.equal(seatZone(seat.id, zones), zone);
-  assert.equal(currentZoneFor({ mode: 'seated', pos: seat.seat, seat, zones, spaceId: 'interview' }), zone);
-  for (const mode of ['interview-choice', 'interview-play', 'fortune', 'result', 'transition', 'wearing']) {
-    assert.equal(currentZoneFor({ mode, pos: seat.seat, seat, zones, spaceId: 'interview' }), null, mode);
+  for (const id of I.seatIds) {
+    const seat = seatItem(id);
+    assert.equal(seatZone(seat, zones), zone, id);
+    assert.equal(seatZone(seat.id, zones), zone, id);
+    assert.equal(currentZoneFor({ mode: 'seated', pos: seat.seat, seat, zones, spaceId: 'interview' }), zone, id);
+    for (const mode of ['interview-choice', 'interview-play', 'fortune', 'result', 'transition', 'wearing']) {
+      assert.equal(currentZoneFor({ mode, pos: seat.seat, seat, zones, spaceId: 'interview' }), null, mode);
+    }
+    assert.ok(d(seat.seat, I.zoneCenter) <= INTERVIEW_ZONE_RADIUS, `${id} 앉은 자리는 책상 사정거리 안`);
   }
-  assert.ok(d(seat.seat, I.zoneCenter) <= INTERVIEW_ZONE_RADIUS, '앉은 자리는 책상 사정거리 안');
+  const seat = chairSeat();
   assert.equal(seatZone(null, zones), null);
   assert.equal(seatZone({ id: 'seat-0' }, zones), null, '마당 벤치에는 묶인 구역이 없다');
   assert.equal(currentZoneFor({ mode: 'seated', pos: seat.seat, seat: { id: 'seat-0' }, zones, spaceId: 'yard' }), null);

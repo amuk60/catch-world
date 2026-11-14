@@ -186,3 +186,47 @@ export function nearestN(items, from, max) {
     .slice(0, Math.max(0, max))
     .map((p) => p.it);
 }
+
+// ---- 말 한마디(면접 답변·돌발행동) 메시지 ----
+// 글은 절대 보내지 않는다: 질문 번호와 답변 번호(또는 돌발행동 id)만 보내고, 받는 쪽이 자기 config 에서 글을 찾는다. 받은 값은 전부 믿을 수 없는 입력이다.
+// 보낼 때: ans 는 { q, a }, imp 는 { imp }. space 는 보내는 사람이 있는 공간.
+export function buildSay(self, space, say) {
+  if (say?.ty === 'imp') return { k: 'say', id: self.id, space, ty: 'imp', imp: say.imp };
+  return { k: 'say', id: self.id, space, ty: 'ans', q: say?.q, a: say?.a };
+}
+
+// 받은 값을 검사해 깨끗한 { id, space, ty:'ans', q, a } | { id, space, ty:'imp', imp } 로. 틀리면 null.
+// limits: { questions(질문 개수), answers(질문당 답변 개수), improvs(허용하는 돌발행동 id 목록) }. 정수 범위·목록에 없으면 버린다. 모르는 필드는 복사하지 않는다.
+export function validateSay(raw, limits) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || raw.k !== 'say' || !limits) return null;
+  const { id, space, ty } = raw;
+  if (typeof id !== 'string' || !ID_RE.test(id)) return null;
+  if (typeof space !== 'string' || !SPACE_IDS.includes(space)) return null;
+  if (ty === 'ans') {
+    const { q, a } = raw;
+    if (!Number.isInteger(q) || !Number.isInteger(a)) return null;
+    if (q < 0 || q >= limits.questions || a < 0 || a >= limits.answers) return null;
+    return { id, space, ty, q, a };
+  }
+  if (ty === 'imp') {
+    const { imp } = raw;
+    if (typeof imp !== 'string' || !Array.isArray(limits.improvs) || !limits.improvs.includes(imp)) return null;
+    return { id, space, ty, imp };
+  }
+  return null;
+}
+
+// 보낸 사람마다 minGapMs 안에 또 온 말은 버린다(받는 쪽과 보내는 쪽이 같이 쓴다). allow(id, nowMs) -> 통과하면 true(그 시각을 기록). clear() 로 모두 잊는다.
+export function createSayLimiter(minGapMs = 1500) {
+  const last = new Map();
+  return {
+    allow(id, nowMs) {
+      const prev = last.get(id);
+      if (prev !== undefined && nowMs - prev < minGapMs) return false;
+      last.set(id, nowMs);
+      if (last.size > 200) for (const [k, t] of last) if (nowMs - t >= minGapMs) last.delete(k); // 오래된 기록 정리(상한)
+      return true;
+    },
+    clear() { last.clear(); },
+  };
+}

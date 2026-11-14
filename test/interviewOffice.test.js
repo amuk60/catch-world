@@ -19,7 +19,7 @@ test('책상 방향: 모델 앞(서랍이 열리는 쪽)이 면접관(북쪽)을
     assert.ok(Math.abs(front.x) < 1e-9 && front.z < -0.99, '북쪽(-z)을 본다');
     const seat = nearestSeat(desk);
     assert.ok(dot(front, { x: seat.x - desk.x, z: seat.z - desk.z }) > 0.5, '서랍 쪽에 면접관이 앉는다');
-    assert.ok(dot(front, { x: I.chair.x - desk.x, z: I.chair.z - desk.z }) < -1, '지원자는 뒷면 쪽');
+    for (const c of I.chairs) assert.ok(dot(front, { x: c.x - desk.x, z: c.z - desk.z }) < -1, '지원자는 뒷면 쪽');
   }
 });
 
@@ -31,7 +31,7 @@ test('노트북: 책상 폭 안 책상 위에 놓이고 앞(사용자 쪽)이 �
   assert.ok(front.z < -0.99, '앞(키보드·사용자 쪽)이 북쪽');
   const seat = nearestSeat(laptop);
   assert.ok(dot(front, { x: seat.x - laptop.x, z: seat.z - laptop.z }) > 0.5);
-  assert.ok(dot(front, { x: I.chair.x - laptop.x, z: I.chair.z - laptop.z }) < 0);
+  for (const c of I.chairs) assert.ok(dot(front, { x: c.x - laptop.x, z: c.z - laptop.z }) < 0);
   assert.equal(laptop.rotY, desk.rotY, '책상과 같은 쪽을 본다');
 });
 
@@ -43,7 +43,8 @@ test('사무용품: 서류함·정수기는 벽에 붙어 방 안쪽을 보고, 
     assert.ok(Math.min(p.x - B.minX, B.maxX - p.x) < 0.8 && inBounds(p, 0.2), `${p.kind} 은 동·서 벽에 붙어 있다`);
     const circle = I.obstacles.find((o) => o.id === p.id);
     assert.ok(circle && d(circle, p) < 1e-9, '충돌 원');
-    assert.ok(d(p, I.chair) > 3 && d(p, I.arrival) > 2.5);
+    for (const c of I.chairs) assert.ok(d(p, c) > 3, `${p.kind} ${c.id}`);
+    assert.ok(d(p, I.arrival) > 2.5);
   }
 });
 
@@ -58,7 +59,7 @@ test('안내판 "면접 안내": 서쪽 벽, 화이트보드와 출입문 사이
 });
 
 test('지원자 의자·대기 의자는 사무용 의자 모델(chairModernCushion), 나무 의자·벤치·플로어 램프가 아니다', () => {
-  assert.equal(I.chair.name, 'chairModernCushion');
-  assert.equal(I.furniture.filter((f) => f.name === 'chairModernCushion').length, 3, '지원자 1 + 대기 2');
+  for (const c of [...I.chairs, ...I.waitChairs]) assert.equal(c.name, 'chairModernCushion');
+  assert.equal(I.furniture.filter((f) => f.name === 'chairModernCushion').length, 6, '지원자 3 + 대기 3');
   assert.ok(!I.furniture.some((f) => ['chairCushion', 'benchCushion', 'lampRoundFloor'].includes(f.name)));
 });

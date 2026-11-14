@@ -114,7 +114,7 @@ export function buildLaundryInterior() {
 }
 
 // ---- 면접장 실내 ----
-// 안쪽 면 기준 12(x) x 10(z). 북쪽(뒷) 벽 앞에 긴 면접관 책상 + 책상 뒤 면접관 3명(팀장 가운데, 인사담당 서쪽, 예비 사수 동쪽), 책상 앞에 지원자 의자.
+// 안쪽 면 기준 12(x) x 10(z). 북쪽(뒷) 벽 앞에 긴 면접관 책상 + 책상 뒤 면접관 3명(팀장 가운데, 인사담당 서쪽, 예비 사수 동쪽), 책상 앞에 지원자 의자 3개(다대다 면접)와 그 뒤 대기 의자 3개.
 // 서쪽 벽에 출입문과 화이트보드·안내판, 북쪽 벽에 간판 "면접장"·벽시계·창(블라인드). 책상 양끝은 낮은 책장으로 막아 면접관 자리에는 들어갈 수 없다.
 // 차가운 사무실 꾸밈(색·재질)은 config 의 INTERVIEW_LOOK 가 정하고, 여기는 위치·방향 데이터만 둔다(서류함·정수기는 모델이 없어 그리는 쪽이 도형으로 만든다: props).
 const INTERVIEW_EXIT = { z: 2 };
@@ -129,9 +129,13 @@ const DESK = { z: -2.0, scale: 1.9, xs: [-1.4, 0, 1.4], top: 0.72, radius: 0.6, 
 const LAPTOP_ROT_Y = Math.PI; // 노트북 화면이 면접관(북쪽)을 본다(모델의 앞(+z)이 사용자 쪽, 화면은 모델 뒤쪽)
 const SEAT = { z: -3.0, y: 0.22, chair: { name: 'chairDesk', scale: 1.9 } }; // 면접관 의자(책상 뒤). y 는 앉은 캐릭터 모델 원점 높이(앉는 동작이 몸을 낮춘다)
 const SEAT_ORDER = [['hr', -1.4], ['leader', 0], ['mentor', 1.4]];
-const GUEST_CHAIR = { model: 'chairModernCushion', x: 0, z: 0.3, scale: 2.6, radius: 0.4, seatY: 0.5, seatForward: 0.06, interactRange: 2.0 }; // 지원자 의자(북쪽을 본다). seatY: 앉은 캐릭터 모델 원점 높이, seatForward: 등받이에 안 파묻히게 책상 쪽으로 앉는 거리(둘 다 화면으로 맞춘 값)
-const GUEST_SEAT_ID = 'interview-chair';
-const GUEST_SPOT = { x: 0, z: 1.9 }; // 지원자가 서는 자리(의자 남쪽)
+// 지원자 의자(북쪽을 본다): 책상 앞에 나란히 3개(다대다 면접). seatY: 앉은 캐릭터 모델 원점 높이, seatForward: 등받이에 안 파묻히게 책상 쪽으로 앉는 거리(둘 다 화면으로 맞춘 값).
+// 면접 구역은 이 의자들 중 어느 것에 앉아도 켜진다(zones.js 의 seatIds 가 이 id 들이다). 의자를 늘리거나 옮길 때는 아래 xs 만 고친다.
+const GUEST_CHAIR = { model: 'chairModernCushion', z: 0.3, xs: [-1.7, 0, 1.7], scale: 2.6, radius: 0.4, seatY: 0.5, seatForward: 0.06, interactRange: 2.0, label: '면접 의자' };
+const GUEST_CHAIR_RUG = { x: 0, z: 0.5, scale: 3.0 }; // 의자 줄 밑 러그(가로 약 4.7)
+const GUEST_SPOT = { x: 0, z: 1.9 }; // 지원자가 서는 자리(가운데 의자 남쪽)
+// 대기 의자: 지원자 의자 줄 뒤(남쪽)에서 책상을 보고 앉는 줄. 누구나 앉아 구경할 수 있고(E 앉기/일어나기) 면접 구역은 없다.
+const WAIT_CHAIR = { model: 'chairModernCushion', z: 3.7, xs: [-1.7, 0, 1.7], scale: 2.6, radius: 0.4, seatY: 0.5, seatForward: 0.06, interactRange: 1.8, label: '대기 의자' };
 
 export function buildInterviewInterior() {
   const { origin, width, depth, wallHeight } = INTERVIEW_INTERIOR;
@@ -165,13 +169,25 @@ export function buildInterviewInterior() {
   }).sort((a, b) => ['leader', 'hr', 'mentor'].indexOf(a.id) - ['leader', 'hr', 'mentor'].indexOf(b.id));
 
   // 지원자 의자와 서 있을 자리, 러그, 그 밖의 장식.
-  const guest = at(GUEST_CHAIR.x, GUEST_CHAIR.z);
-  const chair = { name: GUEST_CHAIR.model, x: guest.x, z: guest.z, scale: GUEST_CHAIR.scale, rotY: Math.PI };
-  piece('interviewChair', GUEST_CHAIR.model, GUEST_CHAIR.x, GUEST_CHAIR.z, GUEST_CHAIR.scale, Math.PI, { circles: [[0, 0, GUEST_CHAIR.radius]] });
-  piece('rugRectangle', 'rugRectangle', 0, 1.1, 2.6, 0); // 바닥 장식(장애물 아님)
+  // 의자 줄(지원자 의자 3 + 대기 의자 3): 모두 책상(북쪽)을 보고 seat 상호작용 항목(E 앉기)이 된다. 앉는 자리는 방석 위에서 책상 쪽으로 살짝 당긴다.
+  const chairRow = (spec, idPrefix, obstacleId) => spec.xs.map((rx, i) => {
+    const p = at(rx, spec.z);
+    const rotY = Math.PI;
+    piece(obstacleId, spec.model, rx, spec.z, spec.scale, rotY, { circles: [[0, 0, spec.radius]] });
+    const chair = { id: `${idPrefix}-${i}`, name: spec.model, x: p.x, z: p.z, scale: spec.scale, rotY };
+    const item = {
+      id: chair.id, label: spec.label, kind: 'seat', x: p.x, z: p.z, radius: spec.radius, interactRange: spec.interactRange,
+      seat: { x: p.x, z: p.z + Math.cos(rotY) * spec.seatForward, y: spec.seatY, rotY },
+    };
+    return { chair, item };
+  });
+  const guestRow = chairRow(GUEST_CHAIR, 'interview-chair', 'interviewChair');
+  const waitRow = chairRow(WAIT_CHAIR, 'interview-wait', 'waitingChair');
+  const chairs = guestRow.map((r) => r.chair);
+  const waitChairs = waitRow.map((r) => r.chair);
+  piece('rugRectangle', 'rugRectangle', GUEST_CHAIR_RUG.x, GUEST_CHAIR_RUG.z, GUEST_CHAIR_RUG.scale, 0); // 바닥 장식(장애물 아님)
   piece('pottedPlant-ne', 'pottedPlant', 5.2, -4.2, 3.2, 0, { circles: [[0, 0, 0.4]] });
   piece('pottedPlant-sw', 'pottedPlant', -5.2, 3.9, 3.2, 0, { circles: [[0, 0, 0.4]] });
-  for (const rx of [3.3, 4.3]) piece('waitingChair', 'chairModernCushion', rx, 4.4, 2.6, Math.PI, { circles: [[0, 0, 0.4]] }); // 남쪽 벽 앞 대기 의자 둘(북쪽을 본다)
   piece('trashcan', 'trashcan', -5.35, 0.3, 1.2, 0, { circles: [[0, 0, 0.3]] }); // 출입문 곁 쓰레기통
   piece('coatRackStanding', 'coatRackStanding', 5.3, 0.6, 3.0, 0, { circles: [[0, 0, 0.3]] });
   // 도형으로 그리는 사무용품(모델이 없다): 서류함(서쪽 벽 북쪽 끝, 동쪽을 본다)과 정수기(동쪽 벽, 서쪽을 본다). w x d x h 는 월드 단위.
@@ -192,11 +208,11 @@ export function buildInterviewInterior() {
   const interactables = [{
     id: 'interview-exit', label: '출구', kind: 'door', to: 'yard', x: exitSpot.x, z: exitSpot.z, radius: INTERACT.radius,
     interactRange: INTERACT.range, walkTo: { x: exit.x + 1.4, z: exit.z },
-  }, {
-    // 지원자 의자: 마당 벤치와 같은 'seat' 종류(E 앉기, 일어나면 바라보는 쪽 1칸 앞). 책상(북쪽)을 보고 앉는다. 면접 구역은 이 자리에 앉아 있을 때만 켜진다(zones.js 의 seatId).
-    id: GUEST_SEAT_ID, label: '면접 의자', kind: 'seat', x: guest.x, z: guest.z, radius: GUEST_CHAIR.radius, interactRange: GUEST_CHAIR.interactRange,
-    seat: { x: guest.x, z: guest.z + Math.cos(chair.rotY) * GUEST_CHAIR.seatForward, y: GUEST_CHAIR.seatY, rotY: chair.rotY },
-  }];
+  },
+  // 지원자 의자 3개: 마당 벤치와 같은 'seat' 종류(E 앉기, 일어나면 바라보는 쪽 1칸 앞). 면접 구역은 이 자리들 중 하나에 앉아 있을 때만 켜진다(zones.js 의 seatIds).
+  ...guestRow.map((r) => r.item),
+  // 대기 의자 3개: 같은 seat 종류, 면접 구역은 없다(앉아서 구경만 한다).
+  ...waitRow.map((r) => r.item)];
   const arrival = { x: exit.x + ARRIVAL_DISTANCE, z: exit.z, rotY: Math.PI / 2 };
 
   const lamps = [at(-3, -0.5), at(2.8, -0.8), at(0, 2.4)].map((p) => ({ x: p.x, y: wallHeight - 0.2, z: p.z }));
@@ -208,8 +224,8 @@ export function buildInterviewInterior() {
 
   return {
     id: 'interview', origin: { ...origin }, bounds, wallHeight, tile: TILE, walls, exit, arrival, interactables,
-    furniture, props, seats, chair, obstacles, lamps, sign, board, notice, clock, deskTop,
-    standingSpot: standSpot, seatId: GUEST_SEAT_ID,
+    furniture, props, seats, chairs, waitChairs, obstacles, lamps, sign, board, notice, clock, deskTop,
+    standingSpot: standSpot, seatIds: chairs.map((c) => c.id), waitSeatIds: waitChairs.map((c) => c.id),
     zoneCenter: at(0, 0.1),
   };
 }

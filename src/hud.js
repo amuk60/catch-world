@@ -134,6 +134,7 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
   const speechLayer = document.createElement('div');
   speechLayer.id = 'speech-layer';
   const speeches = new Map(); // 말하는 사람 id -> { el, timer }
+  const REMOTE_PREFIX = 'r-'; // 다른 방문자의 말풍선 id 앞머리(내 장면이 시작·끝날 때 치우는 대상에서 빼고, 따로 치운다)
   // 답변 선택 창(하단): 질문 + 선택지 3개(실제로 할 말 + 작은 색 라벨) + "다음에 할게요".
   const choice = document.createElement('div');
   choice.id = 'choice';
@@ -182,9 +183,9 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
   }
 
   return {
-    // 면접장 말풍선. id: 'player' | 면접관 id, name: 이름표(없으면 생략), seconds 뒤에 스스로 사라진다(0 이하면 clearSpeech 로 지울 때까지).
-    // 같은 id 로 다시 부르면 내용을 바꾸고 시간을 새로 센다.
-    say(id, text, { name = '', seconds = 2.3, big = false } = {}) {
+    // 면접장 말풍선. id: 'player' | 면접관 id | 'r-<방문자 id>'(다른 방문자), name: 이름표(없으면 생략), seconds 뒤에 스스로 사라진다(0 이하면 clearSpeech 로 지울 때까지).
+    // 같은 id 로 다시 부르면 내용을 바꾸고 시간을 새로 센다. remote 면 다른 방문자 모양(하늘색 바탕).
+    say(id, text, { name = '', seconds = 2.3, big = false, remote = false } = {}) {
       let s = speeches.get(id);
       if (!s) {
         const el = document.createElement('div');
@@ -195,6 +196,7 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
       }
       clearTimeout(s.timer);
       s.el.classList.toggle('big', big);
+      s.el.classList.toggle('remote', remote);
       s.el.replaceChildren();
       if (name) {
         const who = document.createElement('b');
@@ -205,9 +207,17 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
       s.el.append(text);
       if (seconds > 0) s.timer = setTimeout(() => removeSpeech(id), seconds * 1000);
     },
+    // id 없이 부르면 내 장면의 말풍선(플레이어·면접관)을 모두 치운다. 다른 방문자의 말풍선은 clearRemoteSpeech 로 따로.
     clearSpeech(id) {
-      if (id === undefined) for (const key of [...speeches.keys()]) removeSpeech(key);
-      else removeSpeech(id);
+      if (id === undefined) { for (const key of [...speeches.keys()]) if (!key.startsWith(REMOTE_PREFIX)) removeSpeech(key); } else removeSpeech(id);
+    },
+    clearRemoteSpeech(id) {
+      if (id === undefined) { for (const key of [...speeches.keys()]) if (key.startsWith(REMOTE_PREFIX)) removeSpeech(key); } else removeSpeech(id);
+    },
+    // 말풍선 크기(px, 겹침 피하기용). 없으면 null.
+    speechSize(id) {
+      const s = speeches.get(id);
+      return s ? { w: s.el.offsetWidth, h: s.el.offsetHeight } : null;
     },
     speechIds: () => [...speeches.keys()],
     // 말풍선은 머리 위 화면 좌표에 놓되, 옆 사람과 겹치지 않게 shift(px) 만큼 비켜 놓고(꼬리는 머리를 가리킨다) 화면 위·옆으로 잘리지 않게 안쪽으로 당긴다.

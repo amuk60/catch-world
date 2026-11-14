@@ -96,7 +96,7 @@ test('면접장 재질 덮어쓰기: 값이 올바르고, 나무·카펫 재질�
 
 test('면접장에 놓이는 모델(벽·가구·의자)은 모두 재질 덮어쓰기 항목이 있다(나무색이 그대로 남지 않게)', () => {
   const names = new Set([
-    ...I.furniture.map((f) => f.name), ...I.seats.map((s) => s.chair.name), I.chair.name, ...I.walls.flatMap((w) => w.pieces.map((p) => p.name)),
+    ...I.furniture.map((f) => f.name), ...I.seats.map((s) => s.chair.name), ...I.chairs.map((c) => c.name), ...I.waitChairs.map((c) => c.name), ...I.walls.flatMap((w) => w.pieces.map((p) => p.name)),
   ]);
   for (const n of names) assert.ok(Object.keys(materialOverrides(INTERVIEW_LOOK, n)).length > 0, n);
   for (const n of ['desk', 'chairDesk', 'chairModernCushion', 'bookcaseOpenLow', 'laptop', 'rugRectangle']) assert.ok(INTERVIEW_LOOK.materials[n], n);

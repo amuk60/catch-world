@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createBagPicker, createRepeatFreePicker, createRound, openingFor, pickReactions, createTimeline,
-  answerScript, improvScript, seatedImprov, EVENT_TYPES, validateInterview, IMPROV_IDS,
+  answerScript, improvScript, seatedImprov, EVENT_TYPES, validateInterview, IMPROV_IDS, remoteSayLine, remoteReaction, REMOTE_BUBBLE_SECONDS,
 } from '../src/logic/interview.js';
 import { INTERVIEW, INTERVIEW_ROUND, INTERVIEW_BONUS, INTERVIEW_ANSWER_SECONDS, INTERVIEW_IMPROV_SECONDS, INTERVIEW_FINALE_SECONDS, SPEECH_SECONDS, ACTION_REDUCE } from '../src/config.js';
 import { mulberry32 } from '../src/logic/rng.js';
@@ -395,4 +395,37 @@ test('예비 사수: 설정 이름·id, 말투에서 막내 느낌이 나는 대
   assert.ok(texts.length >= 3 + 6 + 4);
   for (const t of texts) assert.ok(!/저, 저도|어떡해|죄송해요|괜찮을까요|눈치/.test(t), t);
   assert.equal(INTERVIEW.questions.filter((q) => q.asker === 'mentor').length, 3, '질문 던지기 차례 유지');
+});
+
+// ---- 다른 방문자의 말 보기(멀티플레이): 번호로 내 config 에서 글을 찾는다 ----
+
+test('remoteSayLine: 답변은 질문 q 의 a 번째 답변 글·종류·질문자를, 돌발행동은 id 의 첫 대사를 돌려준다', () => {
+  for (let q = 0; q < INTERVIEW.questions.length; q++) {
+    for (let a = 0; a < 3; a++) {
+      const line = remoteSayLine(INTERVIEW, { ty: 'ans', q, a });
+      const src = INTERVIEW.questions[q];
+      assert.deepEqual(line, { text: src.answers[a].text, type: src.answers[a].type, asker: src.asker, improvId: null });
+    }
+  }
+  for (const im of INTERVIEW.improvs) assert.deepEqual(remoteSayLine(INTERVIEW, { ty: 'imp', imp: im.id }), { text: im.player[0], type: null, asker: null, improvId: im.id });
+  assert.ok(REMOTE_BUBBLE_SECONDS >= 2 && REMOTE_BUBBLE_SECONDS <= 4);
+});
+
+test('remoteSayLine: config 에 없는 번호·id·이상한 입력은 null', () => {
+  for (const say of [null, undefined, {}, { ty: 'ans', q: 99, a: 0 }, { ty: 'ans', q: 0, a: 7 }, { ty: 'ans', q: -1, a: 0 }, { ty: 'imp', imp: 'nope' }, { ty: 'x' }]) assert.equal(remoteSayLine(INTERVIEW, say), null, JSON.stringify(say));
+  assert.equal(remoteSayLine({ questions: [], improvs: [] }, { ty: 'ans', q: 0, a: 0 }), null);
+});
+
+test('remoteReaction: 답변 종류별 동작(정석 박수 / 솔직 당황 / 엉뚱 폭소)과 질문한 면접관의 한마디, 돌발행동은 팀장 한마디', () => {
+  const pick = (type) => remoteReaction(INTERVIEW, { type, asker: 'mentor', improvId: null, text: 'x' }, () => 0);
+  assert.deepEqual(pick('정석'), { clip: 'emote-yes', clap: true, who: 'mentor', text: INTERVIEW.reactions['정석'].mentor[0] });
+  assert.equal(pick('솔직').clip, 'emote-no');
+  assert.equal(pick('솔직').clap, undefined);
+  const funny = pick('엉뚱');
+  assert.ok(funny.bounce && funny.bounce.amp > 0 && funny.bounce.amp <= 0.05, '내 장면(0.07)보다 작게 튄다');
+  const imp = remoteReaction(INTERVIEW, { type: null, asker: null, improvId: 'dance', text: 'x' });
+  assert.equal(imp.who, 'leader');
+  assert.equal(imp.text, INTERVIEW.improvs.find((i) => i.id === 'dance').leader);
+  assert.equal(remoteReaction(INTERVIEW, null), null);
+  assert.equal(remoteReaction(INTERVIEW, { type: null, asker: null, improvId: 'nope' }), null);
 });

@@ -1,12 +1,13 @@
 // 멀티플레이 세션(THREE 없음, 시험 가능): 전송(transport)을 감싸 공간별 방에 들어가고, 내 상태를 정책에 맞춰 보내고,
 // 받은 메시지를 검사·보간 버퍼에 쌓고, 오래 소식 없는 방문자를 지운다. 게임 루프로는 절대 예외를 던지지 않는다.
 import {
-  buildState, validateState, createSendPolicy, createInterpBuffer, isStale, nearestN,
+  buildState, validateState, createSendPolicy, createInterpBuffer, isStale, nearestN, buildSay, validateSay, createSayLimiter,
 } from '../logic/net.js';
 import { shardRoom, nextShard } from '../logic/shards.js';
 
 // transport: net/transport.js 의 인터페이스. self: { id, nick }. cfg: config 의 MULTIPLAYER. now: () => ms.
-export function createSession({ transport, self, cfg, now = () => performance.now(), clock = () => Date.now() }) {
+// sayLimits: 면접 답변·돌발행동 한마디(k: 'say')를 받을 때의 허용 범위 { questions, answers, improvs }. 없으면 한마디는 보내지도 받지도 않는다.
+export function createSession({ transport, self, cfg, now = () => performance.now(), clock = () => Date.now(), sayLimits = null }) {
   const remotes = new Map(); // id -> { id, nick, buffer, lastSeen, lastT, lastRecv }
   const peers = new Set(); // 지금 방에 있는 다른 방문자 id(전송 쪽 presence)
   const policy = createSendPolicy({ hz: cfg.sendHz, heartbeatMs: cfg.heartbeatMs, epsPos: cfg.epsPos, epsRot: cfg.epsRot, minGapMs: cfg.minGapMs });
@@ -28,6 +29,9 @@ export function createSession({ transport, self, cfg, now = () => performance.no
   let received = 0;
   let joinGen = 0;
   const listeners = new Set();
+  const sayListeners = new Set();
+  const sayIn = createSayLimiter(cfg.sayGapMs ?? 1500); // 보낸 사람마다 받는 간격
+  const sayOut = createSayLimiter(cfg.sayGapMs ?? 1500); // 내가 보내는 간격
   const notify = () => { for (const fn of listeners) { try { fn(api); } catch { /* 표시 쪽 오류는 무시 */ } } };
 
   // 전송 상태와 단계에서 겉으로 보이는 상태를 정한다. 준비(ready)가 아니면 방문자는 모두 지운다.
@@ -81,6 +85,7 @@ export function createSession({ transport, self, cfg, now = () => performance.no
     joinGen++;
     remotes.clear();
     peers.clear();
+    sayIn.clear();
     policy.reset();
     tState = 'connecting';
     phase = 'probing';
@@ -119,6 +124,7 @@ export function createSession({ transport, self, cfg, now = () => performance.no
   // 받은 원본 메시지를 검사해 방문자 상태로 반영한다. 반환: 받아들였는가.
   function ingest(raw, at = now()) {
     if (disposed || phase !== 'joined') return false;
+    if (raw && typeof raw === 'object' && raw.k === 'say') return ingestSay(raw, at);
     const s = validateState(raw, validateOpts);
     if (!s) { rejected++; return false; }
     if (s.id === self.id || s.space !== space) return false;
@@ -142,6 +148,37 @@ export function createSession({ transport, self, cfg, now = () => performance.no
     received++;
     notify();
     return true;
+  }
+
+  // 받은 한마디(면접 답변·돌발행동 번호)를 검사해 구독자에게 알린다. 글은 받지 않고(번호만) 받는 쪽이 자기 설정에서 찾는다.
+  // 내 공간에서 상태를 보낸 적이 있는 방문자의 것만 받고, 보낸 사람마다 간격(cfg.sayGapMs)을 둔다. 반환: 받아들였는가.
+  function ingestSay(raw, at) {
+    if (!sayLimits || sayListeners.size === 0) return false;
+    const m = validateSay(raw, sayLimits);
+    if (!m) { rejected++; return false; }
+    if (m.id === self.id || m.space !== space) return false;
+    const r = remotes.get(m.id);
+    if (!r) return false;
+    if (!sayIn.allow(m.id, at)) return false;
+    const ev = { id: m.id, nick: r.nick, ty: m.ty, q: m.q, a: m.a, imp: m.imp };
+    for (const fn of sayListeners) { try { fn(ev); } catch { /* 표시 쪽 오류는 무시 */ } }
+    return true;
+  }
+
+  // 내 한마디를 보낸다: { ty:'ans', q, a } | { ty:'imp', imp }. 연결·방 상태가 안 되었거나 듣는 사람이 없거나 간격(cfg.sayGapMs) 안이면 보내지 않는다. 반환: 보냈는가.
+  function say(msg, nowMs = now()) {
+    try {
+      if (disposed || !sayLimits || !space || status !== 'ready' || !transport.isReady || !active) return false;
+      if (peers.size === 0 && remotes.size === 0) return false;
+      const out = buildSay(self, space, msg);
+      if (!validateSay(out, sayLimits)) return false;
+      if (!sayOut.allow(self.id, nowMs)) return false;
+      transport.send(out);
+      sent++;
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   // 매 프레임: 내 공간이 바뀌었으면 방을 옮기고, 정책이 허락하면 내 상태를 보낸다. local: { space, x, z, y, rotY, anim, outfit, seat }.
@@ -186,7 +223,8 @@ export function createSession({ transport, self, cfg, now = () => performance.no
   }
 
   const api = {
-    update, sample, ingest, dispose,
+    update, sample, ingest, dispose, say,
+    onSay(fn) { sayListeners.add(fn); return () => sayListeners.delete(fn); },
     get status() { return status; },
     get space() { return space; },
     get shard() { return shard; },
