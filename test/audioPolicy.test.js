@@ -71,8 +71,8 @@ test('volumeToGain: 제곱 곡선이고 0..1 밖은 잘라낸다', () => {
   assert.equal(volumeToGain(0.5, 0.8), 0.2);
 });
 
-test('기본 볼륨은 보수적이다(마스터 게인 0.55 이하)', () => {
-  assert.ok(volumeToGain(DEFAULT_VOLUME) <= 0.55);
+test('기본 볼륨: 마스터 게인이 1 이하이고 충분히 크다', () => {
+  assert.ok(volumeToGain(DEFAULT_VOLUME) <= 1);
   assert.ok(volumeToGain(DEFAULT_VOLUME) > 0.3);
 });
 

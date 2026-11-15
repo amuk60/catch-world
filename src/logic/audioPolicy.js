@@ -4,7 +4,7 @@
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 // ---- 볼륨 ----
-export const DEFAULT_VOLUME = 0.7; // 슬라이더 기본값(마스터 게인 0.49). 시끄럽지 않게 보수적으로.
+export const DEFAULT_VOLUME = 1.0; // 슬라이더 기본값(마스터 게인 1.0). 처음 0.7(게인 0.49)은 너무 작아 안 들린다는 사용자 의견으로 올렸다(압축기가 찌그러짐을 막는다).
 // 슬라이더(0~1) -> 마스터 게인. 제곱 곡선이라 낮은 쪽을 세밀하게 고를 수 있다.
 export function volumeToGain(v, maxGain = 1) {
   const x = Number.isFinite(v) ? clamp(v, 0, 1) : DEFAULT_VOLUME;
