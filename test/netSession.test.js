@@ -24,7 +24,7 @@ function fakeTransport() {
 const cfg = { ...MULTIPLAYER, minRecvGapMs: 0, shardProbeMs: 0 }; // 방 인원 세기(샤딩)는 아래 별도 시험에서
 const me = { id: 'me0000001', nick: '나' };
 const local = (o = {}) => ({ space: 'yard', x: 0, z: 0, y: 0, rotY: 0, anim: 'idle', outfit: 'clean', seat: false, ...o });
-const msg = (id, o = {}) => ({ id, nick: `닉-${id}`, space: 'yard', x: 1, z: 1, y: 0, rotY: 0, anim: 'idle', outfit: 'clean', seat: false, t: 1, ...o });
+const msg = (id, o = {}) => ({ id, nick: `닉${id.slice(-5)}`, space: 'yard', x: 1, z: 1, y: 0, rotY: 0, anim: 'idle', outfit: 'clean', seat: false, t: 1, ...o });
 function setup(c = cfg) {
   const tr = fakeTransport();
   let nowMs = 0;
@@ -78,7 +78,7 @@ test('session: 받은 메시지는 검사해서 보간 버퍼에 쌓고 sample �
   const out = x.s.sample(1550); // 보간 지연 250ms -> 1300 시점
   assert.equal(out.length, 1);
   assert.equal(out[0].id, 'peer00001');
-  assert.equal(out[0].nick, '닉-peer00001');
+  assert.equal(out[0].nick, '닉00001');
   assert.ok(Math.abs(out[0].x - 3) < 1e-9);
   assert.equal(x.s.count, 2);
 });
@@ -93,7 +93,7 @@ test('session: 내 메시지, 다른 공간 메시지, 형식이 틀린 메시�
   assert.equal(x.s.stats.rejected >= 6, true);
   x.tr.emitMsg(msg('peer00006', { nick: '<img onerror=1>', anim: 'hack', outfit: 'x' }));
   const [p] = x.s.sample(5000);
-  assert.equal(p.nick, 'img onerror=1');
+  assert.match(p.nick, / #[0-9]{3}$/, '꺾쇠가 든 닉네임은 무난한 이름으로 바뀐다');
   assert.equal(p.anim, 'idle');
   assert.equal(p.outfit, 'clean');
 });
@@ -326,7 +326,7 @@ test('session: 상태를 보낸 적 있는 방문자의 한마디는 검사 후 
   const x = await hall();
   x.meet('peer00001');
   x.at(1100); x.tr.emitMsg(sayMsg('peer00001', { q: 5, a: 2 }));
-  assert.deepEqual(x.seen, [{ id: 'peer00001', nick: '닉-peer00001', ty: 'ans', q: 5, a: 2, imp: undefined }]);
+  assert.deepEqual(x.seen, [{ id: 'peer00001', nick: '닉00001', ty: 'ans', q: 5, a: 2, imp: undefined }]);
   x.at(3000); x.tr.emitMsg(sayMsg('peer00001', { ty: 'imp', imp: 'dance', q: undefined, a: undefined }));
   assert.equal(x.seen.length, 2);
   assert.equal(x.seen[1].ty, 'imp');

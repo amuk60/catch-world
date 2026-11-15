@@ -5,8 +5,8 @@ import {
 } from '../src/logic/net.js';
 import { MULTIPLAYER } from '../src/config.js';
 
-const good = { id: 'abc123def456', nick: '야근 마스터 #123', space: 'yard', x: 1.5, z: -2, y: 0, rotY: 1, anim: 'walk', outfit: 'clean', seat: false, t: 1000 };
-const opts = { adjectives: MULTIPLAYER.nickAdjectives, nouns: MULTIPLAYER.nickNouns, nickMax: 24 };
+const good = { id: 'abc123def456', nick: '야근 너구리', space: 'yard', x: 1.5, z: -2, y: 0, rotY: 1, anim: 'walk', outfit: 'clean', seat: false, t: 1000 };
+const opts = { adjectives: MULTIPLAYER.nickAdjectives, nouns: MULTIPLAYER.nickNouns };
 
 test('makeId: 가짜 crypto 를 쓰고 12자리 16진수, 서로 다르다', () => {
   let n = 0;
@@ -63,12 +63,14 @@ test('validateState: 숫자는 범위로 자르고 동작·옷은 목록 밖이�
   for (const o of OUTFITS) assert.equal(validateState({ ...good, outfit: o }, opts).outfit, o);
 });
 
-test('validateState: 닉네임은 다듬고, 길면 자르고, 비면 id 로 만든 이름', () => {
-  assert.equal(validateState({ ...good, nick: 'a'.repeat(500) }, opts).nick.length, 24);
-  assert.equal(validateState({ ...good, nick: '<script>' }, opts).nick, 'script');
-  assert.equal(validateState({ ...good, nick: 5 }, opts).nick, nickFor(good.id, opts.adjectives, opts.nouns));
-  assert.equal(validateState({ ...good, nick: '' }, opts).nick, nickFor(good.id, opts.adjectives, opts.nouns));
+test('validateState: 닉네임은 validateNick 로 다시 검사하고, 통과하지 못하면 id 로 만든 이름', () => {
+  const fb = nickFor(good.id, opts.adjectives, opts.nouns);
+  assert.equal(validateState({ ...good, nick: '  너구리   왕 ' }, opts).nick, '너구리 왕');
+  for (const bad of ['a'.repeat(500), '가'.repeat(11), '<script>', '<b>x</b>', '시 발', 'f.u.c.k', '010-1234-5678', 'abc.com', 'a​b', 5, '', '가', null]) {
+    assert.equal(validateState({ ...good, nick: bad }, opts).nick, fb, String(bad));
+  }
 });
+
 
 test('buildState: 소수 둘째 자리로 줄이고 검증을 통과한다', () => {
   const s = buildState({ id: good.id, nick: good.nick }, { space: 'laundry', x: 300.123456, z: 1.999, y: 0, rotY: 7, anim: 'idle', outfit: 'tank', seat: true }, 42);

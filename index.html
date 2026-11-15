@@ -135,6 +135,43 @@
     #mp-chip[data-state="off"] .mp-dot, #mp-chip[data-state="full"] .mp-dot { background: #8a8aa0; }
     .mp-toggle { padding: 3px 10px; border: 0; border-radius: 999px; background: rgba(255, 255, 255, 0.14); color: #fff; font: inherit; cursor: pointer; white-space: nowrap; }
     .mp-toggle:hover { background: rgba(255, 255, 255, 0.26); }
+    /* 닉네임 칸(칩 안)과 닉네임 정하기 카드(가운데 작은 카드: 화면 전체를 막지 않는다). */
+    .mp-nick { max-width: 190px; padding: 3px 8px; border: 0; border-radius: 999px; background: transparent; color: #ffe9a8; font: inherit; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mp-nick:hover { background: rgba(255, 255, 255, 0.14); }
+    #nick-card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; width: 320px; max-width: calc(100% - 32px); box-sizing: border-box;
+      padding: 18px 20px 14px; border-radius: 16px; background: #fdf6e3; color: #3a2f1f; box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45); z-index: 4; text-align: center; }
+    #nick-card.open { display: block; }
+    #nick-card h2 { margin: 0 0 12px; font-size: 18px; }
+    .nick-row { display: flex; gap: 8px; }
+    .nick-input { flex: 1; min-width: 0; padding: 9px 11px; border: 2px solid #d9c9a3; border-radius: 10px; background: #fff; color: #2a2a40; font: inherit; font-size: 16px; }
+    .nick-input:focus { outline: none; border-color: #e8833a; }
+    #nick-card.invalid .nick-input { border-color: #d6453a; }
+    .nick-dice { padding: 0 10px; border: 0; border-radius: 10px; background: #efe2bf; color: #3a2f1f; font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
+    .nick-dice:hover { background: #e6d6a8; }
+    .nick-meta { display: flex; justify-content: space-between; gap: 8px; min-height: 18px; margin: 5px 2px 0; font-size: 12px; }
+    .nick-error { color: #c0392b; font-weight: 700; text-align: left; }
+    .nick-count { margin-left: auto; color: #8a7a5f; }
+    .nick-note { margin: 6px 0 12px; font-size: 12px; color: #6b5d44; line-height: 1.45; }
+    .nick-go { width: 100%; padding: 10px 0; border: 0; border-radius: 999px; background: #e8833a; color: #fff; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
+    .nick-go:hover { background: #f0913f; }
+    .nick-later { margin-top: 8px; padding: 4px 8px; border: 0; background: none; color: #6b5d44; font: inherit; font-size: 13px; text-decoration: underline; cursor: pointer; }
+    /* 인사·응원말: 우하단 💬 버튼(이름표는 마우스를 올리거나 키보드로 누를 때 보인다)과 선택 창. 효과음 버튼(우상단)·행동 막대(가운데 아래)·측면 팝업(오른쪽 가운데)과 겹치지 않는다. */
+    #qc-btn { position: absolute; right: 14px; bottom: 14px; display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 10px; border: 0; border-radius: 999px;
+      background: rgba(18, 18, 31, 0.78); color: #fff; font: inherit; font-size: 12px; cursor: pointer; z-index: 2; transition: background 0.12s, opacity 0.12s; }
+    #qc-btn:hover, #qc-btn.active { background: rgba(255, 255, 255, 0.26); }
+    #qc-btn:focus-visible { outline: 2px solid #ffd9a8; outline-offset: 2px; }
+    #qc-btn.blocked { opacity: 0.4; pointer-events: none; }
+    #qc-btn .qc-emoji { font-size: 18px; line-height: 1; }
+    #qc-btn .qc-label { max-width: 0; overflow: hidden; white-space: nowrap; transition: max-width 0.18s; }
+    #qc-btn:hover .qc-label, #qc-btn:focus-visible .qc-label, #qc-btn.active .qc-label { max-width: 130px; }
+    #qc-picker { position: absolute; right: 14px; bottom: 58px; display: none; flex-direction: column; gap: 4px; width: 210px; padding: 8px; border-radius: 14px;
+      background: rgba(253, 246, 227, 0.97); box-shadow: 0 8px 26px rgba(0, 0, 0, 0.4); z-index: 3; }
+    #qc-picker.open { display: flex; }
+    #qc-picker button { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 0; border-radius: 9px; background: transparent; color: #3a2f1f; font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+    #qc-picker button:hover { background: #f0e1b8; }
+    #qc-picker .keycap { flex: none; min-width: 20px; text-align: center; background: #3a2f1f; color: #fff; }
+    .speech-q-self { background: #fff3d6; font-weight: 600; font-size: 15px; }
+    .speech-q-self::after { border-top-color: #fff3d6; }
     /* 클리어 팝업(종료 화면)과 캐치 칩. */
     #result { position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
       background: rgba(10, 10, 20, 0.7); z-index: 4; }

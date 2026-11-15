@@ -46,8 +46,10 @@ import {
   ACTION_REDUCE, ACTION_EFFECT_AT, ACTION_TARGET_SECONDS, ACTION_TURN_SECONDS, AUTO_GAP, PASSIVE,
   FIRE_RANGE, SHREDDER_RANGE, WASHER_RANGE, CLOTHESLINE_RANGE, FIRE_ZONE_RADIUS, CATCH_URL, GA_MEASUREMENT_ID, WEAR_SECONDS, WEAR_SWAP_AT,
   INTERVIEW, INTERVIEW_ROUND, INTERVIEW_BONUS, INTERVIEW_ZONE_RADIUS, INTERVIEW_ANSWER_SECONDS, INTERVIEW_IMPROV_SECONDS, INTERVIEW_FINALE_SECONDS, SPEECH_SECONDS,
-  MULTIPLAYER, SUPABASE_URL, SUPABASE_ANON_KEY, CLOTHESLINE_SLOTS,
+  MULTIPLAYER, SUPABASE_URL, SUPABASE_ANON_KEY, CLOTHESLINE_SLOTS, QUICK_CHAT,
 } from './config.js';
+import { isTypingTarget } from './logic/typing.js';
+import { createQuickChat } from './quickChat.js';
 import { applyDrag, applyZoom, orbitPosition, frontAzimuthDeg } from './logic/orbit.js';
 import { createCameraClear, buildingBoxes } from './logic/cameraClear.js';
 import { stepToward, pushOutOfCircle, headingY } from './logic/movement.js';
@@ -824,6 +826,7 @@ if (isMobileUA(navigator.userAgent)) {
   const ACTION_KEYS = { Digit1: 0, Numpad1: 0, Digit2: 1, Numpad2: 1 };
   const CHOICE_KEYS = { Digit1: 0, Numpad1: 0, Digit2: 1, Numpad2: 1, Digit3: 2, Numpad3: 2 }; // 답변 선택 창의 1·2·3
   window.addEventListener('keydown', (e) => {
+    if (isTypingTarget(e.target)) return; // 닉네임 입력 중에는 게임 단축키가 반응하지 않는다
     if (mode === 'transition' || mode === 'wearing' || mode === 'interview-play') return; // 전환·옷 갈아입기·면접 연출 중에는 모든 키를 무시한다.
     if (mode === 'interview-choice') { // 답변 선택 창: 1·2·3 으로 고르고 Esc 는 감소 없이 닫는다.
       if (e.code === 'Escape') interviewScene.cancel();
@@ -894,7 +897,15 @@ if (isMobileUA(navigator.userAgent)) {
   });
 
   // 멀티플레이(다른 방문자 아바타 보기, config 의 MULTIPLAYER): 켜져 있을 때만 관련 모듈을 불러온다. 꺼져 있거나 Supabase 키가 비어 있으면 아무것도 불러오지 않는다.
+  // 인사·응원말(T 키·우하단 💬): 면접·전환·옷 갈아입기·포춘·종료 화면 중에는 열리지 않는다. 멀티플레이가 꺼져 있어도 내 말풍선은 보인다(아무것도 보내지 않는다).
   let net = null;
+  const posOfRemote = (id) => { const r = net?.remotes.find((p) => p.id === id); return r ? { x: r.x, z: r.z } : undefined; };
+  const quickChat = createQuickChat({
+    container: document.getElementById('game'), hud, camera, renderer, player, list: QUICK_CHAT,
+    isBlocked: () => mode === 'interview-choice' || mode === 'interview-play' || mode === 'transition' || mode === 'wearing' || mode === 'fortune' || mode === 'result',
+    onSend: (i) => net?.chat(i) ?? false,
+    onUse: (i) => track('quick_chat', { i }),
+  });
   let remoteSpeech = null; // 다른 방문자의 답변·돌발행동 말풍선과 면접관 반응(멀티플레이가 켜져 있을 때만)
   if (multiplayerMode(location.search, MULTIPLAYER, { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY })) {
     try {
@@ -906,6 +917,7 @@ if (isMobileUA(navigator.userAgent)) {
         // 받은 한마디는 말풍선·면접관 반응으로만 보여 준다. 내 지수·라운드·보너스는 건드리지 않는다(분석은 보았다는 횟수만).
         net.onRoom(onRoomMessage);
         net.onSay((ev) => { if (remoteSpeech.show(ev)) track('remote_say_seen', { type: ev.ty }); });
+        net.onChat((ev) => { if (net.enabled) quickChat.showRemote(ev, posOfRemote(ev.id)); }); // 인사·응원말: 번호로 내 목록에서 글을 찾아 그 방문자 머리 위에 띄운다(다른 방문자 보기가 꺼져 있으면 아무것도 안 온다)
       }
     } catch (err) {
       console.warn('멀티플레이를 시작하지 못했습니다.', err);
@@ -997,6 +1009,7 @@ if (isMobileUA(navigator.userAgent)) {
     if (!character) playerFx.update(dt);
     net?.update(dt, { space: spaceId, x: player.position.x, z: player.position.z, y: player.position.y, rotY: player.rotation.y, anim: character ? character.getAnim() : 'idle', outfit: outfit.state, seat: holdsSeat(mode) });
     remoteSpeech?.update(dt, net.remotes, spaceId);
+    quickChat.update(dt);
     updateLine(dt);
     laundry.update(dt);
     interviewers.update(dt);
