@@ -1,13 +1,14 @@
 // 소리 점검: 레시피를 실제 마스터 체인(압축기·마스터 볼륨·소프트 클립)에 그대로 통과시켜 오프라인으로 렌더하고 길이·최대 진폭·RMS·직류 성분·끝 잘림과 소리 성격(파고율·스펙트럼 중심·600Hz 아래 비율)을 잰다.
 // 사운드 시험 페이지(sounds.html)의 "자동 점검"과 시험이 쓴다. 게임 본체는 이 모듈을 불러오지 않는다.
 import { RECIPES, LOOPS } from './recipes.js';
+import { FIRE } from './fireSynth.js';
 import { createGraph, createNoiseBuffers, buildVoice } from './engine.js';
 import { crestFactor, spectralCentroid, bandShare, spikeRatio } from './metrics.js';
 import { volumeToGain, DEFAULT_VOLUME } from '../logic/audioPolicy.js';
 
 const SAMPLE_RATE = 44100;
 const START = 0.01; // 소리 시작 시각(초)
-const LOOP_SECONDS = 12; // 반복음(모닥불)은 이만큼(되풀이 한 바퀴) 렌더한다
+const LOOP_SECONDS = FIRE.seconds; // 반복음(모닥불)은 이만큼(되풀이 한 바퀴) 렌더한다
 const SILENT = 1e-4; // 이 아래는 무음으로 본다
 
 async function render(seconds, masterVolume, build) {

@@ -4,7 +4,9 @@ import { RECIPES, LOOPS, SOUND_NAMES, LOOP_NAMES } from '../src/audio/recipes.js
 import { createNoiseBuffers, createGraph, buildVoice, createEngine, STORAGE_KEYS, MAX_VOICES } from '../src/audio/engine.js';
 import { speakerVoice } from '../src/logic/audioPolicy.js';
 import { synthFire, FIRE } from '../src/audio/fireSynth.js';
-import { crestFactor, rmsOf, peakOf, spectralCentroid, bandShare, spikeRatio, seamCheck } from '../src/audio/metrics.js';
+import { stepBank, synthStep, STEP, STEP_SURFACES } from '../src/audio/stepSynth.js';
+import { checkFire, checkStepBank } from '../src/audio/soundChecks.js';
+import { crestFactor, rmsOf, peakOf, bandShare, seamCheck, crackleStats } from '../src/audio/metrics.js';
 
 // ---- 가짜 AudioContext: 노드 연결·예약 값을 기록하고 Web Audio 가 던지는 잘못(NaN, 0 으로의 지수 곡선, 음수 시각)을 똑같이 던진다 ----
 function fakeContext() {
@@ -39,7 +41,7 @@ function fakeContext() {
     destination: node('destination'),
     createGain() { const n = node('gain'); n.gain = param(n, 1); return n; },
     createOscillator() { const n = source('osc'); n.type = 'sine'; n.frequency = param(n, 440); n.detune = param(n, 0); return n; },
-    createBufferSource() { const n = source('buffer'); n.buffer = null; n.loop = false; return n; },
+    createBufferSource() { const n = source('buffer'); n.buffer = null; n.loop = false; n.playbackRate = param(n, 1); return n; },
     createBiquadFilter() { const n = node('filter'); n.type = 'lowpass'; n.frequency = param(n, 350); n.Q = param(n, 1); return n; },
     createStereoPanner() { const n = node('panner'); n.pan = param(n, 0); return n; },
     createDynamicsCompressor() { const n = node('comp'); for (const k of ['threshold', 'knee', 'ratio', 'attack', 'release']) n[k] = param(n, 0); return n; },
@@ -141,22 +143,97 @@ test('빼기로 한 소리는 레시피에 없고, 남기기로 한 소리만 �
   assert.deepEqual([...SOUND_NAMES].sort(), [...kept].sort());
 });
 
-test('발소리: 낮은 몸통(진동음) 없이 높은 대역의 아주 짧은 거른 잡음 알갱이뿐이다(사박사박)', () => {
+test('발소리: 미리 만든 변형 뱅크 중 하나를 버퍼 소스로 재생한다(진동음·실시간 거르개 없음, 60~200ms)', () => {
   for (const name of ['stepGrass', 'stepStone', 'stepTile']) {
     for (const seed of [1, 2, 3]) {
       const { nodes, log, built } = runRecipe(name, RECIPES[name], seeded(seed));
-      assert.ok(built.duration <= 0.13, `${name} 길이 ${built.duration}`);
-      assert.equal(nodes.filter((n) => n.kind === 'osc').length, 0, `${name}: 낮은 쿵 소리를 내는 진동음이 있다`);
-      const filters = nodes.filter((n) => n.kind === 'filter');
-      const highpasses = filters.filter((f) => f.type === 'highpass');
-      const bands = filters.filter((f) => f.type === 'bandpass');
-      assert.ok(highpasses.length >= 2 && highpasses.length === bands.length, `${name}: 알갱이마다 하이패스 + 밴드패스`);
-      for (const f of highpasses) assert.ok(f.frequency.value >= 770, `${name}: 하이패스 ${f.frequency.value}Hz`); // rate 1.1 이 곱해져 있다(레시피는 700 이상)
-      for (const f of bands) assert.ok(f.frequency.value >= 1500 && f.frequency.value <= 6500, `${name}: 밴드 ${f.frequency.value}Hz`);
-      const grainLen = Math.max(...log.stops) - 0.5;
-      assert.ok(grainLen <= 0.2, `${name} 소스가 오래 남음 ${grainLen}`);
+      assert.ok(built.duration >= 0.06 && built.duration <= 0.2, `${name} 길이 ${built.duration}`);
+      assert.equal(nodes.filter((n) => n.kind === 'osc').length, 0, `${name}: 진동음이 있다`);
+      assert.equal(nodes.filter((n) => n.kind === 'filter').length, 0, `${name}: 실시간 거르개가 없다(파형은 미리 만들어 두었다)`);
+      const sources = nodes.filter((n) => n.kind === 'buffer');
+      assert.equal(sources.length, 1);
+      assert.equal(sources[0].loop, false);
+      assert.ok(peakOf(sources[0].buffer.getChannelData(0)) > 0.05, '무음 변형');
+      assert.ok(Math.max(...log.stops) - 0.5 <= 0.22, `${name} 소스가 오래 남음`);
     }
   }
+});
+
+test('발소리: 같은 바닥을 연달아 걸으면 변형이 골고루 쓰이고, 직전과 같은 변형이나 최근 3 걸음 안의 변형이 다시 나오지 않는다', () => {
+  for (const name of ['stepGrass', 'stepStone', 'stepTile']) {
+    const { ctx, nodes } = fakeContext();
+    const sink = ctx.createGain();
+    const rng = seeded(77);
+    const bank = new Map();
+    const picks = [];
+    for (let i = 0; i < 60; i++) {
+      buildVoice({ ctx, bus: sink, noise: {}, rng, run: RECIPES[name].run, opts: {}, gain: 1, rate: 1, t: 0.5 + i * 0.4 });
+      const src = nodes.filter((n) => n.kind === 'buffer').at(-1);
+      if (!bank.has(src.buffer)) bank.set(src.buffer, bank.size);
+      picks.push(bank.get(src.buffer));
+    }
+    assert.ok(bank.size >= 8 && bank.size <= 12, `${name}: 변형 ${bank.size} 개`);
+    for (let i = 1; i < picks.length; i++) {
+      for (let k = 1; k <= 3 && i - k >= 0; k++) assert.notEqual(picks[i], picks[i - k], `${name}: ${i} 번째 걸음이 ${k} 걸음 전과 같은 변형 ${picks[i]}`);
+    }
+  }
+});
+
+test('발소리: 재생 속도에 따라 길이가 달라지고, 흔들림은 음높이 +-6%·크기 +-1.5dB 이며 소리 크기는 뱅크에 이미 들어 있다', () => {
+  const { ctx } = fakeContext();
+  const sink = ctx.createGain();
+  const nodes = [];
+  const origCreate = ctx.createBufferSource;
+  ctx.createBufferSource = () => { const n = origCreate(); nodes.push(n); return n; };
+  for (const rate of [0.94, 1, 1.06]) {
+    const duration = buildVoice({ ctx, bus: sink, noise: {}, rng: seeded(5), run: RECIPES.stepTile.run, opts: {}, gain: 1, rate, t: 0.5 }).duration;
+    const src = nodes.at(-1);
+    assert.equal(src.playbackRate.value, rate);
+    assert.ok(Math.abs(duration * rate - src.buffer.duration) < 1e-9, '길이 = 변형 길이 / 재생 속도');
+  }
+  for (const name of ['stepGrass', 'stepStone', 'stepTile']) {
+    const j = RECIPES[name].jitter;
+    assert.ok(Math.abs(j.pitch - 0.06) < 1e-9, `${name} 음높이 흔들림 ${j.pitch}`);
+    assert.ok(j.gain >= 0.15 && j.gain <= 0.2, `${name} 크기 흔들림 +-1.5dB(${j.gain})`);
+    assert.equal(RECIPES[name].gain, 1);
+  }
+});
+
+// ---- 발소리 변형 뱅크: 서로 다른 파형, 의도한 대역, 작고 부드러운 소리 ----
+test('발소리 변형 뱅크: 바닥마다 8~12 개이고 서로 다르며, 길이·중심 주파수·낮은 쪽·최대 진폭이 기준 안이다', () => {
+  for (const sr of [22050, 44100]) {
+    for (const surface of STEP_SURFACES) {
+      const bank = stepBank(surface, sr, seeded(sr + surface.length));
+      assert.equal(bank.length, STEP.variants);
+      const res = checkStepBank(surface, bank, sr);
+      const fails = res.items.filter((i) => !i.ok).map((i) => `${i.label}=${i.text}`);
+      assert.ok(res.ok, `${surface}@${sr}: ${fails.join(', ')}`);
+      for (const data of bank) for (let i = 0; i < data.length; i += 7) assert.ok(Number.isFinite(data[i]));
+    }
+  }
+});
+
+test('발소리: 한 걸음은 뒤꿈치 -> 발끝의 여러 미세 사건이다(앞쪽이 가장 세고, 뒤쪽에도 더 약한 소리가 있다)', () => {
+  const sr = 44100;
+  for (const surface of STEP_SURFACES) {
+    let lateSum = 0;
+    const bank = stepBank(surface, sr, seeded(3));
+    for (const data of bank) {
+      const win = (a, b) => { let p = 0; for (let i = Math.round((a * sr) / 1000); i < Math.min(data.length, Math.round((b * sr) / 1000)); i++) p = Math.max(p, Math.abs(data[i])); return p; };
+      const total = peakOf(data);
+      assert.ok(win(0, 60) > total * 0.5, `${surface}: 앞쪽(뒤꿈치)에 센 소리가 있다`);
+      assert.ok(win(60, 200) > total * 0.04, `${surface}: 뒤쪽(발끝)에도 소리가 있다`);
+      lateSum += win(60, 200) / total;
+    }
+    assert.ok(lateSum / bank.length < 0.85, `${surface}: 뒤쪽이 평균적으로 더 약하다(${(lateSum / bank.length).toFixed(2)})`);
+  }
+});
+
+test('발소리 합성: 씨앗이 다르면 다르고, 같은 씨앗이면 같다', () => {
+  const a = synthStep('grass', 22050, seeded(1));
+  const b = synthStep('grass', 22050, seeded(2));
+  assert.notDeepEqual(a.slice(0, 500), b.slice(0, 500));
+  assert.deepEqual(synthStep('stone', 22050, seeded(9)), synthStep('stone', 22050, seeded(9)));
 });
 
 test('세탁기 덜컹: 짧고 낮은 두드림 몇 번뿐이고, 이어지는 웅웅거림(긴 진동음·톱니파)이 없다', () => {
@@ -179,52 +256,73 @@ test('말소리 웅얼거림은 최대 3 음절로 짧다', () => {
   }
 });
 
-// ---- 모닥불(편안한 ASMR): 미리 만든 되풀이 표본 ----
-test('모닥불 표본: 유한하고 RMS 가 맞고 파고율이 낮고 따뜻하며 홀로 튀는 소리가 없다', () => {
-  const sr = 22050;
-  for (const seed of [1, 2, 3, 4, 5, 6]) {
-    const data = synthFire(sr, seeded(seed));
-    assert.equal(data.length, Math.floor(sr * FIRE.seconds));
-    for (let i = 0; i < data.length; i += 97) assert.ok(Number.isFinite(data[i]));
-    assert.ok(Math.abs(rmsOf(data) - FIRE.rms) < 1e-3, `rms ${rmsOf(data)}`);
-    const crest = crestFactor(data);
-    assert.ok(crest <= 5.5, `파고율 ${crest.toFixed(2)} (톡톡 튀는 소리)`);
-    const centroid = spectralCentroid(data, sr);
-    assert.ok(centroid >= 500 && centroid <= 1800, `스펙트럼 중심 ${Math.round(centroid)}Hz (따뜻한 대역)`);
-    assert.ok(bandShare(data, sr, 5000, sr / 2) < 0.01, '5kHz 위가 거의 없다(날카롭지 않다)');
-    const spike = spikeRatio(data, sr, { loop: true });
-    assert.ok(spike <= 3.5, `홀로 튀는 정도 ${spike.toFixed(2)}`);
+// ---- 모닥불(편안한 ASMR): 미리 만든 되풀이 표본, 하나하나 또렷한 타닥임 ----
+test('모닥불 표본: 유한하고 RMS 가 맞고, 타닥임이 드물고 또렷하며(희소·파고율·횟수·대역) 홀로 튀지 않는다', () => {
+  for (const sr of [22050, 44100]) {
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      const data = synthFire(sr, seeded(seed));
+      assert.equal(data.length, Math.floor(sr * FIRE.seconds));
+      for (let i = 0; i < data.length; i += 97) assert.ok(Number.isFinite(data[i]));
+      const rms = rmsOf(data);
+      assert.ok(Math.abs(peakOf(data) - FIRE.peak) < 1e-3, `최대 진폭 ${peakOf(data)}`);
+      assert.ok(rms > 0.01 && rms < 0.03, `rms ${rms}`);
+      const res = checkFire(data, sr, LOOPS.fire.gain);
+      assert.ok(res.ok, `seed ${seed}@${sr}: ${res.items.filter((i) => !i.ok).map((i) => `${i.label}=${i.text}`).join(', ')}`);
+    }
   }
+});
+
+test('모닥불 표본: 이전 촘촘한 판(파고율 약 4)보다 훨씬 뾰족하고 사건 사이가 조용하다(치익거림이 아니다)', () => {
+  const sr = 22050;
+  const data = synthFire(sr, seeded(21));
+  assert.ok(crestFactor(data) > 12, `파고율 ${crestFactor(data).toFixed(1)}`);
+  const st = crackleStats(data, sr);
+  assert.ok(st.sparsityDb >= 15, `희소성 ${st.sparsityDb.toFixed(1)}dB`);
+  // 5ms 창 중 큰 창(95 백분위)의 약 1/5.6(-15dB) 아래로 조용한 창이 절반 넘게 있다
+  const win = Math.round(sr * 0.005);
+  const levels = [];
+  for (let w = 0; w + win <= data.length; w += win) levels.push(rmsOf(data.subarray(w, w + win)));
+  levels.sort((a, b) => a - b);
+  const quiet = levels.filter((v) => v < levels[Math.floor(levels.length * 0.95)] / 5.6).length / levels.length;
+  assert.ok(quiet > 0.5, `조용한 창 ${quiet.toFixed(2)}`);
+});
+
+test('모닥불 표본: 낮은 불꽃 숨결(70~240Hz)이 아주 작게 깔린다(타닥임 사이 정적은 불의 정적)', () => {
+  const sr = 22050;
+  const data = synthFire(sr, seeded(31));
+  assert.ok(bandShare(data, sr, 40, 260) > 0.005, '숨결 대역 에너지가 없다');
+  const win = Math.round(sr * 0.005);
+  const levels = [];
+  for (let w = 0; w + win <= data.length; w += win) levels.push(rmsOf(data.subarray(w, w + win)));
+  levels.sort((a, b) => a - b);
+  assert.ok(levels[Math.floor(levels.length / 2)] > 0, '완전한 무음이 아니다');
+  assert.ok(levels[Math.floor(levels.length / 2)] < rmsOf(data) / 2, '바닥이 높다(계속 이어지는 잡음)');
 });
 
 test('모닥불 표본: 끝 -> 처음 이음매가 이어지고, 같은 씨앗이면 같고 씨앗이 다르면 다르다', () => {
   const sr = 22050;
-  for (const seed of [1, 2, 3, 4]) {
+  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
     const data = synthFire(sr, seeded(seed));
     const seam = seamCheck(data, sr);
-    assert.ok(seam.jumpRatio <= 6, `이음매 점프 ${seam.jumpRatio.toFixed(2)}`);
-    assert.ok(seam.rmsRatio > 0.4 && seam.rmsRatio < 1.7, `이음매 둘레 크기 ${seam.rmsRatio.toFixed(2)}`);
+    assert.ok(seam.localJump <= 4, `이음매 점프(둘레 대비) ${seam.localJump.toFixed(2)}`);
+    assert.ok(Math.abs(data[0] - data[data.length - 1]) < peakOf(data) * 0.1, '이음매에서 값이 크게 튄다');
   }
   assert.deepEqual(synthFire(sr, seeded(7)).slice(0, 2000), synthFire(sr, seeded(7)).slice(0, 2000));
   assert.notDeepEqual(synthFire(sr, seeded(7)).slice(0, 2000), synthFire(sr, seeded(8)).slice(0, 2000));
 });
 
-test('모닥불 표본: 규칙적인 박자가 없다(크기 변화의 자기상관이 낮다)', () => {
+test('모닥불 표본: 규칙적인 박자가 없고(사건 포락선 자기상관 < 0.3) 큰 타닥은 가끔만 난다', () => {
   const sr = 22050;
-  const data = synthFire(sr, seeded(11));
-  const win = Math.round(sr * 0.01);
-  const env = [];
-  for (let i = 0; i + win <= data.length; i += win) { let p = 0; for (let k = i; k < i + win; k++) p = Math.max(p, Math.abs(data[k])); env.push(p); }
-  const mean = env.reduce((a, b) => a + b, 0) / env.length;
-  const dev = env.map((v) => v - mean);
-  const var0 = dev.reduce((a, b) => a + b * b, 0);
-  let best = 0;
-  for (let lag = 10; lag <= 150; lag++) { // 0.1~1.5초 박자
-    let c = 0;
-    for (let i = 0; i + lag < dev.length; i++) c += dev[i] * dev[i + lag];
-    best = Math.max(best, c / var0);
+  for (const seed of [11, 12, 13]) {
+    const st = crackleStats(synthFire(sr, seeded(seed)), sr);
+    assert.ok(st.periodicity < 0.3, `일정한 박자의 흔적 ${st.periodicity.toFixed(2)}`);
+    assert.ok(st.rate >= 4 && st.rate <= 14, `타닥임 ${st.rate.toFixed(1)}/초`);
   }
-  assert.ok(best < 0.35, `일정한 박자의 흔적 ${best.toFixed(2)}`);
+  const data = synthFire(sr, seeded(14));
+  const p = peakOf(data);
+  let count = 0; let last = -1e9;
+  for (let i = 0; i < data.length; i++) if (Math.abs(data[i]) > 0.5 * p && i - last > sr * 0.15) { count++; last = i; }
+  assert.ok(count >= 2 && count <= 14, `큰 타닥 ${count} 번(16초 동안)`);
 });
 
 test('모닥불 반복음: 만든 표본이 소스에 담겨 반복 재생되고 멈출 수 있다', () => {

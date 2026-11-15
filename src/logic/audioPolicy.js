@@ -41,19 +41,51 @@ export function footstepInterval(speed, stride, { min = 0.22, max = 1.2 } = {}) 
 }
 
 // 걸은 거리로 걸음을 센다(프레임 속도와 무관하고, 느리게 걸으면 자연히 드문드문). advance(거리) 는 한 걸음이 닿았을 때 true(한 번에 한 걸음만), 그때 foot 은 0/1 로 번갈아 바뀐다.
-export function createFootstepper(stride) {
-  const s = { foot: 1, acc: stride / 2 };
+// jitter(0~1): 걸음 박자를 흔든다. 걸음마다 "보폭 x 한 줄 격자" 위치에서 +-(jitter/2) 보폭만큼 벗어난 곳에서 울리므로 걸음 사이 간격이 보폭의 +-jitter 배까지 들쭉날쭉하되,
+// 격자 기준으로 벗어나므로 오차가 쌓이지 않는다(걷기 동작과 멀어져 가지 않는다). 기본 0(일정). 쓰지 않는 쪽의 시험은 그대로 통과한다.
+export function createFootstepper(stride, { jitter = 0, rng = Math.random } = {}) {
+  const spread = clamp(Number.isFinite(jitter) ? jitter : 0, 0, 1) * (stride > 0 ? stride : 0) / 2;
+  const offset = () => (spread > 0 ? (rng() * 2 - 1) * spread : 0);
+  const s = { foot: 1, acc: stride / 2, off: 0, need: stride };
+  const arm = () => { s.off = offset(); s.need = stride + s.off; };
+  arm();
   return {
     get foot() { return s.foot; },
     advance(dist) {
       if (!(dist > 0) || !(stride > 0)) return false;
       s.acc += dist;
-      if (s.acc < stride) return false;
-      s.acc %= stride;
+      if (s.acc < s.need) return false;
+      s.acc -= s.need;
+      if (s.acc >= stride) s.acc %= stride; // 한 번에 크게 움직여도 한 걸음만
       s.foot ^= 1;
+      const next = offset();
+      s.need = stride + next - s.off;
+      s.off = next;
       return true;
     },
-    reset() { s.acc = stride / 2; },
+    reset() { s.acc = stride / 2; arm(); },
+  };
+}
+
+// 변형 뱅크에서 발소리를 고르는 규칙. next(rng) 는 0..count-1 중 하나: 직전 avoid(기본 3)번에 쓴 변형은 피하고(바로 앞과 같은 변형은 절대 없다), 나머지에서 무작위로 고른다.
+// count 가 작아 피할 수 없으면 가능한 만큼만(항상 후보가 하나는 남는다).
+export function createVariantPicker(count, { avoid = 3 } = {}) {
+  const n = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+  const recent = [];
+  return {
+    next(rng = Math.random) {
+      if (n <= 1) return 0;
+      const keep = Math.min(Math.max(0, Math.floor(avoid)), n - 1);
+      const banned = recent.slice(Math.max(0, recent.length - keep));
+      const pool = [];
+      for (let i = 0; i < n; i++) if (!banned.includes(i)) pool.push(i);
+      const r = rng();
+      const pick = pool[clamp(Math.floor((Number.isFinite(r) ? r : 0) * pool.length), 0, pool.length - 1)];
+      recent.push(pick);
+      if (recent.length > Math.max(1, Math.floor(avoid))) recent.shift();
+      return pick;
+    },
+    reset() { recent.length = 0; },
   };
 }
 
@@ -130,6 +162,7 @@ export function surfaceAt(spaceId, x, z, plaza) {
 }
 
 export const STEP_SOUND = { grass: 'stepGrass', stone: 'stepStone', tile: 'stepTile' }; // 바닥 종류 -> 발소리 이름
+export const FOOTSTEP_JITTER = 0.2; // 걸음 사이 간격이 보폭의 +-20% 까지 들쭉날쭉(기계처럼 일정하지 않게)
 export const FOOTSTEP_STRIDE = 1.33; // 한 걸음의 거리(월드 단위): 걷기 클립 한 바퀴(0.667초)에 두 걸음이고 이동 속도가 4 이므로 4 x 0.333. 발이 땅에 닿는 박자와 맞는다
 
 // ---- 말소리(웅얼거림) ----

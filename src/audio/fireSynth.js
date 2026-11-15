@@ -1,49 +1,44 @@
 // 모닥불(소각로) 소리 합성 (순수). 편안한 ASMR 모닥불: 한 번 길게 미리 만들어 두고 이어 붙여 되풀이한다(톡톡을 하나씩 예약하지 않는다).
-// 구성: (1) 불꽃 숨결 = 아주 낮고 느리게 부푸는 갈색 잡음, (2) 잔 타닥임 = 촘촘하고 불규칙한 아주 작은 알갱이들(군데군데 몰려서 터진다, 부드럽게 거른 따뜻한 대역),
-// (3) 가끔 낮고 둥근 "톡"(드물고 조용하며 간격이 제각각). 모든 구성이 길이 안에서 원형(끝 -> 처음이 이어지는)으로 만들어져 이음매가 없다.
-// 바꾸려면 FIRE 의 숫자를 고친다(Hz·초·상대 세기).
+//
+// 왜 바꿨나: 알갱이를 초당 2500 개씩 뿌리던 이전 판은 알갱이들이 서로 녹아 붙어 끊김 없는 넓은 대역 잡음("지지직" 치익거림)이 되었다.
+// 그 반대로 드문 톡을 일정하게 놓았던 첫 판은 "틱톡틱톡" 이질감이었다. 그래서 이번에는 "하나하나 또렷이 들리되 간격이 제각각인" 타닥임으로 만든다.
+//
+// 구성
+//  (1) 불꽃 숨결: 70~240Hz 갈색 잡음, 느리게 부푼다. 아주 작게만 깐다 -> 타닥임 사이의 정적이 "불의 정적"으로 들린다(잡음 바닥이 아니다).
+//  (2) 타닥임 사건: 길이 0.3~2ms 의 둥근 충격이 감쇠하는 공진기(중심 900~3200Hz, Q 5~12)를 울린다. 소리가 사건마다 다르다(중심·Q·충격 길이·세기·잡음 정도).
+//      센 사건은 낮은 "나무 몸통" 공진(250~600Hz)과 높은 공진이 같이 울린다. 세기는 로그정규(작은 것이 많고 큰 것은 드물다).
+//      시각은 "무리 + 정적" 과정: 무리(2~8 개가 20~150ms 안에 잇따라) -> 0.2~2.5초 정적 -> 다음 무리. 정적의 길이는 느리게 오르내리는 활기에 따라 늘고 준다.
+//      3~8초마다 한 번은 또렷하게 큰 "타닥"(뒤따르는 잔 타닥임 몇 개와 함께), 가끔 낮고 둥근 "톡", 아주 드물고 작은 불씨 "틱".
+//  (3) 전체를 150~200Hz 아래(숨결이 낮은 쪽을 맡는다)와 5kHz 위(따뜻하게)로 거른다.
+// 모든 구성이 길이 안에서 원형으로(끝 -> 처음이 이어지게) 만들어져 이음매가 없다(사건의 꼬리는 처음으로 돌아가고 거르개는 원형이다).
+//
+// 측정 기준(metrics.js crackleStats, soundChecks.js checkFire, 시험·sounds.html 자동 점검이 같은 숫자를 쓴다)
+//  - 파고율(최대/RMS) 12~80(이전 촘촘한 판은 3.9, 이 판은 씨앗마다 35~60). 최대 진폭 x LOOPS.fire.gain <= 0.35(실제 0.2). 출력 RMS 0.003~0.0325(이전 판 0.0325, 이 판 약 0.0045). 실제 마스터 체인(브라우저 압축기)을 거치면 최대 진폭이 약 1.25 배(0.25)가 된다.
+//  - 희소성: 5ms 창 RMS 의 중앙값이 95 백분위보다 15dB 이상 낮다(사건 사이는 정말 조용하다. 실제 약 17~21dB).
+//  - 타닥임 횟수(500Hz 이상 포락선이 99 백분위 -24dB 문턱을 갑자기 넘는 곳): 초당 4~14 번(실제 약 8). 사건 부분의 스펙트럼 중심 1.0~2.2kHz(실제 약 1.3), 6kHz 위 에너지 < 2%.
+//  - 박자 없음: 사건 포락선 자기상관의 0.2~3초 박자 봉우리 < 0.3. 이음매 점프·크기 이상 없음.
+// 바꾸려면 FIRE 의 숫자를 고친다(Hz·초·상대 세기: 1 = 가장 큰 타닥).
+
+import { TAU, mulberry32, gauss, range, logRange, rmsOfArray, peakOfArray, filterCircular, ringBurst, addInto } from './microSynth.js';
 
 export const FIRE = {
-  seconds: 12, // 되풀이 길이
-  rms: 0.1, // 합성 결과의 RMS(전체 크기는 LOOPS.fire.gain 으로)
-  softPeak: 4.2, // 마루를 이 배수(RMS 의 몇 배) 근처에서 부드럽게 누른다(파고율 상한을 정한다)
-  rumble: { hp: 70, lp: 240, level: 1, share: 0.35, // share: 숨결의 RMS 가 타닥임 RMS 의 몇 배인가
+  seconds: 16, // 되풀이 길이(길수록 되풀이가 덜 들린다)
+  peak: 0.8, // 합성 결과에서 가장 큰 타닥의 최대 진폭(전체 크기는 LOOPS.fire.gain 으로: 출력 최대 = 이 값 x gain). 타닥임은 드물고 뾰족해(파고율 30 안팎) RMS 가 아니라 최대 진폭을 맞춘다: 출력 RMS 는 약 0.0045(이전 판 0.0325)
+  rumble: { hp: 70, lp: 240, level: 1, share: 0.15, // share: 숨결의 RMS 가 타닥임 RMS 의 몇 배인가
     swayCycles: [[1, 0.3], [3, 0.18]] }, // 숨결: 갈색 잡음을 70~240Hz 로 거르고, 길이 안에서 [정수 번, 깊이] 만큼 부푼다
-  crackle: { rate: 2500, clusterRate: 6, clusterSize: [4, 14], clusterGap: 0.014, level: 0.015, tauMs: [1.5, 6], attackMs: 1.4, cutoff: [800, 3000] }, // 잔 타닥임(초당 알갱이 수·무리 수·무리당 개수·알갱이 간격 평균(초)·세기·감쇠(ms)·거른 높이(Hz))
-  pop: { rate: 0.17, minGap: 1.4, freq: [110, 210], peak: 1.6, lp: 700, tauMs: [45, 85], attackMs: 4 }, // 가끔 톡(초당 평균 횟수·최소 간격(초)·음높이(Hz)·가장 큰 톡의 최대 진폭(타닥임 RMS 의 몇 배)·거른 높이(Hz)·감쇠(ms)·시작 부드러움(ms))
-  filter: { hp: 300, lp: 3400 }, // 타닥임·톡 전체를 거르는 대역(따뜻하게, 높은 쪽은 눌러서 날카롭지 않게)
+  cluster: {
+    gapMin: 0.2, gapMean: 0.12, gapMax: 2.5, // 무리 사이 정적(초): 최소 + 지수 분포(평균 gapMean), 활기가 높으면 짧아진다
+    size: [2, 8], sizeBias: 1.8, // 무리당 개수(작은 무리가 더 흔하다: 값이 클수록 쏠림)
+    spanMs: [20, 150], // 무리 안에서 잇따라 터지는 시간 폭
+    activity: [[3, 0.3], [7, 0.15]], // 정적 길이가 길이 안에서 [정수 번, 깊이] 만큼 늘고 준다
+  },
+  amp: { median: 0.22, sigma: 0.65, max: 0.5 }, // 타닥임 세기: 로그정규(1 = 가장 큰 타닥)
+  crackle: { freq: [900, 3200], q: [5, 12], exciteMs: [0.3, 2], noisy: [0.3, 0.8], bodyFreq: [250, 600], bodyQ: [5, 9], bodyAbove: 0.5, bodyShare: [0.12, 0.25], upperChance: 0.25 },
+  loud: { gap: [3, 8], amp: [0.8, 1], followers: [1, 4], followSpanMs: [20, 120], freq: [900, 2200], q: [5, 9], exciteMs: [1, 2] }, // 또렷한 큰 타닥
+  pop: { chance: 0.05, freq: [250, 600], q: [3, 6], exciteMs: [2, 4], amp: [0.1, 0.25] }, // 낮고 둥근 톡(무리의 한 알이 되어 터진다)
+  tick: { rate: 0.4, freq: [2000, 3500], q: [6, 9], amp: [0.03, 0.08] }, // 아주 작은 불씨 틱(초당 평균 횟수, 완전히 불규칙)
+  filter: { hp: 160, lp: 4800 }, // 타닥임 전체를 거르는 대역
 };
-
-const TAU = Math.PI * 2;
-const gauss = (rng) => Math.sqrt(-2 * Math.log(1 - rng())) * Math.cos(TAU * rng());
-const range = (rng, [lo, hi]) => lo + (hi - lo) * rng();
-
-// 이중 이차(Butterworth 풍) 거르개. 배열을 한 바퀴 돌려 상태를 맞춘 뒤 다시 한 번 돌린 결과를 쓰므로 끝 -> 처음이 이어진다.
-function biquadCoefs(type, freq, sampleRate, q = Math.SQRT1_2) {
-  const w = (TAU * freq) / sampleRate;
-  const cos = Math.cos(w);
-  const alpha = Math.sin(w) / (2 * q);
-  let b0; let b1; let b2;
-  if (type === 'lowpass') { b0 = (1 - cos) / 2; b1 = 1 - cos; b2 = b0; } else { b0 = (1 + cos) / 2; b1 = -(1 + cos); b2 = b0; }
-  const a0 = 1 + alpha;
-  return { b0: b0 / a0, b1: b1 / a0, b2: b2 / a0, a1: (-2 * cos) / a0, a2: (1 - alpha) / a0 };
-}
-function filterCircular(data, type, freq, sampleRate) {
-  const c = biquadCoefs(type, freq, sampleRate);
-  const out = new Float32Array(data.length);
-  let x1 = 0; let x2 = 0; let y1 = 0; let y2 = 0;
-  for (let pass = 0; pass < 2; pass++) {
-    for (let i = 0; i < data.length; i++) {
-      const x = data[i];
-      const y = c.b0 * x + c.b1 * x1 + c.b2 * x2 - c.a1 * y1 - c.a2 * y2;
-      x2 = x1; x1 = x; y2 = y1; y1 = y;
-      if (pass === 1) out[i] = y;
-    }
-  }
-  return out;
-}
-const peakOfArray = (data) => { let p = 0; for (let i = 0; i < data.length; i++) p = Math.max(p, Math.abs(data[i])); return p; };
-const rmsOfArray = (data) => { let s = 0; for (let i = 0; i < data.length; i++) s += data[i] * data[i]; return Math.sqrt(s / data.length); };
 
 // 불꽃 숨결: 새는 적분(갈색 잡음) -> 70~240Hz -> 길이 안에서 정수 번 부푸는 느린 흔들림.
 function breath(n, sampleRate, rng, cfg) {
@@ -69,99 +64,73 @@ function breath(n, sampleRate, rng, cfg) {
   return band;
 }
 
-// 알갱이 하나를 track 에 원형으로 더한다: 거른 잡음 x (부드럽게 올라갔다가 지수로 줄어드는 곡선).
-function addGrain(track, startIndex, amp, tauSamples, attackSamples, lpCoef, rng) {
-  const n = track.length;
-  const len = Math.ceil(tauSamples * 6 + attackSamples);
-  let lp1 = 0;
-  let lp2 = 0;
-  for (let i = 0; i < len; i++) {
-    const rise = i < attackSamples ? 0.5 - 0.5 * Math.cos((Math.PI * i) / attackSamples) : 1;
-    const env = rise * Math.exp(-Math.max(0, i - attackSamples) / tauSamples);
-    lp1 += lpCoef * ((rng() * 2 - 1) - lp1); // 한 극 저역 거르개를 두 번: 부드러운 알갱이
-    lp2 += lpCoef * (lp1 - lp2);
-    track[(startIndex + i) % n] += amp * env * lp2;
+// 타닥임 하나를 track 에 더한다(원형). amp: 가장 큰 진폭(1 = 가장 큰 타닥).
+function addCrackle(track, at, amp, sampleRate, rng, cfg, { loud = false } = {}) {
+  const c = cfg.crackle;
+  const f = loud ? logRange(rng, cfg.loud.freq) : logRange(rng, c.freq);
+  const q = loud ? range(rng, cfg.loud.q) : range(rng, c.q);
+  const exciteMs = loud ? range(rng, cfg.loud.exciteMs) : range(rng, c.exciteMs);
+  const start = Math.floor(at * sampleRate);
+  addInto(track, ringBurst(sampleRate, rng, { f, q, exciteMs, noisy: range(rng, c.noisy), amp }), start, true);
+  if (loud || amp > c.bodyAbove) { // 센 사건: 낮은 나무 몸통 울림이 같이
+    addInto(track, ringBurst(sampleRate, rng, { f: logRange(rng, c.bodyFreq), q: range(rng, c.bodyQ), exciteMs: Math.max(exciteMs, 1), noisy: 0.3, amp: amp * range(rng, c.bodyShare) }), start, true);
+  }
+  if (rng() < c.upperChance) { // 가끔 위쪽 공진이 하나 더(소리가 사건마다 달라진다)
+    addInto(track, ringBurst(sampleRate, rng, { f: Math.min(4200, f * range(rng, [1.3, 1.9])), q: range(rng, c.q), exciteMs: exciteMs * 0.7, noisy: 0.6, amp: amp * range(rng, [0.3, 0.6]) }), start, true);
   }
 }
-// 낮고 둥근 톡: 아래로 살짝 미끄러지는 사인 + 어두운 잡음 한 조각.
-function addPop(track, startIndex, amp, freq, tauSamples, attackSamples, sampleRate, rng) {
-  const n = track.length;
-  const len = Math.ceil(tauSamples * 5 + attackSamples);
-  let phase = 0;
-  let lp = 0;
-  for (let i = 0; i < len; i++) {
-    const rise = i < attackSamples ? 0.5 - 0.5 * Math.cos((Math.PI * i) / attackSamples) : 1;
-    const env = rise * Math.exp(-Math.max(0, i - attackSamples) / tauSamples);
-    const f = freq * (1 - 0.25 * (1 - Math.exp(-i / (tauSamples * 0.8))));
-    phase += (TAU * f) / sampleRate;
-    lp += 0.12 * ((rng() * 2 - 1) - lp);
-    track[(startIndex + i) % n] += amp * env * (Math.sin(phase) * 0.8 + lp * 0.9);
-  }
+// 낮고 둥근 톡: 부드럽게 시작하는(2~4ms) 충격이 낮은 공진기를 울린다.
+function addPop(track, at, sampleRate, rng, cfg) {
+  const p = cfg.pop;
+  addInto(track, ringBurst(sampleRate, rng, { f: logRange(rng, p.freq), q: range(rng, p.q), exciteMs: range(rng, p.exciteMs), noisy: 0.25, amp: range(rng, p.amp) }), Math.floor(at * sampleRate), true);
 }
 
-// 시간 t(초)에서의 "활기"(0.57~0.99): 길이 안에서 정수 번 오르내려 원형이다. 타닥임이 어느 때는 잦고 어느 때는 뜸하다.
-function activity(t, seconds, phases) {
-  return 0.78 + 0.12 * Math.sin((TAU * 2 * t) / seconds + phases[0]) + 0.09 * Math.sin((TAU * 5 * t) / seconds + phases[1]);
-}
-
-// 잔 타닥임 층.
+// 타닥임 층 전체(아직 거르기 전).
 function crackleTrack(n, sampleRate, rng, cfg) {
   const track = new Float32Array(n);
   const seconds = n / sampleRate;
-  const phases = [rng() * TAU, rng() * TAU];
-  const lpCoef = (hz) => 1 - Math.exp((-TAU * hz) / sampleRate);
-  const grain = (t, ampScale = 1) => {
-    const amp = cfg.level * ampScale * Math.min(1.8, Math.exp(0.5 * gauss(rng))); // 세기는 제각각이되 한도가 있다(홀로 튀지 않게)
-    const tau = (range(rng, cfg.tauMs) / 1000) * sampleRate;
-    addGrain(track, Math.floor(t * sampleRate), amp, tau, (cfg.attackMs / 1000) * sampleRate, lpCoef(range(rng, cfg.cutoff)), rng);
-  };
-  // 흩어진 알갱이: 시간당 rate 개를 활기에 따라 솎아서(thinning) 무작위 시각에 둔다.
-  const peakRate = cfg.rate * 1.1;
-  for (let t = -Math.log(1 - rng()) / peakRate; t < seconds; t += -Math.log(1 - rng()) / peakRate) {
-    if (rng() < (cfg.rate * activity(t, seconds, phases)) / peakRate) grain(t);
+  const cl = cfg.cluster;
+  const phases = cl.activity.map(() => rng() * TAU);
+  const activity = (t) => cl.activity.reduce((m, [cycles, depth], k) => m + depth * Math.sin((TAU * cycles * t) / seconds + phases[k]), 1);
+  const amp = () => Math.min(cfg.amp.max, cfg.amp.median * Math.exp(cfg.amp.sigma * gauss(rng)));
+
+  // 무리 -> 정적 -> 무리 ...
+  for (let t = rng() * 0.4; t < seconds;) {
+    const size = cl.size[0] + Math.floor((cl.size[1] - cl.size[0] + 1) * rng() ** cl.sizeBias);
+    const span = (logRange(rng, cl.spanMs)) / 1000;
+    const offsets = Array.from({ length: size }, (_, k) => (k === 0 ? 0 : rng() * span)).sort((a, b) => a - b);
+    offsets.forEach((off, k) => {
+      if (rng() < cfg.pop.chance) addPop(track, t + off, sampleRate, rng, cfg);
+      else addCrackle(track, t + off, amp() * (1 - 0.4 * (k / size)), sampleRate, rng, cfg);
+    });
+    const gap = cl.gapMin + (-Math.log(1 - rng()) * cl.gapMean) / Math.max(0.4, activity(t));
+    t += span + Math.min(cl.gapMax, gap);
   }
-  // 무리: 한 번 터지면 잇따라 몇 개가 짧은 간격으로(간격도 들쭉날쭉) 터지고 점점 잦아든다.
-  const clusterPeak = cfg.clusterRate * 1.1;
-  for (let t = -Math.log(1 - rng()) / clusterPeak; t < seconds; t += -Math.log(1 - rng()) / clusterPeak) {
-    if (rng() >= (cfg.clusterRate * activity(t, seconds, phases)) / clusterPeak) continue;
-    const count = Math.round(range(rng, cfg.clusterSize));
-    let at = t;
-    for (let k = 0; k < count; k++) {
-      grain(at, 1.1 * (1 - k / (count + 2)));
-      at += -Math.log(1 - rng()) * cfg.clusterGap;
-    }
+  // 3~8 초마다 또렷한 큰 타닥(+ 뒤따르는 잔 타닥임)
+  for (let t = 0.5 + rng() * 3; t < seconds; t += range(rng, cfg.loud.gap)) {
+    addCrackle(track, t, range(rng, cfg.loud.amp), sampleRate, rng, cfg, { loud: true });
+    const followers = Math.round(range(rng, cfg.loud.followers));
+    for (let k = 0; k < followers; k++) addCrackle(track, t + (range(rng, cfg.loud.followSpanMs) * (k + 1)) / (followers * 1000), amp() * 0.7, sampleRate, rng, cfg);
+  }
+  // 아주 작은 불씨 틱: 완전히 불규칙(푸아송)
+  for (let t = -Math.log(1 - rng()) / cfg.tick.rate; t < seconds; t += -Math.log(1 - rng()) / cfg.tick.rate) {
+    addInto(track, ringBurst(sampleRate, rng, { f: logRange(rng, cfg.tick.freq), q: range(rng, cfg.tick.q), exciteMs: 0.4, noisy: 0.5, amp: range(rng, cfg.tick.amp) }), Math.floor(t * sampleRate), true);
   }
   return track;
 }
 
-// 가끔 나는 톡 층(간격이 제각각: 최소 간격 + 지수 분포). 톡의 낮은 몸통이 타닥임용 높은 거르개에 깎이지 않도록 따로 만든다.
-function popTrack(n, sampleRate, rng, popCfg) {
-  const track = new Float32Array(n);
-  const seconds = n / sampleRate;
-  for (let t = rng() * 2; t < seconds; t += popCfg.minGap + -Math.log(1 - rng()) / popCfg.rate) {
-    const amp = 0.6 + 0.8 * rng();
-    addPop(track, Math.floor(t * sampleRate), amp, range(rng, popCfg.freq), (range(rng, popCfg.tauMs) / 1000) * sampleRate, (popCfg.attackMs / 1000) * sampleRate, sampleRate, rng);
-  }
-  return filterCircular(filterCircular(track, 'highpass', 80, sampleRate), 'lowpass', popCfg.lp, sampleRate);
-}
-
-// 되풀이용 모닥불 표본 한 벌. 길이 seconds 초, 끝 -> 처음이 이어진다. 반환: Float32Array(RMS 가 cfg.rms).
+// 되풀이용 모닥불 표본 한 벌. 길이 seconds 초, 끝 -> 처음이 이어진다. 반환: Float32Array(최대 진폭이 cfg.peak).
 export function synthFire(sampleRate, rng = Math.random, cfg = FIRE) {
   const n = Math.max(1024, Math.floor(sampleRate * cfg.seconds));
   const rumble = breath(n, sampleRate, rng, cfg.rumble);
-  let crackle = crackleTrack(n, sampleRate, rng, cfg.crackle);
-  crackle = filterCircular(filterCircular(crackle, 'highpass', cfg.filter.hp, sampleRate), 'lowpass', cfg.filter.lp, sampleRate);
+  let events = crackleTrack(n, sampleRate, rng, cfg);
+  events = filterCircular(filterCircular(events, 'highpass', cfg.filter.hp, sampleRate), 'highpass', cfg.filter.hp, sampleRate);
+  events = filterCircular(filterCircular(events, 'lowpass', cfg.filter.lp, sampleRate), 'lowpass', cfg.filter.lp, sampleRate);
+  const er = rmsOfArray(events) || 1;
   const out = new Float32Array(n);
-  const cr = rmsOfArray(crackle) || 1;
-  const pops = popTrack(n, sampleRate, rng, cfg.pop);
-  const pp = peakOfArray(pops) || 1;
-  for (let i = 0; i < n; i++) out[i] = rumble[i] * cfg.rumble.share + crackle[i] / cr + (pops[i] / pp) * cfg.pop.peak;
-  // 드물게 겹쳐 솟는 마루는 부드럽게 눌러(tanh) 홀로 튀지 않게 한다. 그런 다음 RMS 를 맞춘다.
-  const r0 = rmsOfArray(out) || 1;
-  const knee = cfg.softPeak * r0;
-  for (let i = 0; i < n; i++) out[i] = knee * Math.tanh(out[i] / knee);
-  const r = rmsOfArray(out);
-  const k = r > 0 ? cfg.rms / r : 1;
+  for (let i = 0; i < n; i++) out[i] = rumble[i] * cfg.rumble.share * er + events[i];
+  const p = peakOfArray(out);
+  const k = p > 0 ? cfg.peak / p : 1;
   for (let i = 0; i < n; i++) out[i] *= k;
   return out;
 }
@@ -176,3 +145,6 @@ export function fireSamples(sampleRate, rng = Math.random) {
   }
   return data;
 }
+
+// 점검용: 씨앗으로 만든 표본(같은 씨앗이면 같다).
+export const synthFireSeeded = (sampleRate, seed, cfg = FIRE) => synthFire(sampleRate, mulberry32(seed), cfg);

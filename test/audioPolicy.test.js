@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   distanceGain, panFromOffset, panFromScreenX, volumeToGain, DEFAULT_VOLUME, footstepInterval, createFootstepper, createThrottle,
   voiceDecision, createRateLimiter, stepFade, sameSpace, varied, semitoneRatio, surfaceAt, speechPlan, speakerVoice, remotePitch,
-  crewCue, lightCue, remoteAnimCue, STEP_SOUND, FOOTSTEP_STRIDE,
+  crewCue, lightCue, remoteAnimCue, STEP_SOUND, FOOTSTEP_STRIDE, FOOTSTEP_JITTER, createVariantPicker,
 } from '../src/logic/audioPolicy.js';
 
 // ---- 거리 -> 소리 크기 ----
@@ -305,4 +305,87 @@ test('발소리 이름표와 보폭: 바닥 종류마다 소리가 있고, 걷�
   assert.deepEqual(Object.keys(STEP_SOUND).sort(), ['grass', 'stone', 'tile']);
   const interval = footstepInterval(PLAYER.speed, FOOTSTEP_STRIDE);
   assert.ok(interval >= 0.3 && interval <= 0.6, `interval ${interval}`);
+});
+
+// ---- 발소리 변형 고르기·박자 흔들림 ----
+const seededRng = (seed) => () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+
+test('createVariantPicker: 직전 변형을 되풀이하지 않고, 최근 3 걸음과도 겹치지 않으며, 모든 변형이 골고루 쓰인다', () => {
+  const p = createVariantPicker(10);
+  const rng = seededRng(5);
+  const picks = Array.from({ length: 3000 }, () => p.next(rng));
+  for (let i = 1; i < picks.length; i++) {
+    for (let k = 1; k <= 3 && i - k >= 0; k++) assert.notEqual(picks[i], picks[i - k], `${i} 번째가 ${k} 걸음 전과 같다`);
+  }
+  const counts = new Array(10).fill(0);
+  for (const v of picks) counts[v]++;
+  for (const c of counts) assert.ok(c > 3000 / 10 * 0.8 && c < 3000 / 10 * 1.2, `고르지 않다 ${counts}`);
+});
+
+test('createVariantPicker: 변형이 적어도 직전과는 달라야 하고, 하나뿐이면 0, 이상한 입력에도 던지지 않는다', () => {
+  const p2 = createVariantPicker(2);
+  const rng = seededRng(9);
+  let prev = p2.next(rng);
+  for (let i = 0; i < 100; i++) { const v = p2.next(rng); assert.notEqual(v, prev); prev = v; }
+  const p4 = createVariantPicker(4); // 3 걸음을 피하면 후보가 하나뿐: 4 걸음마다 같은 순서로 돈다
+  const seq = Array.from({ length: 16 }, () => p4.next(rng));
+  for (let i = 4; i < seq.length; i++) assert.equal(seq[i], seq[i - 4]);
+  assert.equal(createVariantPicker(1).next(), 0);
+  assert.equal(createVariantPicker(0).next(), 0);
+  assert.equal(createVariantPicker(NaN).next(), 0);
+  const p = createVariantPicker(5);
+  for (const bad of [NaN, undefined, -1, 7, Infinity]) assert.ok(p.next(() => bad) >= 0);
+  assert.ok(p.next(() => 0.999999) < 5);
+  assert.deepEqual(Array.from({ length: 6 }, () => createVariantPicker(6, { avoid: 0 }).next(() => 0)), [0, 0, 0, 0, 0, 0], 'avoid 0 은 피하지 않는다');
+});
+
+test('createVariantPicker: reset 하면 기록이 지워진다', () => {
+  const p = createVariantPicker(3, { avoid: 1 });
+  const a = p.next(() => 0);
+  assert.equal(a, 0);
+  assert.notEqual(p.next(() => 0), 0);
+  p.reset();
+  assert.equal(p.next(() => 0), 0);
+});
+
+test('createFootstepper: jitter 가 없으면 이전과 똑같이 일정하다(rng 를 쓰지 않는다)', () => {
+  const rng = () => { throw new Error('jitter 0 인데 rng 를 불렀다'); };
+  const s = createFootstepper(2, { rng });
+  const steps = [];
+  for (let i = 0; i < 40; i++) if (s.advance(0.1)) steps.push(i);
+  assert.deepEqual(steps, [9, 29]); // 처음에는 보폭의 절반(1.0)을 가서 울린다
+});
+
+test('createFootstepper: jitter 0.2 면 걸음 간격이 보폭의 +-20% 안에서 들쭉날쭉하고, 평균은 보폭이며, 격자에서 멀어지지 않는다', () => {
+  const stride = 1.33;
+  const s = createFootstepper(stride, { jitter: 0.2, rng: seededRng(3) });
+  const times = [];
+  const dist = 0.005;
+  for (let i = 0; i < 400000 && times.length < 400; i++) if (s.advance(dist)) times.push((i + 1) * dist);
+  assert.equal(times.length, 400);
+  const gaps = times.slice(1).map((t, i) => t - times[i]);
+  for (const g of gaps) assert.ok(g >= stride * 0.8 - 0.011 && g <= stride * 1.2 + 0.011, `간격 ${g}`);
+  const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+  assert.ok(Math.abs(mean - stride) < stride * 0.02, `평균 ${mean}`);
+  const spread = Math.max(...gaps) - Math.min(...gaps);
+  assert.ok(spread > stride * 0.2, `거의 일정하다(${spread})`);
+  // 걸음 k 의 위치는 격자(k x 보폭 + 처음 오프셋)에서 +-0.1 보폭 안: 오차가 쌓이지 않는다
+  const base = times[0];
+  times.forEach((t, k) => assert.ok(Math.abs(t - (base + k * stride)) <= stride * 0.2 + 0.02, `${k} 번째가 격자에서 ${t - (base + k * stride)} 벗어남`));
+});
+
+test('createFootstepper: jitter 가 있어도 한 번에 한 걸음, 발은 번갈아, reset 하면 처음처럼', () => {
+  const s = createFootstepper(1, { jitter: 0.2, rng: seededRng(8) });
+  assert.equal(s.advance(50), true);
+  assert.equal(s.foot, 0);
+  assert.equal(s.advance(0.0001), false, '한 번에 크게 가도 한 걸음');
+  s.reset();
+  assert.equal(s.advance(0.3), false);
+  assert.equal(s.advance(0.4), true);
+  assert.equal(createFootstepper(0, { jitter: 0.2 }).advance(1), false);
+  assert.equal(createFootstepper(1, { jitter: NaN }).advance(0.6), true);
+});
+
+test('발걸음 박자 흔들림 상수는 +-20%', () => {
+  assert.equal(FOOTSTEP_JITTER, 0.2);
 });

@@ -2,6 +2,9 @@
 import { sfx } from './sfx.js';
 import { RECIPES, LOOPS } from './recipes.js';
 import { analyzeSound, analyzeLoop } from './analyze.js';
+import { synthFire } from './fireSynth.js';
+import { stepBank, STEP_SURFACES } from './stepSynth.js';
+import { checkFire, checkStepBank } from './soundChecks.js';
 
 const $ = (id) => document.getElementById(id);
 const VOICES = [['leader', '팀장 목소리'], ['hr', '인사담당 목소리'], ['mentor', '예비 사수 목소리'], ['player', '내 목소리'], ['r-demo', '다른 방문자 목소리']];
@@ -110,6 +113,36 @@ function playAll() {
   next();
 }
 
+// 모닥불·발소리의 "성격" 점검 표(soundChecks.js 의 기준: 시험과 같다). 모닥불은 새 씨앗으로 만든 표본 3 개(값은 / 로 이어 보여 주고 하나라도 어기면 빨갛게),
+// 발소리는 게임이 실제로 쓰는 변형 뱅크(바닥마다 한 줄).
+const delay = () => new Promise((resolve) => setTimeout(resolve, 0));
+async function analyzeCharacter() {
+  const body = $('character').querySelector('tbody');
+  body.replaceChildren();
+  $('character').hidden = false;
+  const sr = sfx.engine.context?.sampleRate ?? 44100;
+  const addRows = (name, results) => {
+    results[0].items.forEach((it, i) => {
+      const ok = results.every((r) => r.items[i].ok);
+      const tr = document.createElement('tr');
+      [i === 0 ? name : '', it.label, results.map((r) => r.items[i].text).join(' / '), ok ? '정상' : '기준 밖'].forEach((text, k) => {
+        const td = document.createElement('td');
+        td.textContent = text;
+        if (!ok && k === 3) td.className = 'bad';
+        tr.append(td);
+      });
+      body.append(tr);
+    });
+  };
+  const fires = [];
+  for (let i = 0; i < 3; i++) { await delay(); fires.push(checkFire(synthFire(sr), sr, LOOPS.fire.gain)); }
+  addRows('fire 모닥불(표본 3 개)', fires);
+  for (const surface of STEP_SURFACES) {
+    await delay();
+    addRows(`step ${surface} 변형 뱅크`, [checkStepBank(surface, stepBank(surface, sr), sr, { gain: RECIPES[`step${surface[0].toUpperCase()}${surface.slice(1)}`].gain, jitterGain: RECIPES.stepGrass.jitter.gain })]);
+  }
+}
+
 async function analyzeAll() {
   const button = $('analyze');
   button.disabled = true;
@@ -137,6 +170,7 @@ async function analyzeAll() {
   try {
     for (const name of Object.keys(RECIPES)) add(await analyzeSound(name, name === 'speech' ? { voice: 'hr', syllables: 6 } : {}), false);
     for (const name of Object.keys(LOOPS)) add(await analyzeLoop(name), true);
+    await analyzeCharacter();
   } catch (err) {
     $('status').textContent = `점검 실패: ${err.message}`;
   }

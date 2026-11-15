@@ -4,6 +4,8 @@
 // 소리를 고치려면 아래 이름 붙은 상수와 각 레시피 안의 숫자(주파수 Hz·길이 초·세기)를 바꾼다. 세기는 레시피 안에서는 대략 0.1~0.5(최대 1 아래)로 두고, 소리 전체 크기는 RECIPES 의 gain 으로 조절한다.
 
 import { fireSamples } from './fireSynth.js';
+import { stepBank } from './stepSynth.js';
+import { createVariantPicker } from '../logic/audioPolicy.js';
 
 // ---- 자주 쓰는 값 ----
 const FLOOR = 0.0001; // 지수 곡선이 닿는 바닥(0 은 지수 곡선에 쓸 수 없다)
@@ -141,25 +143,39 @@ function mumble(env, voice, n) {
 const rnd = (env, lo, hi) => lo + (hi - lo) * env.rng();
 
 // ---- 이동·세계 ----
-// 발소리(사박사박·자박자박): 아주 짧게 거른 잡음 알갱이 몇 알(몸통·쿵 없이 가볍고 공기 같은 스치는 소리). 700~1000Hz 아래는 잘라내고, 알갱이마다 높이·세기가 조금씩 다르다.
-function grain(env, { at = 0, hp = 900, f, q = 0.9, dur = 0.04, gain = 0.2, attack = 0.007 }) {
-  hiss(env, { kind: 'white', at, dur, gain, attack, filters: [{ type: 'highpass', f: hp, q: 0.7 }, { type: 'bandpass', f, q }] });
+// 발소리(사박사박·자박자박): 바닥마다 미리 만들어 둔 변형 뱅크(audio/stepSynth.js: 뒤꿈치 -> 발끝의 여러 미세 사건으로 70~160ms) 중 하나를 골라 재생한다.
+// 직전 3 걸음과 겹치지 않게 고르고(audioPolicy.createVariantPicker), 재생 속도(음높이)·크기는 sfx.play 의 jitter 가 걸음마다 조금씩 흔든다.
+const stepBuffers = new WeakMap(); // 컨텍스트 -> { 바닥: AudioBuffer[] } (처음 걸을 때 한 번 만든다)
+const stepPickers = {};
+function stepBuffersFor(ctx, surface) {
+  let perCtx = stepBuffers.get(ctx);
+  if (!perCtx) stepBuffers.set(ctx, (perCtx = {}));
+  if (!perCtx[surface]) {
+    perCtx[surface] = stepBank(surface, ctx.sampleRate).map((data) => {
+      const buffer = ctx.createBuffer(1, data.length, ctx.sampleRate);
+      buffer.getChannelData(0).set(data);
+      return buffer;
+    });
+  }
+  return perCtx[surface];
 }
-// 풀밭 발소리: 풀잎이 사박사박 스치는 소리(1.5~6kHz 대역의 알갱이 세 알).
-function stepGrass(env) {
-  [0, 0.022, 0.046].forEach((at, i) => grain(env, { at: at + rnd(env, 0, 0.006), f: rnd(env, 2200, 5500), dur: rnd(env, 0.03, 0.05), gain: (i === 1 ? 0.2 : 0.14) * rnd(env, 0.8, 1.1) }));
-  return 0.12;
+function stepRecipe(surface) {
+  return (env) => {
+    const buffers = stepBuffersFor(env.ctx, surface);
+    const picker = (stepPickers[surface] ??= createVariantPicker(buffers.length, { avoid: 3 }));
+    const src = env.ctx.createBufferSource();
+    src.buffer = buffers[picker.next(env.rng)];
+    src.playbackRate.value = env.rate;
+    src.connect(env.out);
+    const dur = src.buffer.duration / env.rate;
+    src.start(env.t);
+    src.stop(env.t + dur + 0.02);
+    return dur;
+  };
 }
-// 광장 돌바닥 발소리: 잔 자갈이 자박자박 눌리는 소리(조금 더 낮은 1.8~4.5kHz 알갱이 네 알, 짧게).
-function stepStone(env) {
-  [0, 0.016, 0.034, 0.05].forEach((at, i) => grain(env, { at: at + rnd(env, 0, 0.005), hp: 1000, f: rnd(env, 1800, 4500), q: 1.1, dur: rnd(env, 0.022, 0.04), gain: (i === 0 ? 0.2 : 0.13) * rnd(env, 0.8, 1.1) }));
-  return 0.1;
-}
-// 실내 타일 발소리: 부드럽게 사박(1.5~3.2kHz 알갱이 두 알, 가장 순하다).
-function stepTile(env) {
-  [0, 0.024].forEach((at, i) => grain(env, { at: at + rnd(env, 0, 0.004), hp: 800, f: rnd(env, 1500, 3200), q: 0.9, dur: rnd(env, 0.03, 0.045), gain: (i === 0 ? 0.17 : 0.11) * rnd(env, 0.8, 1.1), attack: 0.009 }));
-  return 0.09;
-}
+const stepGrass = stepRecipe('grass'); // 풀밭: 마른 풀잎이 사박사박
+const stepStone = stepRecipe('stone'); // 광장 돌바닥: 잔 자갈이 자박자박
+const stepTile = stepRecipe('tile'); // 실내 타일: 가벼운 톡과 희미한 스침
 // 공간 전환(차원문): 부풀어 오르는 바람 + 올라가는 소리, 화면이 덮이는 순간의 낮은 울림, 반짝이는 잔향.
 function portal(env) {
   hiss(env, { kind: 'pink', dur: 1.0, gain: 0.38, attack: 0.5, filters: [{ type: 'bandpass', f: 250, to: 2800, q: 1.5 }] });
@@ -326,7 +342,7 @@ function fortune(env) {
 
 
 // ---- 끊기지 않는 소리(모닥불 하나뿐: 배경음·앰비언스는 넣지 않는다) ----
-// 모닥불(소각로): 편안한 ASMR 모닥불. 길게 미리 만든 되풀이 표본(audio/fireSynth.js: 불꽃 숨결 + 촘촘한 잔 타닥임 + 가끔 낮은 톡)을 반복 재생한다.
+// 모닥불(소각로): 편안한 ASMR 모닥불. 길게 미리 만든 되풀이 표본(audio/fireSynth.js: 아주 작은 불꽃 숨결 + 하나하나 또렷하고 간격이 제각각인 타닥임)을 반복 재생한다.
 function fireLoop(env) {
   const { ctx } = env;
   const data = fireSamples(ctx.sampleRate, env.rng);
@@ -345,10 +361,11 @@ function fireLoop(env) {
 // jitter: 부를 때마다 흔드는 비율({ pitch: 음높이 ±, gain: 크기 ± }), minInterval: 같은 소리 연타 최소 간격(초), group/label: 사운드 시험 페이지의 분류·이름.
 const J = { pitch: 0.06, gain: 0.15 };
 const NOJ = { pitch: 0, gain: 0 };
+const STEP_JITTER = { pitch: 0.06, gain: 0.17 }; // 발소리: 음높이(재생 속도) 0.94~1.06 배, 크기 +-1.5dB(0.84~1.19 배)
 export const RECIPES = {
-  stepGrass: { run: stepGrass, duration: [0.05, 0.25], priority: 1, gain: 1.8, jitter: { pitch: 0.1, gain: 0.25 }, minInterval: 0.12, group: '이동', label: '풀밭 발소리(사박사박)' },
-  stepStone: { run: stepStone, duration: [0.05, 0.25], priority: 1, gain: 1.7, jitter: { pitch: 0.1, gain: 0.25 }, minInterval: 0.12, group: '이동', label: '광장 돌바닥 발소리(자박자박)' },
-  stepTile: { run: stepTile, duration: [0.05, 0.25], priority: 1, gain: 2.2, jitter: { pitch: 0.08, gain: 0.25 }, minInterval: 0.12, group: '이동', label: '실내 타일 발소리' },
+  stepGrass: { run: stepGrass, duration: [0.05, 0.25], priority: 1, gain: 1, jitter: STEP_JITTER, minInterval: 0.12, group: '이동', label: '풀밭 발소리(사박사박)' },
+  stepStone: { run: stepStone, duration: [0.05, 0.25], priority: 1, gain: 1, jitter: STEP_JITTER, minInterval: 0.12, group: '이동', label: '광장 돌바닥 발소리(자박자박)' },
+  stepTile: { run: stepTile, duration: [0.05, 0.25], priority: 1, gain: 1, jitter: STEP_JITTER, minInterval: 0.12, group: '이동', label: '실내 타일 발소리' },
   portal: { run: portal, duration: [0.7, 1.4], priority: 4, gain: 1.13, jitter: { pitch: 0.03, gain: 0 }, minInterval: 1.0, group: '이동', label: '공간 전환(차원문)' },
 
   whoof: { run: whoof, duration: [0.3, 0.9], priority: 4, gain: 1.35, jitter: { pitch: 0.06, gain: 0.1 }, minInterval: 0.3, group: '소각장', label: '불 타오름 후웁(부드럽게)' },

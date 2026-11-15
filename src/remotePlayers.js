@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { createPlayer } from './player.js';
 import { PLAZA } from './logic/layout.js';
-import { createFootstepper, surfaceAt, remoteAnimCue, STEP_SOUND, FOOTSTEP_STRIDE } from './logic/audioPolicy.js';
+import { createFootstepper, surfaceAt, remoteAnimCue, STEP_SOUND, FOOTSTEP_STRIDE, FOOTSTEP_JITTER } from './logic/audioPolicy.js';
 import { sfx } from './audio/sfx.js';
 
 const FADE_SECONDS = 0.4;
@@ -51,7 +51,7 @@ export function createRemotePlayers({ scene, container, camera, gltf, maxAvatars
     layer.append(label);
     scene.add(root);
     created++;
-    return { id: null, root, body, character, ring, label, alpha: 0, target: 0, anim: null, walking: false, outfit: null, nick: '', lx: NaN, ly: NaN, lo: -1, stepper: createFootstepper(FOOTSTEP_STRIDE), sx: NaN, sz: NaN, animSound: undefined };
+    return { id: null, root, body, character, ring, label, alpha: 0, target: 0, anim: null, walking: false, outfit: null, nick: '', lx: NaN, ly: NaN, lo: -1, stepper: createFootstepper(FOOTSTEP_STRIDE, { jitter: FOOTSTEP_JITTER }), sx: NaN, sz: NaN, animSound: undefined };
   }
 
   function acquire(id) {
@@ -105,7 +105,7 @@ export function createRemotePlayers({ scene, container, camera, gltf, maxAvatars
     const at = { x: p.x, z: p.z };
     const opts = { at, space, remote: true };
     if (av.walking && Number.isFinite(av.sx)) {
-      if (av.stepper.advance(Math.hypot(p.x - av.sx, p.z - av.sz))) sfx.play(STEP_SOUND[surfaceAt(space, p.x, p.z, PLAZA)], { ...opts, rate: av.stepper.foot ? 1 : 0.94 });
+      if (av.stepper.advance(Math.hypot(p.x - av.sx, p.z - av.sz))) sfx.play(STEP_SOUND[surfaceAt(space, p.x, p.z, PLAZA)], opts);
     } else av.stepper.reset();
     av.sx = p.x;
     av.sz = p.z;

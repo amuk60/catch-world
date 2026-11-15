@@ -5,6 +5,7 @@
 import { createEngine } from './engine.js';
 import { RECIPES, LOOPS } from './recipes.js';
 import { fireSamples } from './fireSynth.js';
+import { stepBank, STEP_SURFACES } from './stepSynth.js';
 import {
   distanceGain, panFromOffset, createThrottle, createRateLimiter, stepFade, sameSpace, varied, speakerVoice, speechPlan, remotePitch,
 } from '../logic/audioPolicy.js';
@@ -122,10 +123,11 @@ function update(dt, listenerPos, spaceId) {
     }
     space = spaceId;
     if (!engine.ready) return; // 아직 입력이 없었거나(잠김) 탭이 숨겨져 멈춘 동안은 아무것도 하지 않는다
-    if (!warmed) { // 모닥불 표본(약 0.1초 걸려 만든다)을 불 가까이에서 처음 켜는 순간에 만들면 화면이 한 번 끊기므로, 소리가 켜지자마자 미리 만들어 둔다
+    if (!warmed) { // 모닥불 표본(약 0.2초)과 발소리 변형 뱅크(바닥마다 수십 ms)를 처음 쓰는 순간에 만들면 화면이 한 번 끊기므로, 소리가 켜지자마자 시간을 나눠 미리 만들어 둔다
       warmed = true;
       const rate = engine.context.sampleRate;
       setTimeout(() => { try { fireSamples(rate); } catch (err) { warnOnce(err); } }, 800);
+      STEP_SURFACES.forEach((surface, i) => setTimeout(() => { try { stepBank(surface, rate); } catch (err) { warnOnce(err); } }, 300 + i * 250));
     }
     const muted = engine.muted;
     const fireTarget = muted || spaceId !== 'yard' || !firePos ? 0 : distanceGain(Math.hypot(firePos.x - listener.x, firePos.z - listener.z), FIRE_FALLOFF);

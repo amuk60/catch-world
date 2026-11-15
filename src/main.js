@@ -51,7 +51,7 @@ import {
 import { applyDrag, applyZoom, orbitPosition, frontAzimuthDeg } from './logic/orbit.js';
 import { createCameraClear, buildingBoxes } from './logic/cameraClear.js';
 import { stepToward, pushOutOfCircle, headingY } from './logic/movement.js';
-import { createFootstepper, surfaceAt, STEP_SOUND, FOOTSTEP_STRIDE } from './logic/audioPolicy.js';
+import { createFootstepper, surfaceAt, STEP_SOUND, FOOTSTEP_STRIDE, FOOTSTEP_JITTER } from './logic/audioPolicy.js';
 import { sfx } from './audio/sfx.js';
 import { createSoundButton } from './audio/soundButton.js';
 
@@ -913,7 +913,7 @@ if (isMobileUA(navigator.userAgent)) {
   }
 
   sfx.setRemoteGate(() => Boolean(net?.enabled)); // 다른 방문자 보기를 끄면 그들의 효과음도 모두 꺼진다
-  const stepper = createFootstepper(FOOTSTEP_STRIDE);
+  const stepper = createFootstepper(FOOTSTEP_STRIDE, { jitter: FOOTSTEP_JITTER });
   const listenerPos = { x: 0, z: 0, rx: 1, rz: 0 };
   let time = 0;
   onFrame((rawDt) => {
@@ -936,7 +936,7 @@ if (isMobileUA(navigator.userAgent)) {
       player.position.x = pushed.x;
       player.position.z = pushed.z;
       // 발소리: 걸은 거리가 보폭만큼 쌓일 때마다(바닥 종류: 풀·광장 돌·실내 타일). 느리게 걸으면 드문드문, 장애물에 막혀 못 가면 나지 않는다.
-      if (stepper.advance(Math.hypot(pushed.x - cur.x, pushed.z - cur.z))) sfx.play(STEP_SOUND[surfaceAt(spaceId, pushed.x, pushed.z, layout.plaza)], { rate: stepper.foot ? 1 : 0.94, pan: stepper.foot ? 0.18 : -0.18 }); // 왼발·오른발 번갈아 살짝 좌우로
+      if (stepper.advance(Math.hypot(pushed.x - cur.x, pushed.z - cur.z))) sfx.play(STEP_SOUND[surfaceAt(spaceId, pushed.x, pushed.z, layout.plaza)], { pan: stepper.foot ? 0.18 : -0.18 }); // 왼발·오른발 번갈아 살짝 좌우로(음높이는 sfx 가 걸음마다 0.94~1.06 으로 흔든다)
       if (next.arrived) stopWalking();
     } else stepper.reset();
     if (mode === 'seated') {
