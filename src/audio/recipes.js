@@ -4,6 +4,7 @@
 // 소리를 고치려면 아래 이름 붙은 상수와 각 레시피 안의 숫자(주파수 Hz·길이 초·세기)를 바꾼다. 세기는 레시피 안에서는 대략 0.1~0.5(최대 1 아래)로 두고, 소리 전체 크기는 RECIPES 의 gain 으로 조절한다.
 
 import { fireSamples } from './fireSynth.js';
+import { fireFile, FIRE_FILE } from './fireFile.js';
 import { stepBank } from './stepSynth.js';
 import { createVariantPicker } from '../logic/audioPolicy.js';
 
@@ -344,6 +345,18 @@ function fortune(env) {
 // 모닥불(소각로): 편안한 ASMR 모닥불. 길게 미리 만든 되풀이 표본(audio/fireSynth.js: 아주 작은 불꽃 숨결 + 하나하나 또렷하고 간격이 제각각인 타닥임)을 반복 재생한다.
 function fireLoop(env) {
   const { ctx } = env;
+  const file = fireFile.buffer; // 소리 파일(assets/audio/fire.mp3)을 불러왔으면 그것을, 아니면 아래 합성 소리를 쓴다
+  if (file) {
+    const pre = ctx.createGain();
+    pre.gain.value = FIRE_FILE.gain;
+    pre.connect(env.out);
+    const fsrc = ctx.createBufferSource();
+    fsrc.buffer = file;
+    fsrc.loop = true;
+    fsrc.connect(pre);
+    fsrc.start(env.t, env.rng() * file.duration);
+    return { stop(at) { try { fsrc.stop(at); } catch { /* 이미 멈췄다 */ } } };
+  }
   const data = fireSamples(ctx.sampleRate, env.rng);
   const buffer = ctx.createBuffer(1, data.length, ctx.sampleRate);
   buffer.getChannelData(0).set(data);

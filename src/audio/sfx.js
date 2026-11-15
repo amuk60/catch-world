@@ -5,6 +5,7 @@
 import { createEngine } from './engine.js';
 import { RECIPES, LOOPS } from './recipes.js';
 import { fireSamples } from './fireSynth.js';
+import { fireFile } from './fireFile.js';
 import { stepBank, STEP_SURFACES } from './stepSynth.js';
 import {
   distanceGain, panFromOffset, createThrottle, createRateLimiter, stepFade, sameSpace, varied, speakerVoice, speechPlan, remotePitch,
@@ -33,6 +34,12 @@ let traceFn = null;
 let warned = false;
 let warmed = false;
 const loopState = Object.fromEntries([...Object.keys(LOOPS)].map((name) => [name, { handle: null, level: 0, applied: -1, failed: false }]));
+
+// 모닥불 소리 파일이 뒤늦게 불러와지면, 이미 합성 소리로 돌고 있는 반복음을 끄고 다음 프레임에 파일 소리로 다시 시작한다.
+fireFile.onLoaded(() => {
+  const st = loopState.fire;
+  if (st && st.handle) { try { st.handle.stop(); } catch { /* 이미 멈췄다 */ } st.handle = null; st.applied = -1; }
+});
 
 const warnOnce = (err) => {
   if (warned) return;

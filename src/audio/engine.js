@@ -2,6 +2,7 @@
 // 동시 소리 수 제한(우선순위로 끊기), 공용 잡음 버퍼, 음소거·볼륨 저장, 탭이 숨겨지면 멈춤을 맡는다. 무엇이 실패해도 게임 루프로 던지지 않고 조용히 꺼진다.
 // 이름 붙은 소리(재생·위치·모닥불)는 audio/sfx.js 가 이 위에서 한다.
 import { voiceDecision, volumeToGain, DEFAULT_VOLUME } from '../logic/audioPolicy.js';
+import { loadFireFile } from './fireFile.js';
 
 export const STORAGE_KEYS = { muted: 'catch-world-sfx-muted', volume: 'catch-world-sfx-volume' };
 export const MAX_VOICES = 24; // 동시에 울리는 효과음 상한(넘으면 덜 중요하고 오래된 것부터 끊는다)
@@ -164,6 +165,7 @@ export function createEngine({ win = globalThis.window, storage, rng = Math.rand
           graph = createGraph(ctx, { masterGain: masterTarget() });
           noise = createNoiseBuffers(ctx, rng);
           ctx.onstatechange = () => { if (ctx.state === 'running') detach?.(); notify(); };
+          loadFireFile(ctx); // 모닥불 소리 파일(없으면 합성 소리를 그대로 쓴다)
         }
         if (ctx.state === 'suspended' && !win?.document?.hidden) {
           const p = ctx.resume();

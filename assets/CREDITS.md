@@ -17,3 +17,8 @@
 - **효과음(배경음·앰비언스 없음)**: 모든 소리는 Web Audio API 로 코드에서 합성합니다(`src/audio/recipes.js`, 모닥불은 `src/audio/fireSynth.js`). 외부 오디오 에셋(녹음·샘플·음악 파일)을 쓰지 않으므로 별도의 출처 표기나 라이선스가 필요 없습니다.
 - 사용하지 않는 형식(FBX, OBJ, DAE, STL)과 미리보기 이미지는 용량 때문에 삭제했습니다. 필요하면 kenney.nl에서 다시 받을 수 있습니다.
 - `assets/reference/`(디자인 레퍼런스 영상·스크린샷)는 저작권이 팀에 없으므로 **저장소에 올리지 않습니다**(`.gitignore`).
+
+## 효과음·모닥불 소리
+
+- 효과음 대부분은 브라우저 Web Audio API 로 코드에서 직접 합성한 것으로 외부 음원이 없습니다.
+- `audio/fire.mp3` (모닥불): 팀이 제공한 파일 `soundreality-fire-relaxing-528619.mp3`(Pixabay 음원 형식, 제작자 표기 "soundreality")의 일부(약 60초)를 잘라 쓴 것입니다. 원본(약 10분)은 저장소에 올리지 않고 `assets/reference/`에 보관합니다. **[확인 필요]** 다운로드한 페이지에서 라이선스(Pixabay Content License 등)를 한 번 확인해 주세요. 파일을 못 불러오면 코드 합성 모닥불 소리로 대체됩니다.
