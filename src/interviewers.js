@@ -67,19 +67,23 @@ export function createInterviewers({ root, interior, gltfs, chairs, cfg }) {
       m.actor.fx.moveAnchor({ y: m.seat.y }, STAND_SECONDS);
       moveChair(m, 0);
     },
-    // 장면 중간에 끊겼을 때: 모두 앉히고 효과를 지운다(즉시).
+    // 장면 중간에 끊겼을 때: 그 면접관만 앉히고 효과를 지운다(즉시). 담당 면접관제에서는 다른 면접관이 남의 장면 중일 수 있어 한 명씩 되돌린다.
+    resetOne(id) {
+      const m = byId[id];
+      if (!m) return;
+      m.actor.setPose(null);
+      m.actor.fx.setBounce(null);
+      m.standing = false;
+      m.actor.setBase('sit');
+      m.actor.fx.setAnchor({ y: m.seat.y });
+      m.actor.group.rotation.y = m.yawBase;
+      m.chairT = 1;
+      m.chairTo = 0;
+      if (m.chair) m.chair.position.copy(m.chairBase);
+    },
+    // 모두 즉시 되돌린다(방을 나갈 때).
     reset() {
-      for (const m of list) {
-        m.actor.setPose(null);
-        m.actor.fx.setBounce(null);
-        m.standing = false;
-        m.actor.setBase('sit');
-        m.actor.fx.setAnchor({ y: m.seat.y });
-        m.actor.group.rotation.y = m.yawBase;
-        m.chairT = 1;
-        m.chairTo = 0;
-        if (m.chair) m.chair.position.copy(m.chairBase);
-      }
+      for (const m of list) api.resetOne(m.id);
     },
     // 말풍선이 옆 면접관과 겹치지 않게 비켜 놓는 가로 거리(px): 서쪽 면접관은 왼쪽, 동쪽 면접관은 오른쪽, 가운데는 그대로.
     bubbleShift(id) {

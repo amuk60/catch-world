@@ -10,16 +10,23 @@ export function occupiedSeats(seatPoints, remotes, radius = SEAT_OCCUPIED_RADIUS
   const out = new Set();
   if (!Array.isArray(seatPoints) || !Array.isArray(remotes)) return out;
   for (const r of remotes) {
-    if (!r || r.seat !== true || !Number.isFinite(r.x) || !Number.isFinite(r.z)) continue;
-    let best = null;
-    let bestDist = Infinity;
-    for (const s of seatPoints) {
-      const dist = Math.hypot(r.x - s.x, r.z - s.z);
-      if (dist <= radius + 1e-9 && dist < bestDist) { best = s; bestDist = dist; }
-    }
-    if (best) out.add(best.id);
+    const id = seatOfRemote(seatPoints, r, radius);
+    if (id !== null) out.add(id);
   }
   return out;
+}
+
+// 앉은(seat true) 방문자 한 명이 차지한 의자 id: 반경 안의 가장 가까운 의자. 앉지 않았거나 반경 안에 의자가 없으면 null.
+// 담당 면접관제에서 다른 방문자의 말을 어느 의자(= 어느 면접관) 일로 볼지 정할 때도 쓴다.
+export function seatOfRemote(seatPoints, remote, radius = SEAT_OCCUPIED_RADIUS) {
+  if (!Array.isArray(seatPoints) || !remote || remote.seat !== true || !Number.isFinite(remote.x) || !Number.isFinite(remote.z)) return null;
+  let best = null;
+  let bestDist = Infinity;
+  for (const s of seatPoints) {
+    const dist = Math.hypot(remote.x - s.x, remote.z - s.z);
+    if (dist <= radius + 1e-9 && dist < bestDist) { best = s; bestDist = dist; }
+  }
+  return best ? best.id : null;
 }
 
 // E 안내 문구: 사용 중인 의자면 "사용 중"(누를 수 없는 힌트), 아니면 원래 문구. item 이 의자(seat)가 아니면 그대로.

@@ -2,6 +2,7 @@
 // 세탁소 실내: 안쪽 면 기준 12(x) x 10(z)의 코인세탁소. 북쪽(뒷) 벽에 세탁기·건조기 한 줄, 서쪽 벽에 출입문, 동쪽에 빨랫줄.
 // 오브젝트 방향: rotY 는 three.js rotation.y 이며 모델의 앞(+z)이 (sin, cos) 방향을 본다.
 import { LAUNDRY_INTERIOR, INTERVIEW_INTERIOR, CLOTHESLINE_SLOTS } from '../config.js';
+import { assignInterviewers } from './assign.js';
 
 const TILE = 2; // 벽·바닥 조각 한 칸(월드 단위). Furniture Kit 벽(폭 1, 높이 1.29)을 2배로 쓴다.
 const WALL_OFFSET = 0.07; // 벽 조각 중심이 방 경계에서 바깥쪽으로 떨어진 거리(안쪽 면이 경계에 닿도록 두께의 반)
@@ -184,6 +185,9 @@ export function buildInterviewInterior() {
   const guestRow = chairRow(GUEST_CHAIR, 'interview-chair', 'interviewChair');
   const waitRow = chairRow(WAIT_CHAIR, 'interview-wait', 'waitingChair');
   const chairs = guestRow.map((r) => r.chair);
+  // 담당 면접관제: 지원자 의자 하나마다 바로 앞(x 가 가장 가까운) 면접관 한 명이 담당이다. 대기 의자는 담당이 없다.
+  const assignments = assignInterviewers(chairs, seats);
+  for (const chair of chairs) chair.interviewerId = assignments[chair.id];
   const waitChairs = waitRow.map((r) => r.chair);
   piece('rugRectangle', 'rugRectangle', GUEST_CHAIR_RUG.x, GUEST_CHAIR_RUG.z, GUEST_CHAIR_RUG.scale, 0); // 바닥 장식(장애물 아님)
   piece('pottedPlant-ne', 'pottedPlant', 5.2, -4.2, 3.2, 0, { circles: [[0, 0, 0.4]] });
@@ -224,7 +228,7 @@ export function buildInterviewInterior() {
 
   return {
     id: 'interview', origin: { ...origin }, bounds, wallHeight, tile: TILE, walls, exit, arrival, interactables,
-    furniture, props, seats, chairs, waitChairs, obstacles, lamps, sign, board, notice, clock, deskTop,
+    furniture, props, seats, chairs, waitChairs, assignments, obstacles, lamps, sign, board, notice, clock, deskTop,
     standingSpot: standSpot, seatIds: chairs.map((c) => c.id), waitSeatIds: waitChairs.map((c) => c.id),
     zoneCenter: at(0, 0.1),
   };

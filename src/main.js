@@ -14,7 +14,7 @@ import { createFire } from './fire.js';
 import { createHud } from './hud.js';
 import { interactTarget, hoverLabel, nearestInRange, actionOf, standPoint } from './logic/interaction.js';
 import { nextMode, holdsSeat, showPrompt as promptAllowed } from './logic/playerMode.js';
-import { occupiedSeats, seatPromptFor, SEAT_OCCUPIED_RADIUS } from './logic/seats.js';
+import { occupiedSeats, seatOfRemote, seatPromptFor, SEAT_OCCUPIED_RADIUS } from './logic/seats.js';
 import { pickFortune } from './logic/fortune.js';
 import { createControls } from './controls.js';
 import { createGameState } from './logic/gameState.js';
@@ -25,6 +25,7 @@ import { buildBuildings, buildCleanShirt, buildCrumpledShirt, LAUNDRY_MODEL_ITEM
 import { buildInteriorLaundry, INTERIOR_MODEL_ITEMS } from './interiorLaundry.js';
 import { buildInteriorInterview, INTERVIEW_MODEL_ITEMS } from './interiorInterview.js';
 import { createInterviewers } from './interviewers.js';
+import { createCrew } from './interviewCrew.js';
 import { createInterviewScene } from './interviewScene.js';
 import { createFx } from './actor.js';
 import { createSpaces } from './spaces.js';
@@ -223,9 +224,10 @@ if (isMobileUA(navigator.userAgent)) {
 
   // ---- 면접장: 면접관 3명과 장면 진행(질문·답변·돌발행동·완주). 지수 감소는 아래 콜백으로만 한다. ----
   const interviewers = createInterviewers({ root: insideInterview.root, interior: interviewData, gltfs: interviewerGltfs, chairs: insideInterview.chairs, cfg: INTERVIEW.interviewers });
+  const crew = createCrew({ hud, interviewers, names: Object.fromEntries(INTERVIEW.interviewers.map((i) => [i.id, i.name])), ids: INTERVIEW.interviewers.map((i) => i.id) }); // 담당 면접관제: 면접관 한 명이 한 번에 한 일만 한다
   const playerFx = character ? character.fx : createFx(player);
   const interviewScene = createInterviewScene({
-    hud, interviewers, character, player, playerFx, interior: interviewData, root: insideInterview.root, camera, renderer, config: INTERVIEW,
+    hud, interviewers, crew, character, player, playerFx, interior: interviewData, root: insideInterview.root, camera, renderer, config: INTERVIEW,
     params: { round: INTERVIEW_ROUND, speech: SPEECH_SECONDS, answerSeconds: INTERVIEW_ANSWER_SECONDS, improvSeconds: INTERVIEW_IMPROV_SECONDS, finaleSeconds: INTERVIEW_FINALE_SECONDS },
     callbacks: {
       dispatch: (event) => dispatch(event),
@@ -234,12 +236,20 @@ if (isMobileUA(navigator.userAgent)) {
       track,
       say: (msg) => net?.say(msg), // 멀티플레이: 내 답변·돌발행동을 같은 방의 다른 방문자에게 번호로 알린다(꺼져 있으면 아무 일 없다)
       outfitState: () => outfit.state,
-      seat: () => (seatItem && holdsSeat(mode) ? { ...seatItem.seat, stand: pushOut(standPoint(seatItem.seat)) } : null), // 면접장 의자에 앉아 있는가(앉은 채 답하고, 돌발행동은 일어났다 다시 앉는다)
+      seat: () => (seatItem && holdsSeat(mode) ? { id: seatItem.id, ...seatItem.seat, stand: pushOut(standPoint(seatItem.seat)) } : null), // 면접장 의자에 앉아 있는가(앉은 채 답하고, 돌발행동은 일어났다 다시 앉는다)
     },
   });
 
   // 면접장 의자 점유(멀티플레이): 다른 방문자가 앉아 있는 의자는 "사용 중"이라 앉을 수 없다. 멀티플레이가 꺼져 있으면 항상 비어 있다. 이미 앉은 나는 쫓겨나지 않는다.
   const interviewSeatPoints = interviewData.interactables.filter((i) => i.kind === 'seat').map((i) => ({ id: i.id, x: i.seat.x, z: i.seat.z }));
+  const guestSeatPoints = interviewSeatPoints.filter((p) => interviewData.assignments[p.id]); // 담당 면접관이 있는 지원자 의자만(대기 의자는 장면이 없다)
+  // 다른 방문자가 앉은 지원자 의자의 담당 면접관 id(앉지 않았거나 대기 의자면 null).
+  const interviewerOfRemote = (remoteId) => {
+    if (!net || spaceId !== 'interview') return null;
+    const remote = net.remotes.find((r) => r.id === remoteId);
+    const chairId = remote ? seatOfRemote(guestSeatPoints, remote, SEAT_OCCUPIED_RADIUS) : null;
+    return chairId ? interviewData.assignments[chairId] : null;
+  };
   const NO_SEATS = new Set();
   const seatsTaken = () => (net && spaceId === 'interview' ? occupiedSeats(interviewSeatPoints, net.remotes, SEAT_OCCUPIED_RADIUS) : NO_SEATS);
 
@@ -870,7 +880,7 @@ if (isMobileUA(navigator.userAgent)) {
       net = createMultiplayer({ scene, camera, renderer, container: document.getElementById('game'), gltf: characterGltf, id: selfId });
       if (net) {
         const { createRemoteSpeech } = await import('./remoteSpeech.js');
-        remoteSpeech = createRemoteSpeech({ hud, interviewers, camera, renderer, config: INTERVIEW, busy: () => interviewScene.busy });
+        remoteSpeech = createRemoteSpeech({ hud, crew, camera, renderer, config: INTERVIEW, interviewerOf: interviewerOfRemote });
         // 받은 한마디는 말풍선·면접관 반응으로만 보여 준다. 내 지수·라운드·보너스는 건드리지 않는다(분석은 보았다는 횟수만).
         net.onRoom(onRoomMessage);
         net.onSay((ev) => { if (remoteSpeech.show(ev)) track('remote_say_seen', { type: ev.ty }); });
@@ -958,6 +968,7 @@ if (isMobileUA(navigator.userAgent)) {
     updateLine(dt);
     laundry.update(dt);
     interviewers.update(dt);
+    crew.update(dt);
     interviewScene.update(dt);
 
     const k = 1 - Math.exp(-ORBIT.followSpeed * dt);

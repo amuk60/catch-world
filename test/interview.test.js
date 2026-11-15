@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createBagPicker, createRepeatFreePicker, createRound, openingFor, pickReactions, createTimeline,
-  answerScript, improvScript, seatedImprov, EVENT_TYPES, validateInterview, IMPROV_IDS, remoteSayLine, remoteReaction, REMOTE_BUBBLE_SECONDS,
+  answerScript, improvScript, seatedImprov, EVENT_TYPES, validateInterview, IMPROV_IDS, remoteSayLine, remoteScene, finaleEvents, assignedImprov, ASK_CLIPS, REMOTE_BUBBLE_SECONDS, REMOTE_BUBBLE_AT,
 } from '../src/logic/interview.js';
 import { INTERVIEW, INTERVIEW_ROUND, INTERVIEW_BONUS, INTERVIEW_ANSWER_SECONDS, INTERVIEW_IMPROV_SECONDS, INTERVIEW_FINALE_SECONDS, SPEECH_SECONDS, ACTION_REDUCE } from '../src/config.js';
 import { mulberry32 } from '../src/logic/rng.js';
@@ -172,7 +172,7 @@ function assertScript(events, label) {
   assert.equal(events[events.length - 1], end[0], `${label} end 가 마지막`);
 }
 
-test('answerScript: 종류마다 효과(감소)가 정확히 한 번, 말풍선은 플레이어 대사 + 세 면접관 반응', () => {
+test('answerScript: 종류마다 효과(감소)가 정확히 한 번, 말풍선은 플레이어 대사 + 담당 면접관 반응 하나(다른 둘은 light)', () => {
   for (const type of INTERVIEW.types) {
     const ev = answerScript({ type, line: '내가 할 말', lines: LINES, ...opts });
     assertScript(ev, type);
@@ -181,8 +181,9 @@ test('answerScript: 종류마다 효과(감소)가 정확히 한 번, 말풍선�
     const says = ev.filter((e) => e.type === 'say');
     assert.equal(says[0].who, 'player');
     assert.equal(says[0].text, '내가 할 말');
-    assert.deepEqual(says.slice(1).map((e) => e.who).sort(), ['hr', 'leader', 'mentor']);
-    for (const s of says.slice(1)) assert.equal(s.text, LINES[s.who]);
+    assert.deepEqual(says.slice(1).map((e) => e.who), ['leader'], '반응 말풍선은 담당(기본 leader) 한 명');
+    assert.equal(says[1].text, LINES.leader);
+    assert.deepEqual(ev.filter((e) => e.type === 'light').map((e) => e.who).sort(), ['hr', 'mentor'], '다른 둘은 가벼운 반응');
     // 효과는 플레이어가 답하는 순간(반응보다 먼저), 종류와 무관하게 같은 시각.
     const effect = ev.find((e) => e.type === 'effect');
     assert.ok(effect.t < says[1].t, '효과가 반응보다 먼저');
@@ -199,12 +200,15 @@ test('answerScript: 효과 시각과 시간표 구조가 세 종류에서 같다
 test('answerScript: 종류별 연출 — 정석은 박수 자세, 솔직은 고개 젓기, 엉뚱은 튀어 오르는 폭소(플레이어도 더 크게)', () => {
   const find = (type) => answerScript({ type, line: '대사', lines: LINES, ...opts });
   const clap = find('정석').filter((e) => e.type === 'pose' && e.name === 'clap');
-  assert.equal(clap.length, 3, '면접관 3명 박수');
+  assert.equal(clap.length, 1, '담당 면접관 한 명만 박수 자세');
+  assert.ok(find('정석').filter((e) => e.type === 'light').every((e) => e.spec.clap), '다른 둘의 가벼운 박수');
   assert.ok(find('솔직').some((e) => e.type === 'clip' && e.name === 'emote-no' && e.who !== 'player'));
   assert.ok(!find('솔직').some((e) => e.type === 'pose' && e.name === 'clap'));
   const funny = find('엉뚱');
   assert.ok(funny.some((e) => e.type === 'fx' && e.who === 'player' && e.fx.bounce), '엉뚱은 플레이어도 튄다');
-  assert.ok(funny.filter((e) => e.type === 'fx' && e.who !== 'player' && e.fx.bounce).length >= 3, '면접관 폭소');
+  assert.equal(funny.filter((e) => e.type === 'fx' && e.who !== 'player' && e.fx.bounce).length, 1, '담당 면접관 폭소');
+  const bounces = funny.filter((e) => e.type === 'light').map((e) => e.spec.bounce.amp);
+  assert.ok(bounces.length === 2 && bounces.every((a) => a < funny.find((e) => e.type === 'fx' && e.who === 'leader' && e.fx.bounce).fx.bounce.amp), '다른 둘은 더 작게 튄다');
   assert.ok(!find('정석').some((e) => e.type === 'fx' && e.who === 'player' && e.fx.bounce), '정석은 튀지 않는다');
 });
 
@@ -414,18 +418,4 @@ test('remoteSayLine: 답변은 질문 q 의 a 번째 답변 글·종류·질문�
 test('remoteSayLine: config 에 없는 번호·id·이상한 입력은 null', () => {
   for (const say of [null, undefined, {}, { ty: 'ans', q: 99, a: 0 }, { ty: 'ans', q: 0, a: 7 }, { ty: 'ans', q: -1, a: 0 }, { ty: 'imp', imp: 'nope' }, { ty: 'x' }]) assert.equal(remoteSayLine(INTERVIEW, say), null, JSON.stringify(say));
   assert.equal(remoteSayLine({ questions: [], improvs: [] }, { ty: 'ans', q: 0, a: 0 }), null);
-});
-
-test('remoteReaction: 답변 종류별 동작(정석 박수 / 솔직 당황 / 엉뚱 폭소)과 질문한 면접관의 한마디, 돌발행동은 팀장 한마디', () => {
-  const pick = (type) => remoteReaction(INTERVIEW, { type, asker: 'mentor', improvId: null, text: 'x' }, () => 0);
-  assert.deepEqual(pick('정석'), { clip: 'emote-yes', clap: true, who: 'mentor', text: INTERVIEW.reactions['정석'].mentor[0] });
-  assert.equal(pick('솔직').clip, 'emote-no');
-  assert.equal(pick('솔직').clap, undefined);
-  const funny = pick('엉뚱');
-  assert.ok(funny.bounce && funny.bounce.amp > 0 && funny.bounce.amp <= 0.05, '내 장면(0.07)보다 작게 튄다');
-  const imp = remoteReaction(INTERVIEW, { type: null, asker: null, improvId: 'dance', text: 'x' });
-  assert.equal(imp.who, 'leader');
-  assert.equal(imp.text, INTERVIEW.improvs.find((i) => i.id === 'dance').leader);
-  assert.equal(remoteReaction(INTERVIEW, null), null);
-  assert.equal(remoteReaction(INTERVIEW, { type: null, asker: null, improvId: 'nope' }), null);
 });

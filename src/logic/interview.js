@@ -9,7 +9,9 @@ export const IMPROV_IDS = ['paperToss', 'reverse', 'dance', 'banzai']; // 돌발
 // 대본 이벤트 종류. who: 'player' | 면접관 id.
 // say(말풍선, big 이면 큰 글씨) clip(한 번짜리 동작) pose(자세 'clap' 또는 null) fx(튀기·돌기 같은 덧입힘) face(방향 돌기) move(플레이어 이동 'desk'|'home'|'stand'(의자에서 일어나 설 자리)|'seat'(의자))
 // stand/sit(면접관 일어나기·앉기. who 가 'player' 면 지원자가 의자에서 일어나 서는 자세 / 다시 앉는 자세) papers(종이 흩날리기) effect(지수 감소 순간) bonus(완주 보너스 순간) end(끝)
-export const EVENT_TYPES = ['say', 'clip', 'pose', 'fx', 'face', 'move', 'stand', 'sit', 'papers', 'effect', 'bonus', 'end'];
+// 담당 면접관제: light(who 가 담당이 아닌 면접관 — 한가할 때만 하는 가벼운 반응 spec: { clip, clap?, bounce?, seconds, text? }) finale(마지막 문항: 이 순간 최종 합격 연출을 이어 붙인다)
+// remoteBubble(다른 방문자의 장면에서, 보낸 방문자의 답변 말풍선이 뜰 순간)
+export const EVENT_TYPES = ['say', 'clip', 'pose', 'fx', 'face', 'move', 'stand', 'sit', 'papers', 'effect', 'bonus', 'end', 'light', 'finale', 'remoteBubble'];
 
 // ---- 뽑기 ----
 // 0..n-1 을 섞은 묶음에서 하나씩 뽑는다. 묶음을 다 쓰면 다시 섞되, 직전에 나온 것이 맨 앞에 오지 않게 한다(한 바퀴 안에서는 반복 없음).
@@ -114,6 +116,20 @@ const clip = (t, who, name) => ({ t, type: 'clip', who, name });
 const fx = (t, who, patch) => ({ t, type: 'fx', who, fx: patch });
 const pose = (t, who, name) => ({ t, type: 'pose', who, name });
 
+export const ASK_CLIPS = { leader: 'interact-right', hr: 'emote-yes', mentor: 'interact-left' }; // 질문할 때 면접관 동작(성격별)
+const LIGHT_SECONDS = 1.4; // 가벼운 반응(곁들임)이 이어지는 시간
+const LIGHT_LINE_CHANCE = 0.35; // 가벼운 반응에 아주 짧은 한마디가 붙을 확률
+const LIGHT_BOUNCE_SCALE = 0.5; // 가벼운 반응은 담당 면접관보다 작게 튄다
+const pickOne = (list, rng) => list[Math.min(list.length - 1, Math.floor(rng() * list.length))];
+// 담당이 아닌 면접관의 가벼운 반응 spec. react: { clip, clap?, bounce? }, key: 아주 짧은 한마디 후보(interjections)의 열쇠.
+function lightSpec(react, key, { interjections, rng }) {
+  const spec = { clip: react.clip, seconds: LIGHT_SECONDS };
+  if (react.clap) spec.clap = true;
+  if (react.bounce) spec.bounce = { amp: react.bounce.amp * LIGHT_BOUNCE_SCALE, freq: react.bounce.freq };
+  const pool = interjections?.[key];
+  if (pool?.length && rng() < LIGHT_LINE_CHANCE) spec.text = pickOne(pool, rng);
+  return spec;
+}
 const PLAYER_CLIP = { 정석: 'emote-yes', 솔직: 'interact-right', 엉뚱: 'jump' }; // 당당하게 답하는 동작(엉뚱은 더 크게)
 // 의자에 앉은 채 답할 때: 서서 하는 동작 클립은 앉은 높이에서 어색하므로 쓰지 않고, 앉은 자세 그대로 몸통을 튀기며(위아래 + 앞으로 숙임) 당당함을 나타낸다. 엉뚱이 가장 크다.
 const SEATED_BOB = { 정석: { amp: 0.06, freq: 3, lean: 0.12, seconds: 1.0 }, 솔직: { amp: 0.05, freq: 2.5, lean: 0.09, seconds: 0.9 }, 엉뚱: { amp: 0.12, freq: 3, lean: 0.25, seconds: 1.6 } };
@@ -124,10 +140,16 @@ const REACT = {
 };
 
 // 답변 한 번의 대본. line: 플레이어가 하는 말, lines: 면접관별 반응 대사, speech: 말풍선 최소 시간, total: 최소 전체 길이.
-// finale 이면 끝에 "면접관 3명이 일어나 박수 + 최종 합격! + 보너스" 연출(finaleSeconds)이 이어진다.
+// 담당 면접관제: assigned(내가 앉은 의자의 담당 면접관)가 전체 반응(동작·대사)을 하고, 나머지 둘은 light 이벤트(동작 위주의 가벼운 반응, 한가할 때만 그리는 쪽이 실행)다.
+// finale 이면 끝에 "면접관이 일어나 박수 + 최종 합격! + 보너스" 연출(finaleSeconds)이 이어진다: finaleIds 가 일어나 박수 치고 assigned 가 말한다(기본은 셋 모두).
+// deferFinale 이면 그 자리에 finale 이벤트 하나만 두고(end 없음) 그리는 쪽이 그때의 형편(다른 사람 장면 중인 면접관)을 보고 finaleEvents 를 이어 붙인다.
 // 지수 감소(effect)는 답하는 말풍선이 뜨는 순간 한 번이며 답변 종류와 무관하다.
-export function answerScript({ type, line, lines, speech = 2.3, total = 5, finale = false, finaleSeconds = 3.6, finaleText = '최종 합격!', seated = false }) {
+export function answerScript({
+  type, line, lines, assigned = 'leader', speech = 2.3, total = 5, finale = false, finaleSeconds = 3.6, finaleText = '최종 합격!', finaleIds = ID_LIST, deferFinale = false,
+  seated = false, interjections, rng = Math.random,
+}) {
   if (!TYPES.includes(type)) throw new Error(`알 수 없는 답변 종류: ${type}`);
+  if (!ID_LIST.includes(assigned)) throw new Error(`알 수 없는 면접관: ${assigned}`);
   const react = REACT[type];
   const SAY_AT = 0.3;
   const sayDur = readSeconds(line, speech);
@@ -144,25 +166,32 @@ export function answerScript({ type, line, lines, speech = 2.3, total = 5, final
     ev.push(clip(SAY_AT, 'player', PLAYER_CLIP[type]));
     if (type === '엉뚱') ev.push(fx(SAY_AT, 'player', { bounce: { amp: 0.1, freq: 3 } }), fx(SAY_AT + sayDur, 'player', { bounce: null }));
   }
-  let reactEnd = reactAt;
-  ID_LIST.forEach((id, i) => {
-    const t = reactAt + 0.2 * i;
-    const dur = readSeconds(lines[id], speech);
-    ev.push(clip(t, id, react.clip), say(t, id, lines[id], dur));
-    if (react.clap) ev.push(pose(t, id, 'clap'), pose(t + dur, id, null));
-    if (react.bounce) ev.push(fx(t, id, { bounce: react.bounce }), fx(t + dur, id, { bounce: null }));
-    reactEnd = Math.max(reactEnd, t + dur);
-  });
+  const reactEnd = pushReaction(ev, assigned, reactAt, lines[assigned], react, speech);
+  ID_LIST.filter((id) => id !== assigned).forEach((id, i) => ev.push({ t: reactAt + 0.2 * (i + 1), type: 'light', who: id, spec: lightSpec(react, type, { interjections, rng }) }));
   const base = Math.max(total, reactEnd + 0.2);
   if (!finale) return sortStable([...ev, { t: base, type: 'end' }]);
+  if (deferFinale) return sortStable([...ev, { t: base, type: 'finale' }]);
+  return sortStable([...ev, ...finaleEvents({ ids: finaleIds, speaker: assigned, t0: base, finaleSeconds, finaleText })]);
+}
 
-  const tf = base;
-  ID_LIST.forEach((id, i) => ev.push({ t: tf + 0.1 * i, type: 'stand', who: id }));
-  const clapAt = tf + 0.5;
-  ID_LIST.forEach((id) => ev.push(pose(clapAt, id, 'clap'), clip(clapAt, id, 'emote-yes'), pose(tf + finaleSeconds - 0.5, id, null)));
-  ev.push({ ...say(clapAt, 'leader', finaleText, finaleSeconds - 0.7), big: true }, { t: clapAt, type: 'bonus' }); // 큰 글씨 말풍선
-  ID_LIST.forEach((id, i) => ev.push({ t: tf + finaleSeconds - 0.5 + 0.1 * i, type: 'sit', who: id }));
-  return sortStable([...ev, { t: tf + finaleSeconds, type: 'end' }]);
+// 면접관 한 명의 전체 반응(동작 + 대사 + 박수/튀기) 이벤트를 ev 에 더하고 말풍선이 닫히는 시각을 돌려준다.
+function pushReaction(ev, id, t, text, react, speech) {
+  const dur = readSeconds(text, speech);
+  ev.push(clip(t, id, react.clip), say(t, id, text, dur));
+  if (react.clap) ev.push(pose(t, id, 'clap'), pose(t + dur, id, null));
+  if (react.bounce) ev.push(fx(t, id, { bounce: react.bounce }), fx(t + dur, id, { bounce: null }));
+  return t + dur;
+}
+
+// 최종 합격 연출: ids 가 차례로 일어나 박수 -> speaker 가 큰 글씨 "최종 합격!" + 보너스 한 번 -> 다시 앉기 -> 끝. 모든 시각은 t0 부터.
+export function finaleEvents({ ids = ID_LIST, speaker = 'leader', t0 = 0, finaleSeconds = 3.6, finaleText = '최종 합격!' } = {}) {
+  const ev = [];
+  ids.forEach((id, i) => ev.push({ t: t0 + 0.1 * i, type: 'stand', who: id }));
+  const clapAt = t0 + 0.5;
+  ids.forEach((id) => ev.push(pose(clapAt, id, 'clap'), clip(clapAt, id, 'emote-yes'), pose(t0 + finaleSeconds - 0.5, id, null)));
+  ev.push({ ...say(clapAt, speaker, finaleText, finaleSeconds - 0.7), big: true }, { t: clapAt, type: 'bonus' }); // 큰 글씨 말풍선
+  ids.forEach((id, i) => ev.push({ t: t0 + finaleSeconds - 0.5 + 0.1 * i, type: 'sit', who: id }));
+  return sortStable([...ev, { t: t0 + finaleSeconds, type: 'end' }]);
 }
 
 // 돌발행동 하나의 대본(연출은 id 마다 코드에 있고 대사는 improv 설정에서 온다). 지수 감소(effect)는 중간의 한 순간.
@@ -249,6 +278,25 @@ export function seatedImprov(events, { standSeconds = 0.5, sitSeconds = 0.5 } = 
   ]);
 }
 
+// ---- 담당 면접관제: 돌발행동 대본을 담당 면접관 중심으로 ----
+const INTERVIEWER_EVENTS = ['say', 'clip', 'pose', 'fx', 'stand', 'sit'];
+const isOtherInterviewer = (e, assigned) => ID_LIST.includes(e.who) && e.who !== assigned && INTERVIEWER_EVENTS.includes(e.type);
+
+// 돌발행동 대본(improvScript 결과)에서 담당 면접관의 이벤트만 남기고, 다른 면접관의 연기는 한가할 때만 하는 가벼운 반응(light 이벤트 하나)으로 바꾼다.
+// 가벼운 반응은 그 면접관의 첫 이벤트 시각에 시작하고, 원래 대본의 동작 종류(clip·박수·튀기)를 따르되 작게(돌기·긴 대사 없음) 한다. 입력은 바꾸지 않는다.
+export function assignedImprov(events, assigned, { interjections, rng = Math.random } = {}) {
+  const kept = events.filter((e) => !isOtherInterviewer(e, assigned));
+  const lights = [];
+  for (const id of ID_LIST.filter((x) => x !== assigned)) {
+    const mine = events.filter((e) => e.who === id && isOtherInterviewer(e, assigned));
+    if (!mine.length) continue;
+    const bounce = mine.find((e) => e.type === 'fx' && e.fx.bounce)?.fx.bounce;
+    const react = { clip: mine.find((e) => e.type === 'clip')?.name ?? 'emote-no', clap: mine.some((e) => e.type === 'pose' && e.name === 'clap'), bounce };
+    lights.push({ t: Math.min(...mine.map((e) => e.t)), type: 'light', who: id, spec: lightSpec(react, 'improv', { interjections, rng }) });
+  }
+  return sortStable([...kept, ...lights]);
+}
+
 // ---- 설정 검증 ----
 // INTERVIEW 설정 모양과 글자 길이를 확인해 문제 목록(비어 있으면 정상)을 돌려준다. 팀이 글을 고친 뒤 테스트로 실수를 잡는다.
 export function validateInterview(cfg, { questions = 12, improvs = 4, maxLength = 40 } = {}) {
@@ -278,24 +326,22 @@ export function validateInterview(cfg, { questions = 12, improvs = 4, maxLength 
     for (const id of ID_LIST) if (!im[id]) problems.push(`돌발행동 ${im.id}: ${id} 대사가 필요합니다.`);
   }
   for (const key of ['suit', 'soot', 'tank']) if (!cfg.openings?.[key]) problems.push(`첫 대사(${key})가 필요합니다.`);
+  for (const key of [...TYPES, 'improv']) { // 담당이 아닌 면접관의 아주 짧은 한마디 후보(담당 면접관제)
+    const list = cfg.interjections?.[key];
+    if (!Array.isArray(list) || list.length === 0 || list.some((t) => !t || t.length > 12)) problems.push(`짧은 한마디: ${key} 후보가 필요합니다(12자 이내).`);
+  }
   if (!cfg.finale) problems.push('최종 합격 문구가 필요합니다.');
   return problems;
 }
 
 // ---- 다른 방문자의 답변·돌발행동 보기(멀티플레이) ----
-// 받은 말 한마디(logic/net.js 의 validateSay 결과)를 내 config 로 풀어 말풍선 글과 면접관의 가벼운 반응을 정한다. 보낸 쪽 글은 쓰지 않는다. 번호·id 가 config 에 없으면 null.
+// 받은 말 한마디(logic/net.js 의 validateSay 결과)를 내 config 로 풀어 말풍선 글과 그 의자 담당 면접관의 장면을 정한다. 보낸 쪽 글은 쓰지 않는다. 번호·id 가 config 에 없으면 null.
 export const REMOTE_BUBBLE_SECONDS = 3; // 보낸 방문자 머리 위 말풍선이 떠 있는 시간
-export const REMOTE_REACT_SECONDS = 1.4; // 면접관 반응(박수·튀기)이 이어지는 시간
-export const REMOTE_REACT_STEP = 0.18; // 면접관마다 반응이 시작되는 간격(동시에 하지 않아 덜 튄다)
-export const REMOTE_LINE_SECONDS = 2; // 면접관 한마디 말풍선 시간
-const REMOTE_REACT = { // 내 장면의 REACT 와 같은 동작 종류, 튀는 폭은 작게
-  정석: { clip: 'emote-yes', clap: true },
-  솔직: { clip: 'emote-no' },
-  엉뚱: { clip: 'emote-yes', bounce: { amp: 0.035, freq: 5 } },
-};
-const REMOTE_IMPROV_REACT = { clip: 'emote-no', bounce: { amp: 0.03, freq: 4 } };
+export const REMOTE_BUBBLE_AT = 1.2; // 질문을 던진 뒤 이만큼(초) 지나 보낸 방문자의 답변 말풍선이 뜬다
+const REMOTE_ASK_SECONDS = 1.4; // 담당 면접관이 던진 질문 말풍선이 떠 있는 시간
+const REMOTE_REACT_AFTER = 0.9; // 답변 말풍선이 뜬 뒤 담당 면접관이 반응하기까지
 
-// 방문자 머리 위에 띄울 글: { text, type('정석'|'솔직'|'엉뚱'|null), asker(질문한 면접관 id | null), improvId(돌발행동 id | null) }.
+// 방문자 머리 위에 띄울 글: { text, type('정석'|'솔직'|'엉뚱'|null), asker(질문 설정상의 질문자 id | null), improvId(돌발행동 id | null) }.
 export function remoteSayLine(config, say) {
   if (!say) return null;
   if (say.ty === 'ans') {
@@ -313,14 +359,32 @@ export function remoteSayLine(config, say) {
   return null;
 }
 
-// 면접관 반응: { clip, clap?, bounce?, who(한마디를 하는 면접관 id), text(그 한마디) }. 답변은 질문한 면접관이, 돌발행동은 팀장이 한마디한다. line 이 null 이면 null.
-export function remoteReaction(config, line, rng = Math.random) {
-  if (!line) return null;
+// 다른 방문자 한 명의 한마디에 대한 담당 면접관(assigned)의 장면: { line(remoteSayLine), bubbleAt(보낸 방문자의 말풍선이 뜰 시각, 0 이면 바로), events, duration }.
+// events 는 시간표(createTimeline)에 넣는 이벤트들이다: 담당 면접관의 질문·반응·돌발행동 연기(who 가 assigned), 다른 면접관의 light, 시각 bubbleAt 의 remoteBubble.
+// 답변: 담당이 질문 글(q 번호로 찾는다)을 말풍선으로 던지고 -> bubbleAt 에 답변 말풍선 -> 곧이어 담당이 종류에 맞는 반응(박수 / 당황 / 폭소)과 반응 대사.
+// 돌발행동: 돌발행동 대본에서 담당 면접관의 연기를 그대로 쓰고(대사·동작·튀기·돌기 모두) 다른 면접관은 light 만 한다. 잘못된 입력이면 null.
+export function remoteScene(config, msg, assigned, { rng = Math.random, speech = 2.3 } = {}) {
+  const line = remoteSayLine(config, msg);
+  if (!line || !ID_LIST.includes(assigned)) return null;
+  const interjections = config.interjections;
+  let events;
+  let bubbleAt;
   if (line.type) {
-    const who = ID_LIST.includes(line.asker) ? line.asker : 'leader';
-    return { ...REMOTE_REACT[line.type], who, text: pickReactions(config.reactions, line.type, rng)[who] };
+    const question = config.questions[msg.q];
+    const react = REACT[line.type];
+    const lines = pickReactions(config.reactions, line.type, rng);
+    bubbleAt = REMOTE_BUBBLE_AT;
+    const reactAt = bubbleAt + REMOTE_REACT_AFTER;
+    events = [clip(0, assigned, ASK_CLIPS[assigned]), say(0, assigned, question.text, REMOTE_ASK_SECONDS)];
+    pushReaction(events, assigned, reactAt, lines[assigned], react, speech);
+    ID_LIST.filter((id) => id !== assigned).forEach((id, i) => events.push({ t: reactAt + 0.2 * (i + 1), type: 'light', who: id, spec: lightSpec(react, line.type, { interjections, rng }) }));
+  } else {
+    const improv = config.improvs.find((im) => im.id === line.improvId);
+    bubbleAt = 0;
+    events = assignedImprov(improvScript(improv, { total: 0 }), assigned, { interjections, rng })
+      .filter((e) => e.type === 'light' || e.who === assigned); // 방문자 본인의 연기(플레이어)·종이·지수 감소·끝 신호는 뺀다
   }
-  const improv = config.improvs?.find((im) => im.id === line.improvId);
-  if (!improv?.leader) return null;
-  return { ...REMOTE_IMPROV_REACT, who: 'leader', text: improv.leader };
+  events.push({ t: bubbleAt, type: 'remoteBubble' });
+  const duration = Math.max(...events.map((e) => e.t + (e.type === 'say' ? e.seconds : 0))) + 0.2;
+  return { line, bubbleAt, events: sortStable(events), duration };
 }
