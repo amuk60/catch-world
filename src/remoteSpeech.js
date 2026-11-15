@@ -10,8 +10,8 @@ const HEAD_HEIGHT = 1.8; // 이름표(remotePlayers.js 의 LABEL_HEIGHT)와 같�
 const ABOVE_LABEL_PX = 26; // 말풍선이 이름표 위에 놓이도록 올리는 화면 거리
 const GAP_PX = 8; // 옆 말풍선과 띄우는 거리
 
-// opts: { hud, crew, camera, renderer, config(INTERVIEW), interviewerOf(방문자 id): 그 방문자가 앉은 의자의 담당 면접관 id(없으면 null), rng }
-export function createRemoteSpeech({ hud, crew, camera, renderer, config, interviewerOf, rng = Math.random }) {
+// opts: { hud, crew, camera, renderer, config(INTERVIEW), interviewerOf(방문자 id): 그 방문자가 앉은 의자의 담당 면접관 id(없으면 null), posOf(방문자 id): 그 방문자의 { x, z }(효과음 위치, 없어도 된다), rng }
+export function createRemoteSpeech({ hud, crew, camera, renderer, config, interviewerOf, posOf, rng = Math.random }) {
   const point = new THREE.Vector3();
   let lastSpace = null;
 
@@ -48,7 +48,10 @@ export function createRemoteSpeech({ hud, crew, camera, renderer, config, interv
     show(ev) {
       const line = remoteSayLine(config, ev);
       if (!line) return false;
-      const bubble = () => hud.say(`${PREFIX}${ev.id}`, line.text, { name: ev.nick, seconds: REMOTE_BUBBLE_SECONDS, remote: true });
+      const bubble = () => {
+        const pos = posOf?.(ev.id); // 말풍선 웅얼거림이 그 방문자의 위치에서 나도록(멀면 작게)
+        hud.say(`${PREFIX}${ev.id}`, line.text, { name: ev.nick, seconds: REMOTE_BUBBLE_SECONDS, remote: true, at: pos ? { x: pos.x, z: pos.z } : undefined });
+      };
       const assigned = interviewerOf(ev.id);
       const scene = assigned && remoteScene(config, ev, assigned, { rng });
       if (!scene) { bubble(); return true; }

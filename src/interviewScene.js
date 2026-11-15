@@ -6,6 +6,7 @@ import {
   createBagPicker, createRepeatFreePicker, createRound, createTimeline, answerScript, improvScript, seatedImprov, openingFor, pickReactions, finaleEvents, assignedImprov, ASK_CLIPS,
 } from './logic/interview.js';
 import { headingY } from './logic/movement.js';
+import { sfx } from './audio/sfx.js';
 
 const PAPER_COUNT = 12;
 const PAPER_LIFE = 3.2; // 종이가 날려 떨어져 사라지기까지(초)
@@ -123,6 +124,8 @@ export function createInterviewScene(ctx) {
       case 'clip': {
         const speed = 1;
         character?.playClip(e.name, speed);
+        if (e.name === 'jump') sfx.play('hop');
+        else if (current?.improvId === 'dance') sfx.play('stomp'); // 단체 댄스: 동작마다 쿵
         playerIdleAt = sceneTime + rawDuration(e.name) / speed + 0.05;
         break;
       }
@@ -130,8 +133,8 @@ export function createInterviewScene(ctx) {
         if ('bounce' in e.fx) playerFx.setBounce(e.fx.bounce);
         if (e.fx.spin) playerFx.startSpin(e.fx.spin);
         break;
-      case 'stand': character?.idleInPlace(); break; // 의자에서 일어난다: 앉은 자세 -> 서기
-      case 'sit': playerIdleAt = -1; character?.sitInPlace(); break; // 다시 앉는다
+      case 'stand': sfx.play('scrape'); character?.idleInPlace(); break; // 의자에서 일어난다: 앉은 자세 -> 서기
+      case 'sit': sfx.play('scrape'); playerIdleAt = -1; character?.sitInPlace(); break; // 다시 앉는다
       case 'light': crew.light(e.who, e.spec, 'me'); break; // 담당이 아닌 면접관의 가벼운 반응: 한가할 때만 한다
       case 'finale': { // 마지막 문항: 그때 한가한 면접관까지 셋이, 아니면 담당 혼자 일어나 박수 친다
         const ids = crew.claimFinale(current.assigned, 'me');
@@ -152,13 +155,14 @@ export function createInterviewScene(ctx) {
         else playerFx.moveAnchor({ x: current.home.x, y: 0, z: current.home.z }, e.seconds, 0.4);
         break;
       }
-      case 'papers': spawnPapers(); break;
+      case 'papers': sfx.play('toss'); spawnPapers(); break;
       case 'effect':
         if (current.kind === 'improv') callbacks.track('improv_action', { id: current.improvId });
         callbacks.reduce(); // ACTION_REDUCE (다른 행동과 같은 경로)
         break;
       case 'bonus':
         callbacks.track('interview_complete');
+        sfx.play('fanfare'); // 최종 합격!
         callbacks.bonus(); // INTERVIEW_BONUS 한 번
         break;
       case 'end': finish(); break;
@@ -243,6 +247,7 @@ export function createInterviewScene(ctx) {
         choices: question.answers.map((a, i) => ({ key: String(i + 1), type: a.type, text: a.text })),
         onPick: (i) => api.pick(i), onCancel: () => api.cancel(),
       });
+      sfx.play('ding'); // 면접관이 질문을 던졌다
       return true;
     },
 
@@ -265,6 +270,7 @@ export function createInterviewScene(ctx) {
       if (!callbacks.dispatch('interview:pick')) return false;
       asking = null;
       hud.closeChoice();
+      sfx.play('confirm');
       const seated = Boolean(seatNow());
       const result = round.answer();
       callbacks.track('interview_answer', { type: answer.type });

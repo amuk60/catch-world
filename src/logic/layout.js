@@ -7,7 +7,7 @@ import { headingY } from './movement.js';
 const DEFAULT_PARAMS = { ringTrees: 40, bandTrees: 30, interiorTrees: 8, bushes: 6, rocks: 3 };
 
 // 도시 구역 데이터. 건물 모델은 이후 단계에서 슬롯 위에 올린다.
-const PLAZA = { x1: 2.5, x2: 12, z1: -12, z2: 12 };
+export const PLAZA = { x1: 2.5, x2: 12, z1: -12, z2: 12 };
 const BUILDING_SLOTS = [
   { id: 'interview', x: 8.5, z: -5.5, width: 6, depth: 6 },
   { id: 'laundry', x: 8.5, z: 5.5, width: 6, depth: 6 },

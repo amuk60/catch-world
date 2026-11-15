@@ -1,6 +1,7 @@
 // 브라우저 전용: 공간 전환 오버레이(차원문)·툴팁·말풍선·면접장 말풍선들과 답변 선택 창·E 키 안내·포춘쿠키 모달·전역 스트레스 바·행동 막대(구역마다 버튼이 바뀐다, 구역에 따라 자동 버튼 없음)·불멍 안내·감소량(-4) 팝업·측면 팝업(목표 달성)·가운데 팝업(지수 0)·캐치 칩(HTML). 컨테이너(#game) 안에 절대 위치로 놓는다.
 import { barRatio } from './logic/burn.js';
 import { emptyMessage, goalMessage, readyMessage } from './logic/cta.js';
+import { sfx } from './audio/sfx.js';
 
 const BUBBLE_MS = 3000;
 const CRACK_MS = 400; // index.html 의 crack 애니메이션 길이와 같게 둔다.
@@ -64,6 +65,7 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
   actionBar.addEventListener('click', (e) => {
     const button = e.target.closest('button');
     if (!button || button.getAttribute('aria-disabled') === 'true') return;
+    sfx.play('click');
     if (button.dataset.action === 'auto') barHandlers.onToggleAuto();
     else barHandlers.onAction(button.dataset.action);
   });
@@ -158,6 +160,15 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
     if (button) choiceHandlers.onPick?.(Number(button.dataset.index));
   });
   choiceCancel.addEventListener('click', () => choiceHandlers.onCancel?.());
+  // 효과음: 팝업·결과 카드·캐치 칩의 버튼은 누르면 딸깍, 답변 선택지는 올리면 톡(고르면 면접 장면이 확정음을 낸다).
+  for (const el of [side, result, ctaChip, choiceCancel]) el.addEventListener('click', (e) => { if (el === choiceCancel || e.target.closest('button')) sfx.play('click'); });
+  let hoverChoice = null;
+  choiceList.addEventListener('mouseover', (e) => {
+    const button = e.target.closest('button');
+    if (button && button !== hoverChoice) sfx.play('hover');
+    hoverChoice = button;
+  });
+  choiceList.addEventListener('mouseleave', () => { hoverChoice = null; });
   container.append(tooltip, bubble, speechLayer, prompt, fortune, stress, actionBar, meditate, ctaChip, side, result, choice, portal);
   let stressStart = 100;
 
@@ -185,7 +196,9 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
   return {
     // 면접장 말풍선. id: 'player' | 면접관 id | 'r-<방문자 id>'(다른 방문자), name: 이름표(없으면 생략), seconds 뒤에 스스로 사라진다(0 이하면 clearSpeech 로 지울 때까지).
     // 같은 id 로 다시 부르면 내용을 바꾸고 시간을 새로 센다. remote 면 다른 방문자 모양(하늘색 바탕).
-    say(id, text, { name = '', seconds = 2.3, big = false, remote = false } = {}) {
+    say(id, text, { name = '', seconds = 2.3, big = false, remote = false, at, quiet = false } = {}) {
+      // 말풍선마다 웅얼거림(말하는 사람마다 목소리가 다르다). 큰 글씨(최종 합격!)는 팡파르가 맡는다. quiet: 다른 방문자의 장면에서 면접관이 하는 말(작고 초당 상한이 있다).
+      if (!big) sfx.speech(id, text.length, { at, remote: quiet });
       let s = speeches.get(id);
       if (!s) {
         const el = document.createElement('div');
@@ -312,7 +325,8 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
     crackFortune() {
       if (stage !== 'cookie') return;
       setStage('cracking');
-      crackTimer = setTimeout(() => setStage('card'), CRACK_MS);
+      sfx.play('crack');
+      crackTimer = setTimeout(() => { setStage('card'); sfx.play('fortune'); }, CRACK_MS);
     },
     closeFortune() {
       clearTimeout(crackTimer);
@@ -385,6 +399,7 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
       resultFeedback.textContent = '';
       resultHandlers = { onCta, onSave, onCopy, onContinue, onRestart };
       result.classList.add('open');
+      sfx.play('popupModal');
     },
     closeResult() {
       result.classList.remove('open');
@@ -404,6 +419,7 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
       sideHandlers = { onCta, onClose };
       sideKind = 'goal';
       side.classList.add('open');
+      sfx.play('popupSide');
     },
     // 측면 팝업(면접 갈 준비 완료): 같은 카드에 주 버튼(캐치 열기)과 보조 버튼(더 쉬다 가기)을 보여 준다.
     openReadyPopup({ onCta, onLater, onClose }) {
@@ -416,6 +432,7 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
       sideHandlers = { onCta, onLater, onClose };
       sideKind = 'ready';
       side.classList.add('open');
+      sfx.play('jingle');
     },
     closeSidePopup() {
       side.classList.remove('open');

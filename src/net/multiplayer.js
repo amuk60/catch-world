@@ -107,6 +107,8 @@ export function createMultiplayer(ctx) {
   return {
     self,
     get session() { return session; },
+    // 다른 방문자 보기가 켜져 있고 연결되어 있는가(꺼져 있으면 다른 방문자의 효과음도 모두 끈다).
+    get enabled() { return on && session !== null; },
     // 지금 그려지는 다른 방문자들 [{ id, nick, x, y, z, seat, ... }](연결이 없으면 빈 목록).
     get remotes() { return lastList; },
     // 내 한마디 보내기({ ty:'ans', q, a } | { ty:'imp', imp }). 보냈으면 true.

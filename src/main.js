@@ -51,6 +51,9 @@ import {
 import { applyDrag, applyZoom, orbitPosition, frontAzimuthDeg } from './logic/orbit.js';
 import { createCameraClear, buildingBoxes } from './logic/cameraClear.js';
 import { stepToward, pushOutOfCircle, headingY } from './logic/movement.js';
+import { createFootstepper, surfaceAt, STEP_SOUND, FOOTSTEP_STRIDE } from './logic/audioPolicy.js';
+import { sfx } from './audio/sfx.js';
+import { createSoundButton } from './audio/soundButton.js';
 
 const MAX_DT = 0.1; // 한 프레임에 진행하는 최대 시간(초). 탭이 멈췄다 돌아와도 행동·애니메이션이 한꺼번에 튀지 않게 한다.
 const FALLBACK_RAW_DURATIONS = { 'emote-no': 0.667, 'pick-up': 0.333, 'attack-melee-right': 0.417, 'interact-right': 0.667, 'emote-yes': 0.667 }; // 캐릭터 모델이 없을 때(모델의 실제 클립 길이)
@@ -129,6 +132,8 @@ if (isMobileUA(navigator.userAgent)) {
     onCrack: () => hud.crackFortune(),
     onClose: () => dispatch('close'),
   });
+  createSoundButton(document.getElementById('game'), sfx); // 우상단 효과음 켜기/끄기(M 키도 같다). 소리는 첫 입력 뒤에야 난다
+  sfx.setFire(FURNACE); // 모닥불 지글거림은 소각로에 가까울수록 커진다
 
   // 공간별 데이터: 클릭 레이캐스트 바닥, 클릭/호버 판정 부피, 상호작용 대상, 장애물. 이동·클릭·E 안내는 항상 지금 공간의 것을 쓴다.
   const spaceData = {
@@ -217,7 +222,10 @@ if (isMobileUA(navigator.userAgent)) {
     const before = gameState.stress.value;
     const { value, justGoal, justEmpty } = gameState.apply(amount, { counts });
     hud.updateStressBar(value);
-    if (before - value > 0) popDelta(`-${before - value}`);
+    if (before - value > 0) {
+      popDelta(`-${before - value}`);
+      sfx.play('tick');
+    }
     const plan = resultPlan({ justGoal, justEmpty });
     if (plan !== 'none') onResultPlan(plan, justGoal, value);
   }
@@ -324,7 +332,10 @@ if (isMobileUA(navigator.userAgent)) {
     let moved = [];
     if (m.k === 'line') moved = lineState.ingestEvent(m.id, m.slot, m.c, m.t, Date.now());
     else if (m.k === 'lines') moved = lineState.ingestSnapshot(m.id, m.e, Date.now());
-    else if (m.k === 'fx' && spaceId === 'laundry') laundry.washers.splash(m.i);
+    else if (m.k === 'fx' && spaceId === 'laundry') {
+      laundry.washers.splash(m.i);
+      sfx.play('washSplash', { at: interior.washers[m.i], space: 'laundry', remote: true }); // 다른 방문자의 세탁기 소리(멀면 작게)
+    }
     if (moved.length) { lineSnapDue = 0; lineDirtyUntil = performance.now() + LINE_DIRTY_MS; }
   }
   // 매 프레임: 사라진 방문자의 빨래를 걷고, 주기적으로 내 목록을 보내고, 줄을 그린다.
@@ -391,7 +402,10 @@ if (isMobileUA(navigator.userAgent)) {
       return;
     }
     character?.playClip(step.name, byAction[action]?.speeds[step.name] ?? speeds[step.name] ?? 1);
+    if (step.name === 'emote-no') sfx.play('sigh'); // 한숨(소각장 행동의 첫 단계)
+    else if (step.name === 'emote-yes') sfx.play('relief'); // 후련(마지막 단계)
     if (step.event === 'paperOut') {
+      sfx.play('paperOut');
       // 재킷 가슴 주머니에서 작은 종이가 나와 paperOut 순간까지 손으로 올라온다.
       pull = { t: 0, dur: step.seconds * step.eventAt };
       handAttach.add(held); // 손 기준으로 움직여 손에 닿을 때 튀지 않는다.
@@ -400,6 +414,7 @@ if (isMobileUA(navigator.userAgent)) {
       updatePaper(0);
     } else if (step.effect && action === 'burn') {
       crumple = { t: 0, dur: step.seconds * CRUMPLE_FRACTION }; // 던지기 앞부분에서 종이를 구긴다
+      sfx.play('crumple');
     }
   }
 
@@ -422,6 +437,7 @@ if (isMobileUA(navigator.userAgent)) {
       const now = Date.now();
       announceLine(outfit.state === 'drying' && lineState.ownWhiteSlot() < 0 ? lineState.hangWhite(now) : lineState.hangPastel(hangCount++ % 6, now));
       held.visible = false;
+      sfx.play('flap'); // 셔츠를 줄에 탁
       return;
     }
     held.visible = true;
@@ -434,11 +450,14 @@ if (isMobileUA(navigator.userAgent)) {
     };
     if (id === 'burn') {
       flight.to.set(FURNACE.x, PAPER_FIRE_Y, FURNACE.z);
+      sfx.play('toss');
     } else if (id === 'wash') {
       laundry.washers.entryWorld(washIndex, flight.to);
+      sfx.play('swish');
       net?.sendRoom({ k: 'fx', i: washIndex }); // 같은 세탁소의 다른 방문자 화면에서도 그 세탁기가 흔들린다
     } else {
       shredder.slotWorld(flight.to);
+      sfx.play('shredder');
       shredder.wiggle();
       shredder.spawnStrips();
     }
@@ -461,6 +480,7 @@ if (isMobileUA(navigator.userAgent)) {
     hud.hideTooltip();
     hud.hideBubble();
     wearing = { t: 0, swapped: false };
+    sfx.play('wearRustle');
     if (character) {
       const c = interior.clothesline.centre;
       character.beginAction();
@@ -478,6 +498,7 @@ if (isMobileUA(navigator.userAgent)) {
       announceLine(lineState.removeWhite(Date.now()));
       character?.applyOutfit(outfit.state);
       track('outfit_ready');
+      sfx.play('tada'); // 새 셔츠를 입은 순간
     }
     if (wearing.t >= WEAR_SECONDS) {
       wearing = null;
@@ -563,8 +584,12 @@ if (isMobileUA(navigator.userAgent)) {
       held.scale.setScalar(flight.startScale * (1 - 0.9 * easeInOut(k)));
     }
     if (k >= 1) {
-      if (flight.kind === 'burn') fire.flare(); // 종이가 불에 닿는 순간
-      if (flight.kind === 'wash') laundry.washers.splash(flight.washer); // 셔츠가 들어간 순간 세탁기가 흔들리고 거품이 올라온다
+      if (flight.kind === 'burn') { fire.flare(); sfx.play('whoof'); } // 종이가 불에 닿는 순간
+      if (flight.kind === 'wash') { // 셔츠가 들어간 순간 세탁기가 흔들리고 거품이 올라온다
+        laundry.washers.splash(flight.washer);
+        sfx.play('washSplash');
+        sfx.play('washerRattle');
+      }
       clearPaper();
     }
   }
@@ -636,6 +661,7 @@ if (isMobileUA(navigator.userAgent)) {
     const p = pushOut(standPoint(seatItem.seat));
     player.position.set(p.x, 0, p.z);
     seatItem = null;
+    sfx.play('stand');
   }
 
   // 이벤트로 모드를 바꾸고, 떠나는 모드의 정리를 한다. 바뀌었으면 true.
@@ -745,6 +771,7 @@ if (isMobileUA(navigator.userAgent)) {
     hud.hideBubble();
     transitionTarget = toId;
     transition.start();
+    sfx.play('portal'); // 차원문: 들어가고 나오는 전환 전체(약 0.9초)에 걸친 소리
     return true;
   }
 
@@ -789,6 +816,7 @@ if (isMobileUA(navigator.userAgent)) {
       if (!dispatch('interact:seat')) return;
       stopWalking();
       seatItem = item;
+      sfx.play('sit');
     } else if (type === 'fortune') {
       if (!dispatch('interact:fortune')) return;
       stopWalking();
@@ -858,6 +886,7 @@ if (isMobileUA(navigator.userAgent)) {
       runner.cancelAuto();
       dispatch('move');
       walkTo(target);
+      sfx.play('marker');
     },
     onHover: (ndc, clientX, clientY) => {
       const item = ndc && mode !== 'transition' && pickInteractable(ndc);
@@ -880,7 +909,7 @@ if (isMobileUA(navigator.userAgent)) {
       net = createMultiplayer({ scene, camera, renderer, container: document.getElementById('game'), gltf: characterGltf, id: selfId });
       if (net) {
         const { createRemoteSpeech } = await import('./remoteSpeech.js');
-        remoteSpeech = createRemoteSpeech({ hud, crew, camera, renderer, config: INTERVIEW, interviewerOf: interviewerOfRemote });
+        remoteSpeech = createRemoteSpeech({ hud, crew, camera, renderer, config: INTERVIEW, interviewerOf: interviewerOfRemote, posOf: (id) => net.remotes.find((r) => r.id === id) });
         // 받은 한마디는 말풍선·면접관 반응으로만 보여 준다. 내 지수·라운드·보너스는 건드리지 않는다(분석은 보았다는 횟수만).
         net.onRoom(onRoomMessage);
         net.onSay((ev) => { if (remoteSpeech.show(ev)) track('remote_say_seen', { type: ev.ty }); });
@@ -890,6 +919,9 @@ if (isMobileUA(navigator.userAgent)) {
     }
   }
 
+  sfx.setRemoteGate(() => Boolean(net?.enabled)); // 다른 방문자 보기를 끄면 그들의 효과음도 모두 꺼진다
+  const stepper = createFootstepper(FOOTSTEP_STRIDE);
+  const listenerPos = { x: 0, z: 0, rx: 1, rz: 0 };
   let time = 0;
   onFrame((rawDt) => {
     const dt = Math.min(rawDt, MAX_DT);
@@ -910,8 +942,10 @@ if (isMobileUA(navigator.userAgent)) {
       const pushed = pushOut(next);
       player.position.x = pushed.x;
       player.position.z = pushed.z;
+      // 발소리: 걸은 거리가 보폭만큼 쌓일 때마다(바닥 종류: 풀·광장 돌·실내 타일). 느리게 걸으면 드문드문, 장애물에 막혀 못 가면 나지 않는다.
+      if (stepper.advance(Math.hypot(pushed.x - cur.x, pushed.z - cur.z))) sfx.play(STEP_SOUND[surfaceAt(spaceId, pushed.x, pushed.z, layout.plaza)], { rate: stepper.foot ? 1 : 0.94 });
       if (next.arrived) stopWalking();
-    }
+    } else stepper.reset();
     if (mode === 'seated') {
       // 앉는 자리로 부드럽게 이동·회전·상승(장애물 밀어내기 없음).
       const { x, z, y, rotY } = seatItem.seat;
@@ -970,6 +1004,13 @@ if (isMobileUA(navigator.userAgent)) {
     interviewers.update(dt);
     crew.update(dt);
     interviewScene.update(dt);
+    // 효과음: 듣는 사람 = 플레이어 위치, 좌우는 카메라의 오른쪽 방향 기준. 공간별 앰비언스와 모닥불 소리를 갱신한다.
+    const camRight = camera.matrixWorld.elements;
+    listenerPos.x = player.position.x;
+    listenerPos.z = player.position.z;
+    listenerPos.rx = camRight[0];
+    listenerPos.rz = camRight[2];
+    sfx.update(dt, listenerPos, spaceId);
 
     const k = 1 - Math.exp(-ORBIT.followSpeed * dt);
     desired.set(player.position.x, ORBIT.targetHeight, player.position.z);

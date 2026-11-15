@@ -6,6 +6,8 @@
 //  - 가벼운 반응(secondary): light(id, spec, owner). 한가할 때만 하고, 담당 일이 오면 곧바로 접는다.
 import { createArbiter } from './logic/assign.js';
 import { createTimeline } from './logic/interview.js';
+import { crewCue, lightCue } from './logic/audioPolicy.js';
+import { sfx } from './audio/sfx.js';
 
 const LIGHT_LINE_SECONDS = 1.4; // 가벼운 한마디 말풍선 시간
 
@@ -18,9 +20,15 @@ export function createCrew({ hud, interviewers, names, ids }) {
   const actorOf = (id) => interviewers.byId[id].actor;
 
   // 면접관 한 명의 연기 이벤트 하나를 화면에 옮긴다(내 장면의 시간표도 같은 함수를 쓴다).
-  function apply(e) {
+  // 면접관의 박수·당황·웃음·의자 소리. fromRemote: 다른 방문자의 장면이면 작게(멀티플레이를 껐으면 아예 없다).
+  function cue(name, fromRemote) {
+    if (name) sfx.play(name, fromRemote ? { remote: true } : { gain: name === 'scrape' ? 0.6 : 1 });
+  }
+
+  function apply(e, fromRemote = false) {
+    cue(crewCue(e), fromRemote);
     switch (e.type) {
-      case 'say': hud.say(e.who, e.text, { name: names[e.who], seconds: e.seconds, big: Boolean(e.big) }); break;
+      case 'say': hud.say(e.who, e.text, { name: names[e.who], seconds: e.seconds, big: Boolean(e.big), quiet: fromRemote }); break;
       case 'clip': actorOf(e.who).play(e.name); break;
       case 'pose': actorOf(e.who).setPose(e.name); break;
       case 'fx': {
@@ -65,7 +73,7 @@ export function createCrew({ hud, interviewers, names, ids }) {
       if (jobs.get(id) !== job) return; // 처리 도중 접혔다
       if (e.type === 'light') crew.light(e.who, e.spec, job.owner);
       else if (e.type === 'remoteBubble') showBubble(job);
-      else if (e.who === id) apply(e);
+      else if (e.who === id) apply(e, true);
     }
   }
 
@@ -76,6 +84,8 @@ export function createCrew({ hud, interviewers, names, ids }) {
     if (spec.clap) actor.setPose('clap');
     if (spec.bounce) actor.fx.setBounce(spec.bounce);
     if (spec.text) hud.say(id, spec.text, { name: names[id], seconds: spec.textSeconds ?? LIGHT_LINE_SECONDS });
+    const name = lightCue(spec);
+    if (name) sfx.play(name, owner === 'me' ? { gain: 0.6 } : { remote: true });
   }
 
   // 중재자가 알려 준 변화(끝남·시작·폐기)를 반영한다.
