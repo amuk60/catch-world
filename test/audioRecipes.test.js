@@ -139,12 +139,12 @@ test('반복음은 소각로 모닥불 하나뿐이고(배경음·앰비언스 �
 test('빼기로 한 소리는 레시피에 없고, 남기기로 한 소리만 있다', () => {
   const removed = ['crumple', 'paperOut', 'sigh', 'tick', 'swish', 'wearRustle', 'sit', 'stand', 'marker', 'relief', 'toss', 'firePop', 'bird', 'hover', 'scrape', 'hop', 'stomp', 'ambYard', 'ambLaundry', 'ambInterview'];
   for (const name of removed) assert.equal(SOUND_NAMES.includes(name) || LOOP_NAMES.includes(name), false, `${name} 가 남아 있음`);
-  const kept = ['stepGrass', 'stepStone', 'stepTile', 'portal', 'whoof', 'shredder', 'washSplash', 'washerRattle', 'flap', 'tada', 'ding', 'confirm', 'speech', 'applause', 'ohno', 'laugh', 'fanfare', 'click', 'popupSide', 'popupModal', 'jingle', 'crack', 'fortune'];
+  const kept = ['stepGrass', 'stepTile', 'portal', 'whoof', 'shredder', 'washSplash', 'washerRattle', 'flap', 'tada', 'ding', 'confirm', 'speech', 'applause', 'ohno', 'laugh', 'fanfare', 'click', 'popupSide', 'popupModal', 'jingle', 'crack', 'fortune'];
   assert.deepEqual([...SOUND_NAMES].sort(), [...kept].sort());
 });
 
 test('발소리: 미리 만든 변형 뱅크 중 하나를 버퍼 소스로 재생한다(진동음·실시간 거르개 없음, 60~200ms)', () => {
-  for (const name of ['stepGrass', 'stepStone', 'stepTile']) {
+  for (const name of ['stepGrass', 'stepTile']) {
     for (const seed of [1, 2, 3]) {
       const { nodes, log, built } = runRecipe(name, RECIPES[name], seeded(seed));
       assert.ok(built.duration >= 0.06 && built.duration <= 0.2, `${name} 길이 ${built.duration}`);
@@ -160,7 +160,7 @@ test('발소리: 미리 만든 변형 뱅크 중 하나를 버퍼 소스로 재�
 });
 
 test('발소리: 같은 바닥을 연달아 걸으면 변형이 골고루 쓰이고, 직전과 같은 변형이나 최근 3 걸음 안의 변형이 다시 나오지 않는다', () => {
-  for (const name of ['stepGrass', 'stepStone', 'stepTile']) {
+  for (const name of ['stepGrass', 'stepTile']) {
     const { ctx, nodes } = fakeContext();
     const sink = ctx.createGain();
     const rng = seeded(77);
@@ -191,7 +191,7 @@ test('발소리: 재생 속도에 따라 길이가 달라지고, 흔들림은 �
     assert.equal(src.playbackRate.value, rate);
     assert.ok(Math.abs(duration * rate - src.buffer.duration) < 1e-9, '길이 = 변형 길이 / 재생 속도');
   }
-  for (const name of ['stepGrass', 'stepStone', 'stepTile']) {
+  for (const name of ['stepGrass', 'stepTile']) {
     const j = RECIPES[name].jitter;
     assert.ok(Math.abs(j.pitch - 0.06) < 1e-9, `${name} 음높이 흔들림 ${j.pitch}`);
     assert.ok(j.gain >= 0.15 && j.gain <= 0.2, `${name} 크기 흔들림 +-1.5dB(${j.gain})`);
@@ -233,7 +233,7 @@ test('발소리 합성: 씨앗이 다르면 다르고, 같은 씨앗이면 같�
   const a = synthStep('grass', 22050, seeded(1));
   const b = synthStep('grass', 22050, seeded(2));
   assert.notDeepEqual(a.slice(0, 500), b.slice(0, 500));
-  assert.deepEqual(synthStep('stone', 22050, seeded(9)), synthStep('stone', 22050, seeded(9)));
+  assert.deepEqual(synthStep('tile', 22050, seeded(9)), synthStep('tile', 22050, seeded(9)));
 });
 
 test('세탁기 덜컹: 짧고 낮은 두드림 몇 번뿐이고, 이어지는 웅웅거림(긴 진동음·톱니파)이 없다', () => {

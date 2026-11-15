@@ -154,14 +154,14 @@ export const varied = (base, amount, rng = Math.random) => base * (1 + amount * 
 export const semitoneRatio = (semitones) => 2 ** (semitones / 12);
 
 // ---- 바닥 ----
-// 발소리 종류: 마당의 광장(돌)은 'stone', 나머지 마당은 'grass', 실내는 'tile'.
+// 발소리 종류: 마당의 풀밭은 'grass', 광장 돌바닥과 실내는 같은 'tile' 소리를 쓴다(광장 전용 발소리는 없앴다).
 export function surfaceAt(spaceId, x, z, plaza) {
   if (spaceId !== 'yard') return 'tile';
-  if (plaza && x >= plaza.x1 && x <= plaza.x2 && z >= plaza.z1 && z <= plaza.z2) return 'stone';
+  if (plaza && x >= plaza.x1 && x <= plaza.x2 && z >= plaza.z1 && z <= plaza.z2) return 'tile';
   return 'grass';
 }
 
-export const STEP_SOUND = { grass: 'stepGrass', stone: 'stepStone', tile: 'stepTile' }; // 바닥 종류 -> 발소리 이름
+export const STEP_SOUND = { grass: 'stepGrass', tile: 'stepTile' }; // 바닥 종류 -> 발소리 이름
 export const FOOTSTEP_JITTER = 0.2; // 걸음 사이 간격이 보폭의 +-20% 까지 들쭉날쭉(기계처럼 일정하지 않게)
 export const FOOTSTEP_STRIDE = 1.33; // 한 걸음의 거리(월드 단위): 걷기 클립 한 바퀴(0.667초)에 두 걸음이고 이동 속도가 4 이므로 4 x 0.333. 발이 땅에 닿는 박자와 맞는다
 

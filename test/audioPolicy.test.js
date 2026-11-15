@@ -221,10 +221,10 @@ test('semitoneRatio: 12 반음 = 2배', () => {
 });
 
 // ---- 바닥 종류 ----
-test('surfaceAt: 광장 안은 돌바닥, 마당의 나머지는 풀, 실내는 타일', () => {
+test('surfaceAt: 광장 안과 실내는 타일 소리, 마당의 나머지는 풀', () => {
   const plaza = { x1: 2.5, x2: 12, z1: -12, z2: 12 };
-  assert.equal(surfaceAt('yard', 5, 0, plaza), 'stone');
-  assert.equal(surfaceAt('yard', 2.5, 12, plaza), 'stone');
+  assert.equal(surfaceAt('yard', 5, 0, plaza), 'tile');
+  assert.equal(surfaceAt('yard', 2.5, 12, plaza), 'tile');
   assert.equal(surfaceAt('yard', -4, 0, plaza), 'grass');
   assert.equal(surfaceAt('yard', 5, 13, plaza), 'grass');
   assert.equal(surfaceAt('laundry', 600, 0, plaza), 'tile');
@@ -302,7 +302,7 @@ test('발소리 이름표와 보폭: 바닥 종류마다 소리가 있고, 걷�
   const { RECIPES } = await import('../src/audio/recipes.js');
   const { PLAYER } = await import('../src/config.js');
   for (const name of Object.values(STEP_SOUND)) assert.ok(RECIPES[name], name);
-  assert.deepEqual(Object.keys(STEP_SOUND).sort(), ['grass', 'stone', 'tile']);
+  assert.deepEqual(Object.keys(STEP_SOUND).sort(), ['grass', 'tile']);
   const interval = footstepInterval(PLAYER.speed, FOOTSTEP_STRIDE);
   assert.ok(interval >= 0.3 && interval <= 0.6, `interval ${interval}`);
 });

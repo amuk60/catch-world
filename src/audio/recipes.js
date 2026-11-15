@@ -174,7 +174,6 @@ function stepRecipe(surface) {
   };
 }
 const stepGrass = stepRecipe('grass'); // 풀밭: 마른 풀잎이 사박사박
-const stepStone = stepRecipe('stone'); // 광장 돌바닥: 잔 자갈이 자박자박
 const stepTile = stepRecipe('tile'); // 실내 타일: 가벼운 톡과 희미한 스침
 // 공간 전환(차원문): 부풀어 오르는 바람 + 올라가는 소리, 화면이 덮이는 순간의 낮은 울림, 반짝이는 잔향.
 function portal(env) {
@@ -364,7 +363,6 @@ const NOJ = { pitch: 0, gain: 0 };
 const STEP_JITTER = { pitch: 0.06, gain: 0.17 }; // 발소리: 음높이(재생 속도) 0.94~1.06 배, 크기 +-1.5dB(0.84~1.19 배)
 export const RECIPES = {
   stepGrass: { run: stepGrass, duration: [0.05, 0.25], priority: 1, gain: 1, jitter: STEP_JITTER, minInterval: 0.12, group: '이동', label: '풀밭 발소리(사박사박)' },
-  stepStone: { run: stepStone, duration: [0.05, 0.25], priority: 1, gain: 1, jitter: STEP_JITTER, minInterval: 0.12, group: '이동', label: '광장 돌바닥 발소리(자박자박)' },
   stepTile: { run: stepTile, duration: [0.05, 0.25], priority: 1, gain: 1, jitter: STEP_JITTER, minInterval: 0.12, group: '이동', label: '실내 타일 발소리' },
   portal: { run: portal, duration: [0.7, 1.4], priority: 4, gain: 1.13, jitter: { pitch: 0.03, gain: 0 }, minInterval: 1.0, group: '이동', label: '공간 전환(차원문)' },
 

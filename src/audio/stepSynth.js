@@ -19,10 +19,10 @@ import { mulberry32, gauss, range, logRange, peakOfArray, rmsOfArray, filterCirc
 
 export const STEP = {
   variants: 10, // 바닥마다 변형 개수(8~12)
-  rms: { grass: 0.015, stone: 0.013, tile: 0.0105 }, // 변형의 RMS(소리 크기 1 에서): 변형마다 같은 크기로 들리도록 RMS 를 맞춘다(마스터 압축기가 짧은 소리의 마루를 변형마다 다르게 눌러서 마루로 맞추면 들쭉날쭉하다). 마스터 체인을 거치면 약 0.5~0.8 배(짧은 소리일수록 더 눌린다)라 이전 판(체인 통과 후 RMS 0.0115/0.0097/0.0068)보다 풀·타일은 3~6dB, 돌은 2dB 작다
+  rms: { grass: 0.015, tile: 0.0105 }, // 변형의 RMS(소리 크기 1 에서): 변형마다 같은 크기로 들리도록 RMS 를 맞춘다(마스터 압축기가 짧은 소리의 마루를 변형마다 다르게 눌러서 마루로 맞추면 들쭉날쭉하다). 마스터 체인을 거치면 약 0.5~0.8 배(짧은 소리일수록 더 눌린다)라 이전 판(체인 통과 후 RMS 0.0115/0.0097/0.0068)보다 풀·타일은 3~6dB, 돌은 2dB 작다
   peakMax: 0.15, // RMS 를 맞춘 뒤 마루가 이만큼을 넘는 변형만 눌러 내린다(+-1.5dB 흔들림을 더해도 0.18 이하)
   maxSeconds: 0.26, // 만드는 길이 상한(뒤는 잘라낸다)
-  hp: { grass: 160, stone: 280, tile: 280 }, // 아래를 자르는 높이(Hz)
+  hp: { grass: 160, tile: 280 }, // 아래를 자르는 높이(Hz)
   lp: 6500,
   maxCorr: 0.6, // 뱅크에 넣을 변형은 이미 있는 변형들과 정규화 상호상관(+-5ms)이 이만큼 미만이어야 한다(넘으면 다시 만든다)
   tries: 12,
@@ -45,18 +45,6 @@ function grass(put, rng) {
   for (let k = 0; k < blades2; k++) put(toe + range(rng, [0, 40]), { f: logRange(rng, [1200, 5000]), q: range(rng, [2, 5]), exciteMs: range(rng, [1, 4]), noisy: 0.8, amp: Math.min(0.4, wobble(rng, 0.2)) });
 }
 
-function stone(put, rng) {
-  const heel = range(rng, [0, 3]);
-  put(heel, { f: logRange(rng, [600, 1800]), q: range(rng, [3, 6]), exciteMs: range(rng, [0.8, 1.8]), noisy: 0.85, amp: range(rng, [0.55, 0.8]) }); // 짧고 부드러운 탭
-  put(heel + range(rng, [4, 16]), { f: logRange(rng, [2500, 4000]), q: 1.3, exciteMs: range(rng, [10, 18]), noisy: 1, amp: range(rng, [0.12, 0.2]) }); // 스치는 소리
-  const grit = 4 + Math.floor(rng() * 4);
-  for (let k = 0; k < grit; k++) put(heel + range(rng, [3, 105]), { f: logRange(rng, [2000, 6000]), q: range(rng, [4, 8]), exciteMs: range(rng, [0.3, 0.8]), noisy: 0.7, amp: Math.min(0.8, wobble(rng, 0.38)) }); // 잔 자갈
-  const toe = range(rng, [55, 100]);
-  put(toe, { f: logRange(rng, [700, 2000]), q: range(rng, [3, 6]), exciteMs: range(rng, [1, 2]), noisy: 0.85, amp: range(rng, [0.3, 0.5]) });
-  const grit2 = 1 + Math.floor(rng() * 3);
-  for (let k = 0; k < grit2; k++) put(toe + range(rng, [4, 45]), { f: logRange(rng, [2000, 6000]), q: range(rng, [4, 8]), exciteMs: range(rng, [0.3, 0.8]), noisy: 0.7, amp: Math.min(0.5, wobble(rng, 0.25)) });
-}
-
 function tile(put, rng) {
   const heel = range(rng, [0, 3]);
   const f = logRange(rng, [800, 2700]);
@@ -68,7 +56,7 @@ function tile(put, rng) {
   put(toe + range(rng, [6, 20]), { f: logRange(rng, [2000, 4000]), q: 1.2, exciteMs: range(rng, [20, 35]), noisy: 1, amp: range(rng, [0.06, 0.1]) });
 }
 
-const BUILDERS = { grass, stone, tile };
+const BUILDERS = { grass, tile };
 
 // 걸음 한 번. 반환: Float32Array(RMS 가 STEP.rms[surface](마루가 STEP.peakMax 를 넘으면 그 아래로), 길이 0.07~0.2 초).
 export function synthStep(surface, sampleRate, rng = Math.random) {
@@ -113,4 +101,4 @@ export function stepBank(surface, sampleRate, rng = Math.random) {
   }
   return bank;
 }
-export const STEP_SURFACES = ['grass', 'stone', 'tile'];
+export const STEP_SURFACES = ['grass', 'tile'];
