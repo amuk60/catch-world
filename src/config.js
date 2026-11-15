@@ -399,20 +399,24 @@ export const INTERVIEW = {
 // epsPos / epsRot: 이만큼(단위 / 라디안) 이상 바뀌어야 "움직였다"로 본다. minGapMs: 동작·옷·공간이 바뀌어 즉시 보낼 때도 이 간격(ms)은 둔다.
 // maxRemote: 한 번에 그리는 다른 방문자 수의 최대(가까운 순). maxTracked: 메시지를 받아 기억해 두는 방문자 수의 최대(악의적 폭주 방지). minRecvGapMs: 한 방문자가 이 간격보다 촘촘히 보내는 메시지는 버린다.
 // interpDelayMs: 다른 방문자를 이만큼(ms) 과거 위치로 그려 부드럽게 보이게 한다(3Hz 전송 주기 약 333ms 에 맞춘다). extrapolateMs: 다음 메시지가 늦을 때 걷는 방향으로 더 내다보는 최대 시간(ms). teleportDist: 이 거리(단위) 이상 한 번에 움직이면 보간 없이 곧장 옮긴다(공간이 바뀌어도 마찬가지).
-// staleMs: 이 시간(ms) 동안 메시지가 없으면 그 방문자를 지운다. nickMax: 닉네임 최대 글자 수.
+// staleMs: 이 시간(ms) 동안 메시지가 없으면 그 방문자를 지운다. 닉네임 규칙(2~10자, 허용 글자, 금칙어)은 logic/nick.js.
 // 방 샤딩: 한 공간을 roomCap 명 단위의 방(<공간>-1, <공간>-2, ...)으로 나눈다(전달 메시지 수가 방 인원의 제곱에 비례해서 무료 한도를 지키기 위함).
 // 들어갈 때 1번 방부터 shardProbeMs(ms) 동안 presence 로 다른 사람 수를 세어 보고 roomCap 미만인 가장 앞 방에 머문다. 모두 차면(maxShards 개) 멀티플레이만 끄고(게임은 정상) fullRetryMs(ms) 뒤에 다시 시도한다.
 // 이미 접속한 사람은 쫓아내지 않는다. 동시에 들어오면 roomCap 을 조금 넘을 수 있다. 시험용으로 주소에 ?mpcap=2 처럼 쓰면 이 탭의 roomCap 을 바꾼다.
 // 전송 절감: 탭이 숨겨지거나 입력이 idleMs(ms) 동안 없으면 상태 전송을 멈춘다(연결·presence 는 유지, 상대 화면에서는 staleMs 뒤에 사라진다). 돌아오면 곧바로 다시 보낸다.
 // retryBaseMs / retryMaxMs: 연결이 끊기면 이 간격(ms)에서 시작해 두 배씩(최대 retryMaxMs) 늘려 가며 다시 연결한다.
 // nickAdjectives / nickNouns: 닉네임은 임의 id 로 만든 "형용사 명사 #숫자". 개인정보는 절대 쓰지 않는다.
+// 인사·응원말 프리셋(T 키 또는 우하단 💬 버튼). 글은 전송되지 않고 번호만 전송되며 받는 쪽이 이 목록에서 글을 찾는다 -> 순서(번호)를 바꾸면 옛 접속자와 말이 어긋나니 배포 중에는 끝에만 덧붙이는 게 안전하다. 항목당 16자 이하, 최대 9개(숫자 키 1~9). 팀이 자유롭게 고친다.
+export const QUICK_CHAT = ['안녕하세요! 👋', '화이팅! 💪', '합격하세요! 🍀', '수고했어요 😊', '같이 태워요 🔥', '면접 잘 보세요!', '힘내요, 우리 같이 해요', 'ㅎㅎ 반가워요'];
+
 export const MULTIPLAYER = {
   enabled: true,
   transport: 'supabase',
   sendHz: 3, heartbeatMs: 3000, epsPos: 0.05, epsRot: 0.05, minGapMs: 40,
   maxRemote: 20, maxTracked: 60, minRecvGapMs: 30,
   interpDelayMs: 250, extrapolateMs: 150, teleportDist: 8,
-  staleMs: 9000, nickMax: 24,
+  staleMs: 9000, 
+  chatGapMs: 2000, chatGlobalMax: 6, chatGlobalWindowMs: 3000,
   roomCap: 6, maxShards: 8, shardProbeMs: 700, fullRetryMs: 60000, idleMs: 5 * 60 * 1000,
   retryBaseMs: 1000, retryMaxMs: 30000,
   supabaseSdkUrl: 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm',

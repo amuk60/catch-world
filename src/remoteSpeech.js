@@ -8,6 +8,7 @@ import { remoteSayLine, remoteScene, REMOTE_BUBBLE_SECONDS } from './logic/inter
 const PREFIX = 'r-'; // hud 말풍선 id 앞머리(hud.js 의 REMOTE_PREFIX 와 같다)
 const HEAD_HEIGHT = 1.8; // 이름표(remotePlayers.js 의 LABEL_HEIGHT)와 같은 머리 위 높이(발 기준)
 const ABOVE_LABEL_PX = 26; // 말풍선이 이름표 위에 놓이도록 올리는 화면 거리
+const CHAT_SUFFIX = '~c'; // 인사·응원말 말풍선 키의 꼬리(quickChat.js)
 const GAP_PX = 8; // 옆 말풍선과 띄우는 거리
 
 // opts: { hud, crew, camera, renderer, config(INTERVIEW), interviewerOf(방문자 id): 그 방문자가 앉은 의자의 담당 면접관 id(없으면 null), posOf(방문자 id): 그 방문자의 { x, z }(효과음 위치, 없어도 된다), rng }
@@ -22,12 +23,15 @@ export function createRemoteSpeech({ hud, crew, camera, renderer, config, interv
     const items = [];
     for (const key of hud.speechIds()) {
       if (!key.startsWith(PREFIX)) continue;
-      const p = byId.get(key.slice(PREFIX.length));
+      const chat = key.endsWith(CHAT_SUFFIX); // 인사·응원말 말풍선(quickChat.js): 같은 방문자의 면접 답변 말풍선이 있으면 그 위에 쌓는다
+      const baseKey = chat ? key.slice(0, -CHAT_SUFFIX.length) : key;
+      const p = byId.get(baseKey.slice(PREFIX.length));
       if (!p) { hud.clearRemoteSpeech(key); continue; } // 방문자가 사라지면 말풍선도 걷는다
       point.set(p.x, p.y + HEAD_HEIGHT, p.z).project(camera);
       if (point.z >= 1) { hud.clearRemoteSpeech(key); continue; }
       const size = hud.speechSize(key) ?? { w: 120, h: 40 };
-      items.push({ key, x: (point.x * 0.5 + 0.5) * w, y: (-point.y * 0.5 + 0.5) * h - ABOVE_LABEL_PX, ...size, shift: 0 });
+      const under = chat ? hud.speechSize(baseKey) : null;
+      items.push({ key, x: (point.x * 0.5 + 0.5) * w, y: (-point.y * 0.5 + 0.5) * h - ABOVE_LABEL_PX - (under ? under.h + 6 : 0), ...size, shift: 0 });
     }
     items.sort((a, b) => a.x - b.x);
     for (let i = 1; i < items.length; i++) {

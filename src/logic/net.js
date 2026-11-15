@@ -1,5 +1,6 @@
 // 멀티플레이 순수 로직: 메시지 검증, 전송 정책, 보간 버퍼, 닉네임, id, 가까운 순 선택. 다른 방문자가 보낸 데이터는 전부 믿을 수 없는 입력으로 본다.
 import { SPACES } from './spaces.js';
+import { validateNick } from './nick.js';
 
 export const SPACE_IDS = Object.keys(SPACES);
 // 다른 방문자가 보낼 수 있는 동작 이름(플레이어 모델의 기본 상태 + 행동 클립). 이 밖의 값은 idle 로 본다.
@@ -59,6 +60,12 @@ export function cleanNick(raw, max = 24) {
   return cut || null;
 }
 
+// 받은 닉네임(믿을 수 없는 입력)을 logic/nick.js 의 같은 검사로 확인한다: 통과하면 다듬은 이름, 아니면(길이·글자·URL·전화번호·금칙어) id 로 만든 무난한 이름.
+export function nickOrFallback(raw, id, adjectives = [], nouns = []) {
+  const v = validateNick(raw);
+  return v.ok ? v.nick : nickFor(id, adjectives, nouns);
+}
+
 // ---- 상태 메시지 ----
 // 보낼 때: 필드를 모아 소수 둘째 자리로 줄인다. local: { space, x, z, y, rotY, anim, outfit, seat }.
 export function buildState(self, local, t) {
@@ -70,8 +77,8 @@ export function buildState(self, local, t) {
 }
 
 // 받은 값을 검사해 깨끗한 상태 객체로 바꾼다. 형식이 틀리면 null(버린다). 모르는 필드는 복사하지 않는다.
-// 숫자는 유한해야 하고 범위로 자른다. 동작·옷은 목록에 없으면 기본값. 닉네임은 다듬고 비면 id 로 만든 이름.
-export function validateState(raw, { adjectives = [], nouns = [], nickMax = 24 } = {}) {
+// 숫자는 유한해야 하고 범위로 자른다. 동작·옷은 목록에 없으면 기본값. 닉네임은 validateNick 로 다시 검사해 통과하지 못하면 id 로 만든 이름.
+export function validateState(raw, { adjectives = [], nouns = [] } = {}) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const { id, nick, space, x, z, y, rotY, anim, outfit, seat, t } = raw;
   if (typeof id !== 'string' || !ID_RE.test(id)) return null;
@@ -80,7 +87,7 @@ export function validateState(raw, { adjectives = [], nouns = [], nickMax = 24 }
   if (y !== undefined && !isNum(y)) return null;
   return {
     id,
-    nick: cleanNick(nick, nickMax) ?? nickFor(id, adjectives, nouns),
+    nick: nickOrFallback(nick, id, adjectives, nouns),
     space,
     x: clamp(x, -LIMIT_XZ, LIMIT_XZ), z: clamp(z, -LIMIT_XZ, LIMIT_XZ), y: clamp(y ?? 0, 0, LIMIT_Y),
     rotY: wrapAngle(clamp(rotY, -1000, 1000)),
@@ -273,4 +280,21 @@ export function validateRoomMsg(raw, limits) {
   const { ty, i } = raw;
   if (ty !== 'wash' || !Number.isInteger(i) || i < 0 || i >= limits.washers) return null;
   return { k: 'fx', id, space, ty, i };
+}
+
+// ---- 인사·응원말(프리셋) 메시지 ----
+// 글은 절대 보내지 않는다: 프리셋 번호(정수)만 보내고, 받는 쪽이 자기 config 의 QUICK_CHAT 에서 글을 찾는다.
+//   { k:'chat', id, space, i }
+export function buildChat(self, space, i) {
+  return { k: 'chat', id: self.id, space, i };
+}
+
+// limits: { count(프리셋 개수) }. 받은 값을 검사해 깨끗한 { id, space, i } 로. 틀리면 null. 모르는 필드는 복사하지 않는다.
+export function validateChat(raw, limits) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || raw.k !== 'chat' || !limits) return null;
+  const { id, space, i } = raw;
+  if (typeof id !== 'string' || !ID_RE.test(id)) return null;
+  if (typeof space !== 'string' || !SPACE_IDS.includes(space)) return null;
+  if (!Number.isInteger(i) || i < 0 || i >= limits.count) return null;
+  return { id, space, i };
 }
