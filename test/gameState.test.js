@@ -4,6 +4,10 @@ import { createGameState } from '../src/logic/gameState.js';
 import { STRESS, ACTION_REDUCE } from '../src/config.js';
 
 const make = () => createGameState({ ...STRESS });
+// 감소량(ACTION_REDUCE)에서 유도하는 값: 목표(<= goal)가 되는 번째, 0 이 되는 번째.
+const GOAL_AT = Math.ceil((STRESS.start - STRESS.goal) / ACTION_REDUCE);
+const EMPTY_AT = Math.ceil(STRESS.start / ACTION_REDUCE);
+const valueAt = (n) => Math.max(0, STRESS.start - n * ACTION_REDUCE);
 
 test('초기 상태: 시작값, 클리어 아님, 행동 0회', () => {
   const g = make();
@@ -14,34 +18,35 @@ test('초기 상태: 시작값, 클리어 아님, 행동 0회', () => {
   assert.equal(g.actionsDone, 0);
 });
 
-test('행동 하나의 감소량은 3 이다', () => {
-  assert.equal(ACTION_REDUCE, 3);
+test('행동 하나의 감소량은 5 이다(사용자가 정함)', () => {
+  assert.equal(ACTION_REDUCE, 5);
 });
 
 test('apply 는 줄이고 { value, justGoal, justEmpty } 를 돌려준다', () => {
   const g = make();
-  assert.deepEqual(g.apply(ACTION_REDUCE), { value: 97, justGoal: false, justEmpty: false });
-  assert.equal(g.stress.value, 97);
+  assert.deepEqual(g.apply(ACTION_REDUCE), { value: valueAt(1), justGoal: false, justEmpty: false });
+  assert.equal(g.stress.value, STRESS.start - ACTION_REDUCE);
   assert.equal(g.actionsDone, 1);
 });
 
-test('27번이면 목표(20) 이하, 33번이면 1, 34번이면 0 이고 그 뒤로도 0', () => {
+test('목표 번째에 목표 이하, 바로 앞은 목표 위, 0 번째부터 0 이고 그 뒤로도 0', () => {
   const g = make();
   const at = {};
-  for (let i = 1; i <= 40; i++) at[i] = g.apply(ACTION_REDUCE).value;
-  assert.equal(at[26], 22);
-  assert.equal(at[27], 19);
-  assert.equal(at[33], 1);
-  assert.equal(at[34], 0);
-  assert.equal(at[40], 0);
-  assert.equal(g.actionsDone, 40);
+  for (let i = 1; i <= EMPTY_AT + 6; i++) at[i] = g.apply(ACTION_REDUCE).value;
+  assert.ok(at[GOAL_AT - 1] > STRESS.goal);
+  assert.ok(at[GOAL_AT] <= STRESS.goal);
+  assert.equal(at[GOAL_AT], valueAt(GOAL_AT));
+  assert.ok(at[EMPTY_AT - 1] > 0);
+  assert.equal(at[EMPTY_AT], 0);
+  assert.equal(at[EMPTY_AT + 6], 0);
+  assert.equal(g.actionsDone, EMPTY_AT + 6);
 });
 
-test('justGoal 는 목표(20) 이하가 되는 순간 정확히 한 번(27번째)', () => {
+test('justGoal 는 목표(20) 이하가 되는 순간 정확히 한 번', () => {
   const g = make();
   const fired = [];
-  for (let i = 1; i <= 40; i++) if (g.apply(ACTION_REDUCE).justGoal) fired.push(i);
-  assert.deepEqual(fired, [27]);
+  for (let i = 1; i <= EMPTY_AT + 6; i++) if (g.apply(ACTION_REDUCE).justGoal) fired.push(i);
+  assert.deepEqual(fired, [GOAL_AT]);
   assert.equal(g.cleared, true);
 });
 
@@ -59,11 +64,12 @@ test('목표를 넘어 한 번에 크게 줄어도 한 번만', () => {
 
 test('클리어 뒤에도 계속 줄고 다시는 justGoal 가 없다', () => {
   const g = make();
-  for (let i = 0; i < 27; i++) g.apply(ACTION_REDUCE);
+  for (let i = 0; i < GOAL_AT; i++) g.apply(ACTION_REDUCE);
   const after = [];
-  for (let i = 0; i < 10; i++) after.push(g.apply(ACTION_REDUCE));
+  for (let i = 1; i <= EMPTY_AT - GOAL_AT + 4; i++) after.push(g.apply(ACTION_REDUCE));
   assert.ok(after.every((r) => r.justGoal === false));
-  assert.deepEqual(after.map((r) => r.value), [16, 13, 10, 7, 4, 1, 0, 0, 0, 0]);
+  assert.deepEqual(after.map((r) => r.value), after.map((_, i) => valueAt(GOAL_AT + i + 1)));
+  assert.equal(after.at(-1).value, 0);
 });
 
 test('0 아래로 내려가지 않는다', () => {
@@ -101,17 +107,17 @@ test('apply(amount, { counts: false }) 는 줄이되 행동 횟수에는 넣지 
   assert.equal(g.actionsDone, 1);
 });
 
-test('justEmpty 는 값이 처음 0 이 되는 호출에서 정확히 한 번(34번째), justGoal 은 27번째', () => {
+test('justEmpty 는 값이 처음 0 이 되는 호출에서 정확히 한 번, justGoal 은 목표 번째', () => {
   const g = make();
   const goal = [];
   const empty = [];
-  for (let i = 1; i <= 40; i++) {
+  for (let i = 1; i <= EMPTY_AT + 6; i++) {
     const r = g.apply(ACTION_REDUCE);
     if (r.justGoal) goal.push(i);
     if (r.justEmpty) empty.push(i);
   }
-  assert.deepEqual(goal, [27]);
-  assert.deepEqual(empty, [34]);
+  assert.deepEqual(goal, [GOAL_AT]);
+  assert.deepEqual(empty, [EMPTY_AT]);
   assert.equal(g.emptied, true);
 });
 

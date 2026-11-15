@@ -76,7 +76,7 @@ export const ZONES = { forestMaxX: -1.5, cityMinX: 2.5 };
 export const INTERACT_RADIUS = 1.5;
 
 // 소각장 행동(태우기·파쇄)과 불멍. 거리는 월드 단위, 시간은 초.
-// ACTION_REDUCE: 행동 하나가 효과 순간에 줄이는 스트레스 지수.
+// ACTION_REDUCE: 모션 1회당 스트레스 감소량(사용자가 5로 정함).
 // AUTO_GAP: 자동 버튼이 행동을 끝낸 뒤 다음 행동(태우기 -> 파쇄 -> 태우기 ...)을 시작하기까지 쉬는 시간.
 // PASSIVE: 불멍(소각로 옆 벤치에 앉아 있기)으로 interval 초마다 amount 씩 자동으로 줄어든다(행동 하나보다 약하게).
 // FIRE_ZONE_RADIUS: 소각로 중심에서 이 거리 안에 있어야 행동 막대가 보인다.
@@ -87,7 +87,7 @@ export const INTERACT_RADIUS = 1.5;
 // ACTION_EFFECT_AT: 던지기/치기 단계 길이 중 효과(종이가 불에 닿는 순간 등)가 일어나는 비율.
 // ACTION_TARGET_SECONDS: 행동 한 번의 총 길이 목표. 클립 합 + 회전이 이보다 짧으면 던지기/치기 클립만 천천히 재생해 맞춘다
 // (나머지는 원래 속도, 더 길면 늘리지 않는다).
-export const ACTION_REDUCE = 3;
+export const ACTION_REDUCE = 5;
 export const AUTO_GAP = 1;
 export const PASSIVE = { interval: 5, amount: 2 };
 export const FIRE_ZONE_RADIUS = 4.5;
@@ -216,7 +216,7 @@ export const INTERVIEW_ZONE_RADIUS = 3.3;
 // INTERVIEW_ROUND: 질문에 이만큼 연속으로 답하면 면접관 3명이 일어나 박수를 치고 "최종 합격!" (공간을 나가거나 끝나면 처음부터).
 // INTERVIEW_BONUS: 완주 보너스로 한 번 더 줄어드는 지수(균형 조정 대상). 답변·돌발행동 한 번의 감소량은 언제나 ACTION_REDUCE 이다.
 export const INTERVIEW_ROUND = 5;
-export const INTERVIEW_BONUS = 3;
+export const INTERVIEW_BONUS = 5;
 // 면접 연출 시간(초). 답변 한 번 = 답하는 동작 + 면접관 반응 합쳐 INTERVIEW_ANSWER_SECONDS, 돌발행동 하나 = INTERVIEW_IMPROV_SECONDS(다른 행동의 ACTION_TARGET_SECONDS 와 비슷하게).
 // INTERVIEW_FINALE_SECONDS: 5문항 완주 때 이어지는 "일어나 박수 + 최종 합격!" 연출. SPEECH_SECONDS: 말풍선 하나가 떠 있는 시간.
 export const INTERVIEW_ANSWER_SECONDS = 5;

@@ -54,6 +54,8 @@ import { stepToward, pushOutOfCircle, headingY } from './logic/movement.js';
 import { createFootstepper, surfaceAt, STEP_SOUND, FOOTSTEP_STRIDE, FOOTSTEP_JITTER } from './logic/audioPolicy.js';
 import { sfx } from './audio/sfx.js';
 import { createSoundButton } from './audio/soundButton.js';
+import { createKeyState, isMoveKey, isArrowKey, shouldIgnoreKey } from './logic/keyMove.js';
+import { createGuideHud } from './guideHud.js';
 
 const MAX_DT = 0.1; // 한 프레임에 진행하는 최대 시간(초). 탭이 멈췄다 돌아와도 행동·애니메이션이 한꺼번에 튀지 않게 한다.
 const FALLBACK_RAW_DURATIONS = { 'emote-no': 0.667, 'pick-up': 0.333, 'attack-melee-right': 0.417, 'interact-right': 0.667, 'emote-yes': 0.667 }; // 캐릭터 모델이 없을 때(모델의 실제 클립 길이)
@@ -134,6 +136,9 @@ if (isMobileUA(navigator.userAgent)) {
     onClose: () => dispatch('close'),
   });
   createSoundButton(document.getElementById('game'), sfx); // 우상단 효과음 켜기/끄기(M 키도 같다). 소리는 첫 입력 뒤에야 난다
+  let guideStorage = null;
+  try { guideStorage = window.localStorage; } catch { /* 저장소 접근 불가: 안내는 매번 처음처럼 */ }
+  const helpGuide = createGuideHud(document.getElementById('game'), { storage: guideStorage }); // 조작 안내 카드와 "?" 버튼(H 키)
   sfx.setFire(FURNACE); // 모닥불 지글거림은 소각로에 가까울수록 커진다
 
   // 공간별 데이터: 클릭 레이캐스트 바닥, 클릭/호버 판정 부피, 상호작용 대상, 장애물. 이동·클릭·E 안내는 항상 지금 공간의 것을 쓴다.
@@ -173,6 +178,7 @@ if (isMobileUA(navigator.userAgent)) {
   const targetPos = new THREE.Vector3(player.position.x, ORBIT.targetHeight, player.position.z);
   const desired = new THREE.Vector3();
   let moveTarget = null;
+  const keys = createKeyState(); // 눌린 이동 키(WASD·방향키)
   let mode = 'free'; // 'free' | 'seated' | 'fortune' | 'result' | 'transition' | 'wearing' | 'interview-choice' | 'interview-play' (전이는 logic/playerMode.js)
   const transition = createTransition(TRANSITION); // 공간 전환(차원문) 상태 기계
   const cameraClear = createCameraClear(CAMERA_CLEAR); // 마당에서 건물이 플레이어를 가리면 카메라를 천천히 돌려 피한다(config 의 CAMERA_CLEAR 로 끈다)
@@ -666,6 +672,7 @@ if (isMobileUA(navigator.userAgent)) {
     if (holdsSeat(mode) && !holdsSeat(next)) standUp(); // 앉은 모드 사이(앉기 <-> 면접 선택·연출)를 오갈 때는 일어나지 않는다
     if (mode === 'fortune') hud.closeFortune();
     mode = next;
+    keys.clear(); // 모드가 바뀌면 눌려 있던 이동 키는 잊는다(걷기가 혼자 계속되지 않게)
     if (mode !== 'free') { runner.cancelAuto(); abortAction(); } // 앉기·포춘 모달을 열면 자동이 꺼지고 진행 중인 행동도 취소된다.
     return true;
   }
@@ -845,6 +852,24 @@ if (isMobileUA(navigator.userAgent)) {
     }
   });
 
+  // 키보드 이동(WASD·방향키, 카메라 기준): 클릭 이동과 같은 충돌·경계·애니메이션을 쓰고, 이동 키를 누르면 클릭 경로를 취소한다. 앉아 있으면 클릭처럼 먼저 일어난다.
+  window.addEventListener('keydown', (e) => {
+    if (!isMoveKey(e.code) || shouldIgnoreKey(e, e.target)) return;
+    if ((mode !== 'free' && mode !== 'seated') || transition.active || runner.isBusy()) { keys.clear(); return; } // 면접·포춘·결과·전환·옷 갈아입기·행동 중에는 무시
+    if (isArrowKey(e.code)) e.preventDefault();
+    if (e.repeat && !keys.any()) return; // 클릭 등으로 비워진 뒤에는 키를 다시 눌러야 걷는다
+    if (mode === 'seated') {
+      runner.cancelAuto();
+      dispatch('move'); // 클릭으로 일어날 때와 같은 경로(일어나고 키를 비운다)
+    } else if (!keys.any()) runner.cancelAuto();
+    if (mode !== 'free') return;
+    stopWalking(); // 클릭 경로와 표시를 지운다
+    keys.down(e.code);
+  });
+  window.addEventListener('keyup', (e) => { keys.up(e.code); });
+  window.addEventListener('blur', () => keys.clear());
+  document.addEventListener('visibilitychange', () => keys.clear());
+
   // 화면 좌표(ndc)에 보이는 상호작용 대상(없으면 null).
   function pickInteractable(ndc) {
     raycaster.setFromCamera(new THREE.Vector2(ndc.x, ndc.y), camera);
@@ -879,6 +904,7 @@ if (isMobileUA(navigator.userAgent)) {
       }
       runner.cancelAuto();
       dispatch('move');
+      keys.clear(); // 클릭한 목적지가 이긴다(키를 다시 누를 때까지)
       walkTo(target);
     },
     onHover: (ndc, clientX, clientY) => {
@@ -926,7 +952,17 @@ if (isMobileUA(navigator.userAgent)) {
       }
       hud.setPortal(transition.radius());
     }
-    if (moveTarget) {
+    const keyDir = mode === 'free' && !transition.active && !runner.isBusy() ? keys.direction(orbit.azimuthDeg) : null;
+    if (keyDir) {
+      // 키보드 이동: 카메라 기준 방향으로 PLAYER.speed, 클릭 이동과 같은 경계·장애물 처리.
+      const cur = { x: player.position.x, z: player.position.z };
+      const wanted = { x: cur.x + keyDir.x * PLAYER.speed * dt, z: cur.z + keyDir.z * PLAYER.speed * dt };
+      player.rotation.y = headingY(cur, wanted);
+      const pushed = pushOut(clampToSpace(wanted, spaceId, PLAYER.radius + 0.5));
+      player.position.x = pushed.x;
+      player.position.z = pushed.z;
+      if (stepper.advance(Math.hypot(pushed.x - cur.x, pushed.z - cur.z))) sfx.play(STEP_SOUND[surfaceAt(spaceId, pushed.x, pushed.z, layout.plaza)], { pan: stepper.foot ? 0.18 : -0.18 });
+    } else if (moveTarget) {
       const cur = { x: player.position.x, z: player.position.z };
       const next = stepToward(cur, moveTarget, PLAYER.speed, dt);
       if (Math.hypot(moveTarget.x - cur.x, moveTarget.z - cur.z) > 1e-3) {
@@ -949,6 +985,7 @@ if (isMobileUA(navigator.userAgent)) {
       player.position.y += (y - player.position.y) * k;
       player.rotation.y += turn * k;
     }
+    helpGuide.update(dt, Boolean(moveTarget || keyDir), spaceId);
     outfit.update(dt); // 널어 둔 새 셔츠는 밖에 나가 있어도 마른다
     updateWear(dt);
     updateActions(dt);
@@ -961,7 +998,7 @@ if (isMobileUA(navigator.userAgent)) {
       bubblePoint.set(player.position.x, 1.9, player.position.z).project(camera);
       hud.positionBubble((bubblePoint.x * 0.5 + 0.5) * w, (-bubblePoint.y * 0.5 + 0.5) * h);
     }
-    character?.setState(holdsSeat(mode) ? 'sit' : moveTarget ? 'walk' : 'idle');
+    character?.setState(holdsSeat(mode) ? 'sit' : (moveTarget || keyDir) ? 'walk' : 'idle');
     // E 키 안내: 포춘 모달 중에는 숨기고, 앉아 있으면 "일어나기", 아니면 가장 가까운 대상의 문구.
     // 빨랫줄 곁은 옷 상태가 정한다: 마른 새 셔츠가 있을 때만 E, 마르는 중이면 누를 수 없는 힌트, 그 밖에는 안내 없음.
     let nextPrompt = null;

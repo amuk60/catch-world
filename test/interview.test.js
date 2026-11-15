@@ -307,8 +307,8 @@ test('validateInterview: 잘못된 설정은 문제 목록으로 알려 준다',
 // ---- 감소량 규칙(설정) ----
 test('설정: 완주 보너스는 별도 상수이고 답변 감소량(ACTION_REDUCE)과 이름이 다르다', () => {
   assert.equal(INTERVIEW_ROUND, 5);
-  assert.equal(INTERVIEW_BONUS, 3);
-  assert.equal(ACTION_REDUCE, 3, '커밋된 감소량은 그대로');
+  assert.equal(INTERVIEW_BONUS, 5);
+  assert.equal(ACTION_REDUCE, 5, '커밋된 감소량은 그대로');
 });
 
 test('answerScript: 최종 합격! 말풍선만 큰 글씨(big)이고 다른 말풍선은 아니다', () => {
