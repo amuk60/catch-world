@@ -42,7 +42,7 @@ function flash(li) {
 function render() {
   const groups = new Map();
   for (const it of items) (groups.get(it.group) ?? groups.set(it.group, []).get(it.group)).push(it);
-  const order = ['이동', '소각장', '세탁소', '면접장', '화면', '앰비언스', '다른 방문자'];
+  const order = ['이동', '소각장', '세탁소', '면접장', '화면', '다른 방문자'];
   const root = $('groups');
   for (const group of order) {
     const list = groups.get(group) ?? [];
@@ -125,11 +125,11 @@ async function analyzeAll() {
     if (Math.abs(r.dc) > 0.02) problems.push('직류 치우침');
     if (!loop && r.endLevel > 0.01) problems.push('끝이 잘림');
     const tr = document.createElement('tr');
-    const cells = [r.name, r.duration.toFixed(2), r.peak.toFixed(3), r.peakAtMax.toFixed(3), r.rms.toFixed(4), r.dc.toFixed(4), problems.length ? problems.join(', ') : '정상'];
+    const cells = [r.name, r.duration.toFixed(2), r.peak.toFixed(3), r.peakAtMax.toFixed(3), r.rms.toFixed(4), r.crest.toFixed(1), Math.round(r.centroid), `${Math.round(r.low600 * 100)}%`, r.dc.toFixed(4), problems.length ? problems.join(', ') : '정상'];
     cells.forEach((text, k) => {
       const td = document.createElement('td');
       td.textContent = text;
-      if (problems.length && (k === 6)) td.className = 'bad';
+      if (problems.length && (k === 9)) td.className = 'bad';
       tr.append(td);
     });
     body.append(tr);

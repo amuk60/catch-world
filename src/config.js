@@ -104,6 +104,13 @@ export const CLOTHESLINE_SLOTS = { shared: 6, personal: 6 };
 // DRY_SECONDS: 새 흰 셔츠를 빨랫줄에 널고 마르기까지 걸리는 시간(초, 실시간. 밖에 나가 있어도 센다).
 // WEAR_SECONDS: 마른 새 셔츠를 입는 동작의 길이(초, 이동·입력은 잠긴다). WEAR_SWAP_AT: 그중 셔츠가 줄에서 사라지고 옷이 바뀌는 순간의 비율.
 export const DRY_SECONDS = 8;
+
+// 세탁소 순서 안내 문구(눌러도 아무 일 없는 짧은 힌트, 화면 아래 E 안내 줄에 뜬다). 순서: 1 세탁 -> 2 널기 -> 마를 때까지 기다리기 -> E 새 셔츠 입기. 팀이 자유롭게 수정한다.
+// washing: 세탁 동작이 진행되는 동안(셔츠가 세탁기에 들어가 덜컹거릴 때까지), tank: 세탁이 끝나고 아직 빨랫줄에 널기 전. (마르는 중·입기 문구는 logic/outfit.js 의 outfitPrompt)
+export const LAUNDRY_GUIDE = {
+  washing: '세탁 중… 다 빨리면 빨랫줄에 널어요',
+  tank: '다음은 2 널기! 새 셔츠를 빨랫줄에 널어요',
+};
 export const WEAR_SECONDS = 1.2;
 export const WEAR_SWAP_AT = 0.5;
 export const ACTION_TURN_SECONDS = 0.5;

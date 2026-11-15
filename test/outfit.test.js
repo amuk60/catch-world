@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createOutfit, appearanceOf, outfitPrompt, hasMyShirt } from '../src/logic/outfit.js';
-import { DRY_SECONDS } from '../src/config.js';
+import { createOutfit, appearanceOf, outfitPrompt, hasMyShirt, laundryGuide } from '../src/logic/outfit.js';
+import { DRY_SECONDS, LAUNDRY_GUIDE } from '../src/config.js';
 
 test('DRY_SECONDS 는 8초', () => {
   assert.equal(DRY_SECONDS, 8);
@@ -164,4 +164,47 @@ test('outfitPrompt: dry 에서만 E 안내, drying 은 안 눌리는 힌트', ()
   assert.deepEqual(outfitPrompt('drying', 4.2), { text: '셔츠가 마르는 중… (5초)', actionable: false });
   assert.deepEqual(outfitPrompt('drying', 0.01), { text: '셔츠가 마르는 중… (1초)', actionable: false });
   for (const s of ['clean', 'dirty', 'tank']) assert.equal(outfitPrompt(s, 0), null);
+});
+
+// ---- 세탁소 순서 안내: 1 세탁 -> 2 널기 -> 마를 때까지 기다리기 -> E 새 셔츠 입기 ----
+test('laundryGuide: 세탁 동작이 진행되는 동안은 "세탁 중… 다 빨리면 빨랫줄에 널어요"', () => {
+  for (const state of ['clean', 'dirty', 'tank', 'drying', 'dry']) assert.equal(laundryGuide(state, { washing: true }), LAUNDRY_GUIDE.washing, state);
+  assert.match(LAUNDRY_GUIDE.washing, /세탁 중/);
+  assert.match(LAUNDRY_GUIDE.washing, /널어요/);
+});
+
+test('laundryGuide: 세탁이 끝나 tank 이면 "다음은 2 널기!" 를 널 때까지 계속 띄운다', () => {
+  assert.equal(laundryGuide('tank'), LAUNDRY_GUIDE.tank);
+  assert.equal(laundryGuide('tank', { washing: false }), LAUNDRY_GUIDE.tank);
+  assert.match(LAUNDRY_GUIDE.tank, /2 널기/);
+});
+
+test('laundryGuide: 세탁 전(clean·dirty)과 널은 뒤(drying·dry)에는 안내가 없다(마르는 중·입기는 outfitPrompt)', () => {
+  for (const state of ['clean', 'dirty', 'drying', 'dry']) assert.equal(laundryGuide(state), null, state);
+  assert.equal(outfitPrompt('drying', 3).actionable, false);
+  assert.equal(outfitPrompt('dry', 0).text, '새 셔츠 입기');
+});
+
+test('laundryGuide: 세탁소 밖에서는 어떤 상태에서도 나오지 않는다', () => {
+  for (const state of ['clean', 'dirty', 'tank', 'drying', 'dry']) {
+    for (const spaceId of ['yard', 'interview']) {
+      assert.equal(laundryGuide(state, { washing: true, spaceId }), null, `${state}/${spaceId}`);
+      assert.equal(laundryGuide(state, { spaceId }), null);
+    }
+  }
+});
+
+test('laundryGuide: 실제 순서(세탁 -> 널기 -> 마름 -> 입기)를 따라 문구가 이어진다', () => {
+  const o = createOutfit({ drySeconds: 2 });
+  assert.equal(laundryGuide(o.state), null);
+  o.onAction('wash');
+  assert.equal(laundryGuide(o.state, { washing: true }), LAUNDRY_GUIDE.washing); // 셔츠가 세탁기에 들어가 덜컹거리는 동안
+  assert.equal(laundryGuide(o.state), LAUNDRY_GUIDE.tank); // 그 뒤 널기 전
+  o.onAction('hang');
+  assert.equal(laundryGuide(o.state), null);
+  assert.match(outfitPrompt(o.state, o.secondsLeft).text, /마르는 중/);
+  o.update(2);
+  assert.equal(outfitPrompt(o.state, o.secondsLeft).text, '새 셔츠 입기');
+  o.wear();
+  assert.equal(laundryGuide(o.state), null);
 });

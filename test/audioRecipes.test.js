@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { RECIPES, LOOPS, SOUND_NAMES, LOOP_NAMES } from '../src/audio/recipes.js';
 import { createNoiseBuffers, createGraph, buildVoice, createEngine, STORAGE_KEYS, MAX_VOICES } from '../src/audio/engine.js';
 import { speakerVoice } from '../src/logic/audioPolicy.js';
+import { synthFire, FIRE } from '../src/audio/fireSynth.js';
+import { crestFactor, rmsOf, peakOf, spectralCentroid, bandShare, spikeRatio, seamCheck } from '../src/audio/metrics.js';
 
 // ---- 가짜 AudioContext: 노드 연결·예약 값을 기록하고 Web Audio 가 던지는 잘못(NaN, 0 으로의 지수 곡선, 음수 시각)을 똑같이 던진다 ----
 function fakeContext() {
@@ -12,7 +14,7 @@ function fakeContext() {
   function param(owner, value = 0) {
     const p = {
       _owner: owner, value,
-      setValueAtTime(v, t) { assert.ok(Number.isFinite(v), `값이 이상함: ${v}`); checkTime(t); return p; },
+      setValueAtTime(v, t) { assert.ok(Number.isFinite(v), `값이 이상함: ${v}`); checkTime(t); p.value = v; return p; },
       linearRampToValueAtTime(v, t) { assert.ok(Number.isFinite(v), `값이 이상함: ${v}`); checkTime(t); return p; },
       exponentialRampToValueAtTime(v, t) { assert.ok(Number.isFinite(v) && v > 0, `지수 곡선의 목표는 0 보다 커야 함: ${v}`); checkTime(t); return p; },
       setTargetAtTime(v, t) { assert.ok(Number.isFinite(v)); checkTime(t); return p; },
@@ -123,9 +125,125 @@ for (const name of LOOP_NAMES) {
   });
 }
 
-test('말소리: 목소리마다 음절 수만큼 길어지고 최대 8 음절', () => {
-  const lens = [2, 5, 8].map((n) => runRecipe('speech', RECIPES.speech, seeded(9), { voice: 'leader', syllables: n }).built.duration);
+// ---- 소리 정리: 배경음 없음, 필요한 소리만 ----
+test('반복음은 소각로 모닥불 하나뿐이고(배경음·앰비언스 없음), 효과음에도 앰비언스 버스·분류가 없다', () => {
+  assert.deepEqual(LOOP_NAMES, ['fire']);
+  for (const [name, def] of Object.entries({ ...RECIPES, ...LOOPS })) {
+    assert.equal(def.bus, undefined, `${name} 에 bus 가 남음`);
+    assert.notEqual(def.group, '앰비언스', name);
+  }
+});
+
+test('빼기로 한 소리는 레시피에 없고, 남기기로 한 소리만 있다', () => {
+  const removed = ['crumple', 'paperOut', 'sigh', 'tick', 'swish', 'wearRustle', 'sit', 'stand', 'marker', 'relief', 'toss', 'firePop', 'bird', 'hover', 'scrape', 'hop', 'stomp', 'ambYard', 'ambLaundry', 'ambInterview'];
+  for (const name of removed) assert.equal(SOUND_NAMES.includes(name) || LOOP_NAMES.includes(name), false, `${name} 가 남아 있음`);
+  const kept = ['stepGrass', 'stepStone', 'stepTile', 'portal', 'whoof', 'shredder', 'washSplash', 'washerRattle', 'flap', 'tada', 'ding', 'confirm', 'speech', 'applause', 'ohno', 'laugh', 'fanfare', 'click', 'popupSide', 'popupModal', 'jingle', 'crack', 'fortune'];
+  assert.deepEqual([...SOUND_NAMES].sort(), [...kept].sort());
+});
+
+test('발소리: 낮은 몸통(진동음) 없이 높은 대역의 아주 짧은 거른 잡음 알갱이뿐이다(사박사박)', () => {
+  for (const name of ['stepGrass', 'stepStone', 'stepTile']) {
+    for (const seed of [1, 2, 3]) {
+      const { nodes, log, built } = runRecipe(name, RECIPES[name], seeded(seed));
+      assert.ok(built.duration <= 0.13, `${name} 길이 ${built.duration}`);
+      assert.equal(nodes.filter((n) => n.kind === 'osc').length, 0, `${name}: 낮은 쿵 소리를 내는 진동음이 있다`);
+      const filters = nodes.filter((n) => n.kind === 'filter');
+      const highpasses = filters.filter((f) => f.type === 'highpass');
+      const bands = filters.filter((f) => f.type === 'bandpass');
+      assert.ok(highpasses.length >= 2 && highpasses.length === bands.length, `${name}: 알갱이마다 하이패스 + 밴드패스`);
+      for (const f of highpasses) assert.ok(f.frequency.value >= 770, `${name}: 하이패스 ${f.frequency.value}Hz`); // rate 1.1 이 곱해져 있다(레시피는 700 이상)
+      for (const f of bands) assert.ok(f.frequency.value >= 1500 && f.frequency.value <= 6500, `${name}: 밴드 ${f.frequency.value}Hz`);
+      const grainLen = Math.max(...log.stops) - 0.5;
+      assert.ok(grainLen <= 0.2, `${name} 소스가 오래 남음 ${grainLen}`);
+    }
+  }
+});
+
+test('세탁기 덜컹: 짧고 낮은 두드림 몇 번뿐이고, 이어지는 웅웅거림(긴 진동음·톱니파)이 없다', () => {
+  const { nodes, built } = runRecipe('washerRattle', RECIPES.washerRattle, seeded(3));
+  assert.ok(built.duration >= 1.0 && built.duration <= 1.5, `길이 ${built.duration}`);
+  const oscs = nodes.filter((n) => n.kind === 'osc');
+  assert.ok(oscs.length >= 4, '덜컹 몇 번');
+  for (const o of oscs) {
+    assert.ok(o._stopped - o._started <= 0.3, `진동음이 ${o._stopped - o._started}초 이어짐`);
+    assert.notEqual(o.type, 'sawtooth', '톱니파 웅웅 없음');
+    assert.ok(o.frequency.value <= 280, `낮은 두드림 ${o.frequency.value}Hz`);
+  }
+});
+
+test('말소리 웅얼거림은 최대 3 음절로 짧다', () => {
+  for (const voice of ['leader', 'hr', 'mentor', 'player', 'remote']) {
+    const { nodes, built } = runRecipe('speech', RECIPES.speech, seeded(5), { voice, syllables: 99 });
+    assert.ok(built.duration <= 0.6, `${voice} 길이 ${built.duration}`);
+    assert.ok(nodes.filter((n) => n.kind === 'osc').length <= 3);
+  }
+});
+
+// ---- 모닥불(편안한 ASMR): 미리 만든 되풀이 표본 ----
+test('모닥불 표본: 유한하고 RMS 가 맞고 파고율이 낮고 따뜻하며 홀로 튀는 소리가 없다', () => {
+  const sr = 22050;
+  for (const seed of [1, 2, 3, 4, 5, 6]) {
+    const data = synthFire(sr, seeded(seed));
+    assert.equal(data.length, Math.floor(sr * FIRE.seconds));
+    for (let i = 0; i < data.length; i += 97) assert.ok(Number.isFinite(data[i]));
+    assert.ok(Math.abs(rmsOf(data) - FIRE.rms) < 1e-3, `rms ${rmsOf(data)}`);
+    const crest = crestFactor(data);
+    assert.ok(crest <= 5.5, `파고율 ${crest.toFixed(2)} (톡톡 튀는 소리)`);
+    const centroid = spectralCentroid(data, sr);
+    assert.ok(centroid >= 500 && centroid <= 1800, `스펙트럼 중심 ${Math.round(centroid)}Hz (따뜻한 대역)`);
+    assert.ok(bandShare(data, sr, 5000, sr / 2) < 0.01, '5kHz 위가 거의 없다(날카롭지 않다)');
+    const spike = spikeRatio(data, sr, { loop: true });
+    assert.ok(spike <= 3.5, `홀로 튀는 정도 ${spike.toFixed(2)}`);
+  }
+});
+
+test('모닥불 표본: 끝 -> 처음 이음매가 이어지고, 같은 씨앗이면 같고 씨앗이 다르면 다르다', () => {
+  const sr = 22050;
+  for (const seed of [1, 2, 3, 4]) {
+    const data = synthFire(sr, seeded(seed));
+    const seam = seamCheck(data, sr);
+    assert.ok(seam.jumpRatio <= 6, `이음매 점프 ${seam.jumpRatio.toFixed(2)}`);
+    assert.ok(seam.rmsRatio > 0.4 && seam.rmsRatio < 1.7, `이음매 둘레 크기 ${seam.rmsRatio.toFixed(2)}`);
+  }
+  assert.deepEqual(synthFire(sr, seeded(7)).slice(0, 2000), synthFire(sr, seeded(7)).slice(0, 2000));
+  assert.notDeepEqual(synthFire(sr, seeded(7)).slice(0, 2000), synthFire(sr, seeded(8)).slice(0, 2000));
+});
+
+test('모닥불 표본: 규칙적인 박자가 없다(크기 변화의 자기상관이 낮다)', () => {
+  const sr = 22050;
+  const data = synthFire(sr, seeded(11));
+  const win = Math.round(sr * 0.01);
+  const env = [];
+  for (let i = 0; i + win <= data.length; i += win) { let p = 0; for (let k = i; k < i + win; k++) p = Math.max(p, Math.abs(data[k])); env.push(p); }
+  const mean = env.reduce((a, b) => a + b, 0) / env.length;
+  const dev = env.map((v) => v - mean);
+  const var0 = dev.reduce((a, b) => a + b * b, 0);
+  let best = 0;
+  for (let lag = 10; lag <= 150; lag++) { // 0.1~1.5초 박자
+    let c = 0;
+    for (let i = 0; i + lag < dev.length; i++) c += dev[i] * dev[i + lag];
+    best = Math.max(best, c / var0);
+  }
+  assert.ok(best < 0.35, `일정한 박자의 흔적 ${best.toFixed(2)}`);
+});
+
+test('모닥불 반복음: 만든 표본이 소스에 담겨 반복 재생되고 멈출 수 있다', () => {
+  const { ctx, nodes } = fakeContext();
+  const out = ctx.createGain();
+  const before = nodes.length;
+  const handle = LOOPS.fire.run({ ctx, out, t: 0, noise: createNoiseBuffers(ctx, seeded(4)), rng: seeded(5), rate: 1 });
+  const src = nodes.slice(before).find((n) => n.kind === 'buffer');
+  assert.equal(src.loop, true);
+  assert.ok(Math.abs(src.buffer.duration - FIRE.seconds) < 0.01);
+  assert.ok(peakOf(src.buffer.getChannelData(0)) > 0);
+  handle.stop(3);
+  assert.equal(src._stopped, 3);
+});
+
+test('말소리: 목소리마다 음절 수만큼 길어지고 최대 3 음절(아주 짧게)', () => {
+  const lens = [1, 2, 3].map((n) => runRecipe('speech', RECIPES.speech, seeded(9), { voice: 'leader', syllables: n }).built.duration);
   assert.ok(lens[0] < lens[1] && lens[1] < lens[2]);
+  assert.ok(runRecipe('speech', RECIPES.speech, seeded(9), { voice: 'leader', syllables: 8 }).built.duration <= lens[2] + 0.01, '8 음절을 요구해도 3 음절 길이');
   assert.ok(runRecipe('speech', RECIPES.speech, seeded(9), { voice: 'leader', syllables: 99 }).built.duration <= RECIPES.speech.duration[1]);
   for (const id of ['player', 'leader', 'hr', 'mentor', 'r-x']) runRecipe('speech', RECIPES.speech, seeded(2), { voice: speakerVoice(id), syllables: 4 });
 });
@@ -241,11 +359,12 @@ test('엔진: 레시피가 던지면 시작하지 않고 던진다(sfx 층이 �
   assert.equal(engine.activeVoices(), 0);
 });
 
-test('마스터 체인: 버스 -> 압축기 -> 마스터 -> 소프트 클립 -> 출력', () => {
+test('마스터 체인: 효과음 버스 -> 압축기 -> 마스터 -> 소프트 클립 -> 출력', () => {
   const { ctx } = fakeContext();
   const g = createGraph(ctx, { masterGain: 0.4 });
   assert.equal(g.master.gain.value, 0.4);
-  assert.ok(g.sfxBus._out.includes(g.comp) && g.ambBus._out.includes(g.comp));
+  assert.ok(g.sfxBus._out.includes(g.comp));
+  assert.equal(g.ambBus, undefined, '앰비언스 버스는 없다');
   assert.ok(g.comp._out.includes(g.master));
   assert.ok(g.master._out.includes(g.clip));
   assert.ok(g.clip._out.includes(ctx.destination));

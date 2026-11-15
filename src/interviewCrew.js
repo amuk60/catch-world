@@ -20,9 +20,9 @@ export function createCrew({ hud, interviewers, names, ids }) {
   const actorOf = (id) => interviewers.byId[id].actor;
 
   // 면접관 한 명의 연기 이벤트 하나를 화면에 옮긴다(내 장면의 시간표도 같은 함수를 쓴다).
-  // 면접관의 박수·당황·웃음·의자 소리. fromRemote: 다른 방문자의 장면이면 작게(멀티플레이를 껐으면 아예 없다).
+  // 면접관의 박수·당황·웃음 소리. fromRemote: 다른 방문자의 장면이면 작게(멀티플레이를 껐으면 아예 없다).
   function cue(name, fromRemote) {
-    if (name) sfx.play(name, fromRemote ? { remote: true } : { gain: name === 'scrape' ? 0.6 : 1 });
+    if (name) sfx.play(name, fromRemote ? { remote: true } : undefined);
   }
 
   function apply(e, fromRemote = false) {

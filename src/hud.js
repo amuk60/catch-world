@@ -65,7 +65,6 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
   actionBar.addEventListener('click', (e) => {
     const button = e.target.closest('button');
     if (!button || button.getAttribute('aria-disabled') === 'true') return;
-    sfx.play('click');
     if (button.dataset.action === 'auto') barHandlers.onToggleAuto();
     else barHandlers.onAction(button.dataset.action);
   });
@@ -160,15 +159,6 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
     if (button) choiceHandlers.onPick?.(Number(button.dataset.index));
   });
   choiceCancel.addEventListener('click', () => choiceHandlers.onCancel?.());
-  // 효과음: 팝업·결과 카드·캐치 칩의 버튼은 누르면 딸깍, 답변 선택지는 올리면 톡(고르면 면접 장면이 확정음을 낸다).
-  for (const el of [side, result, ctaChip, choiceCancel]) el.addEventListener('click', (e) => { if (el === choiceCancel || e.target.closest('button')) sfx.play('click'); });
-  let hoverChoice = null;
-  choiceList.addEventListener('mouseover', (e) => {
-    const button = e.target.closest('button');
-    if (button && button !== hoverChoice) sfx.play('hover');
-    hoverChoice = button;
-  });
-  choiceList.addEventListener('mouseleave', () => { hoverChoice = null; });
   container.append(tooltip, bubble, speechLayer, prompt, fortune, stress, actionBar, meditate, ctaChip, side, result, choice, portal);
   let stressStart = 100;
 

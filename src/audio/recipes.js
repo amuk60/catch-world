@@ -3,6 +3,8 @@
 // 실제 컨텍스트·OfflineAudioContext·시험용 가짜 컨텍스트 어디서든 같은 코드가 돈다(오프라인 렌더로 소리가 무음이거나 터지지 않는지 시험한다).
 // 소리를 고치려면 아래 이름 붙은 상수와 각 레시피 안의 숫자(주파수 Hz·길이 초·세기)를 바꾼다. 세기는 레시피 안에서는 대략 0.1~0.5(최대 1 아래)로 두고, 소리 전체 크기는 RECIPES 의 gain 으로 조절한다.
 
+import { fireSamples } from './fireSynth.js';
+
 // ---- 자주 쓰는 값 ----
 const FLOOR = 0.0001; // 지수 곡선이 닿는 바닥(0 은 지수 곡선에 쓸 수 없다)
 const NOTE = { // 음 높이(Hz)
@@ -16,6 +18,8 @@ const VOICE = {
   player: { base: 262, wave: 'square', lowpass: 1900, gain: 0.13, syl: 0.085 }, // 나: 밝고 또렷
   remote: { base: 235, wave: 'triangle', lowpass: 1800, gain: 0.2, syl: 0.09 }, // 다른 방문자(높이는 방문자마다 rate 로)
 };
+const SPEECH_SOFT = 0.55; // 말풍선 웅얼거림은 계속 들려도 거슬리지 않게 목소리별 세기에 곱한다
+const SPEECH_MAX_SYLLABLES = 3; // 말풍선 하나당 최대 음절 수(아주 짧게)
 const SYLLABLE_STEPS = [-3, -1, 0, 2, 4, 7]; // 음절마다 무작위로 고르는 반음 차이
 
 // ---- 도구 ----
@@ -128,7 +132,7 @@ function mumble(env, voice, n) {
     const step = SYLLABLE_STEPS[Math.floor(env.rng() * SYLLABLE_STEPS.length)];
     const f = v.base * 2 ** (step / 12);
     const len = v.syl * (0.85 + 0.4 * env.rng());
-    tone(env, { type: v.wave, f, to: f * (0.93 + 0.14 * env.rng()), at: t, dur: len, gain: v.gain, attack: 0.012, dest: lp });
+    tone(env, { type: v.wave, f, to: f * (0.93 + 0.14 * env.rng()), at: t, dur: len, gain: v.gain * SPEECH_SOFT, attack: 0.012, dest: lp });
     t += len + 0.012 + 0.02 * env.rng();
   }
   return t + 0.06;
@@ -137,42 +141,24 @@ function mumble(env, voice, n) {
 const rnd = (env, lo, hi) => lo + (hi - lo) * env.rng();
 
 // ---- 이동·세계 ----
-// 풀밭 발소리: 부드러운 풀 스치는 소리(낮은 거른 잡음)에 풀잎 바스락(고음 잡음)을 살짝.
+// 발소리(사박사박·자박자박): 아주 짧게 거른 잡음 알갱이 몇 알(몸통·쿵 없이 가볍고 공기 같은 스치는 소리). 700~1000Hz 아래는 잘라내고, 알갱이마다 높이·세기가 조금씩 다르다.
+function grain(env, { at = 0, hp = 900, f, q = 0.9, dur = 0.04, gain = 0.2, attack = 0.007 }) {
+  hiss(env, { kind: 'white', at, dur, gain, attack, filters: [{ type: 'highpass', f: hp, q: 0.7 }, { type: 'bandpass', f, q }] });
+}
+// 풀밭 발소리: 풀잎이 사박사박 스치는 소리(1.5~6kHz 대역의 알갱이 세 알).
 function stepGrass(env) {
-  hiss(env, { kind: 'pink', dur: 0.11, gain: 0.5, attack: 0.004, filters: [{ type: 'lowpass', f: 1500, to: 600, q: 0.5 }] });
-  hiss(env, { kind: 'white', dur: 0.05, gain: 0.06, attack: 0.003, filters: [{ type: 'highpass', f: 3500 }] });
-  return 0.14;
+  [0, 0.022, 0.046].forEach((at, i) => grain(env, { at: at + rnd(env, 0, 0.006), f: rnd(env, 2200, 5500), dur: rnd(env, 0.03, 0.05), gain: (i === 1 ? 0.2 : 0.14) * rnd(env, 0.8, 1.1) }));
+  return 0.12;
 }
-// 광장 돌바닥 발소리: 또각(딱딱한 점) + 낮은 쿵.
+// 광장 돌바닥 발소리: 잔 자갈이 자박자박 눌리는 소리(조금 더 낮은 1.8~4.5kHz 알갱이 네 알, 짧게).
 function stepStone(env) {
-  hiss(env, { kind: 'white', dur: 0.05, gain: 0.4, attack: 0.002, filters: [{ type: 'bandpass', f: 2200, q: 1.2 }] });
-  tone(env, { f: 180, to: 90, dur: 0.07, gain: 0.35, attack: 0.002 });
+  [0, 0.016, 0.034, 0.05].forEach((at, i) => grain(env, { at: at + rnd(env, 0, 0.005), hp: 1000, f: rnd(env, 1800, 4500), q: 1.1, dur: rnd(env, 0.022, 0.04), gain: (i === 0 ? 0.2 : 0.13) * rnd(env, 0.8, 1.1) }));
   return 0.1;
 }
-// 실내 타일 발소리: 맑은 똑 소리.
+// 실내 타일 발소리: 부드럽게 사박(1.5~3.2kHz 알갱이 두 알, 가장 순하다).
 function stepTile(env) {
-  tone(env, { type: 'triangle', f: 1100, to: 700, dur: 0.035, gain: 0.18, attack: 0.001 });
-  hiss(env, { kind: 'white', dur: 0.04, gain: 0.3, attack: 0.002, filters: [{ type: 'bandpass', f: 3000, q: 2 }] });
-  tone(env, { f: 140, to: 80, dur: 0.06, gain: 0.25, attack: 0.002 });
-  return 0.1;
-}
-// 클릭 이동 표식: 둥글고 짧은 올라가는 방울 소리.
-function marker(env) {
-  tone(env, { f: 520, to: 780, dur: 0.12, gain: 0.3, attack: 0.008 });
-  tone(env, { f: 1040, to: 1560, dur: 0.1, gain: 0.08, attack: 0.008 });
-  return 0.17;
-}
-// 앉기: 옷 스치는 소리가 내려가며 부드러운 쿵.
-function sit(env) {
-  hiss(env, { kind: 'pink', dur: 0.3, gain: 0.35, attack: 0.06, filters: [{ type: 'bandpass', f: 900, to: 450, q: 0.8 }] });
-  tone(env, { f: 110, to: 70, at: 0.04, dur: 0.18, gain: 0.3, attack: 0.01 });
-  return 0.36;
-}
-// 일어서기: 스치는 소리가 올라간다.
-function stand(env) {
-  hiss(env, { kind: 'pink', dur: 0.28, gain: 0.3, attack: 0.08, filters: [{ type: 'bandpass', f: 400, to: 1100, q: 0.8 }] });
-  tone(env, { f: 70, to: 100, dur: 0.12, gain: 0.15, attack: 0.02 });
-  return 0.33;
+  [0, 0.024].forEach((at, i) => grain(env, { at: at + rnd(env, 0, 0.004), hp: 800, f: rnd(env, 1500, 3200), q: 0.9, dur: rnd(env, 0.03, 0.045), gain: (i === 0 ? 0.17 : 0.11) * rnd(env, 0.8, 1.1), attack: 0.009 }));
+  return 0.09;
 }
 // 공간 전환(차원문): 부풀어 오르는 바람 + 올라가는 소리, 화면이 덮이는 순간의 낮은 울림, 반짝이는 잔향.
 function portal(env) {
@@ -184,32 +170,12 @@ function portal(env) {
 }
 
 // ---- 소각장 ----
-// 종이 구기기: 바스락 소리가 빠르게 여러 번.
-function crumple(env) {
-  for (let i = 0; i < 6; i++) {
-    hiss(env, { kind: 'white', at: i * 0.07 + rnd(env, 0, 0.03), dur: rnd(env, 0.03, 0.06), gain: 0.35 * rnd(env, 0.6, 1), attack: 0.001, filters: [{ type: 'highpass', f: rnd(env, 2500, 5500) }] });
-  }
-  hiss(env, { kind: 'pink', dur: 0.4, gain: 0.1, attack: 0.05, filters: [{ type: 'lowpass', f: 1500 }] });
-  return 0.52;
-}
-// 주머니에서 종이 꺼내기: 부드러운 종이 쓸림.
-function paperOut(env) {
-  hiss(env, { kind: 'white', dur: 0.28, gain: 0.22, attack: 0.08, filters: [{ type: 'bandpass', f: 2500, to: 4500, q: 0.8 }] });
-  hiss(env, { kind: 'pink', at: 0.05, dur: 0.2, gain: 0.1, attack: 0.04, filters: [{ type: 'highpass', f: 1500 }] });
-  return 0.33;
-}
-// 종이/소품 던지기: 가벼운 휙.
-function toss(env) {
-  hiss(env, { kind: 'pink', dur: 0.33, gain: 0.3, attack: 0.12, filters: [{ type: 'bandpass', f: 600, to: 2400, q: 1 }] });
-  hiss(env, { kind: 'white', dur: 0.2, gain: 0.08, attack: 0.06, filters: [{ type: 'highpass', f: 4000 }] });
-  return 0.38;
-}
-// 종이가 불에 닿는 순간: 부풀며 "후웁" 하고 타오르는 소리 + 낮은 울림.
+// 종이가 불에 닿는 순간: 따뜻하게 "후웁" 하고 부푸는 짧은 숨결(소각로의 편안한 불 소리와 어울리게 부드럽고 낮다).
 function whoof(env) {
-  hiss(env, { kind: 'brown', dur: 0.5, gain: 0.6, attack: 0.06, filters: [{ type: 'lowpass', f: 250, to: 1800 }] });
-  hiss(env, { kind: 'pink', dur: 0.75, gain: 0.25, attack: 0.1, filters: [{ type: 'bandpass', f: 900, to: 300, q: 0.8 }] });
-  tone(env, { f: 100, to: 45, dur: 0.35, gain: 0.35, attack: 0.01 });
-  return 0.82;
+  hiss(env, { kind: 'brown', dur: 0.42, gain: 0.4, attack: 0.09, filters: [{ type: 'lowpass', f: 220, to: 900 }] });
+  hiss(env, { kind: 'pink', dur: 0.5, gain: 0.1, attack: 0.12, filters: [{ type: 'bandpass', f: 700, to: 300, q: 0.7 }] });
+  tone(env, { f: 90, to: 55, dur: 0.3, gain: 0.14, attack: 0.05 });
+  return 0.55;
 }
 // 파쇄: 덜컥 물리는 소리 뒤에 윙윙 갈리는 소리(톱니 소리가 빠르게 끊김).
 function shredder(env) {
@@ -220,82 +186,36 @@ function shredder(env) {
   hiss(env, { kind: 'white', at: 0.05, dur: 0.8, gain: 0.12, attack: 0.06, filters: [{ type: 'bandpass', f: 1800, q: 3 }], dest: scrape });
   return 0.95;
 }
-// 한숨: 숨이 천천히 나가는 소리.
-function sigh(env) {
-  hiss(env, { kind: 'pink', dur: 1.0, gain: 0.35, attack: 0.3, filters: [{ type: 'bandpass', f: 700, to: 420, q: 0.9 }] });
-  hiss(env, { kind: 'white', dur: 0.9, gain: 0.06, attack: 0.3, filters: [{ type: 'highpass', f: 1500 }] });
-  return 1.05;
-}
-// 후련함: 부드러운 "아~" (살짝 떨리는 두 소리가 어울린다).
-function relief(env) {
-  const lp = lowpass(env, 1500);
-  const a = tone(env, { type: 'triangle', f: 330, to: 349, dur: 0.95, gain: 0.18, attack: 0.14, dest: lp });
-  tone(env, { type: 'triangle', f: 495, to: 523, dur: 0.9, gain: 0.09, attack: 0.16, dest: lp });
-  tone(env, { f: 660, dur: 0.8, gain: 0.04, attack: 0.18, dest: lp });
-  const vib = env.ctx.createOscillator();
-  const amt = env.ctx.createGain();
-  vib.frequency.value = 5;
-  amt.gain.value = 9; // 음높이를 센트 단위로 살짝 흔든다
-  vib.connect(amt);
-  amt.connect(a.o.detune);
-  vib.start(env.t);
-  vib.stop(env.t + 1);
-  return 1.0;
-}
-// 스트레스 -N 팝업: 통통 튀는 작은 방울.
-function tick(env) {
-  tone(env, { f: 1500, to: 900, dur: 0.07, gain: 0.22, attack: 0.002 });
-  tone(env, { f: 3000, dur: 0.03, gain: 0.05, attack: 0.001 });
-  return 0.14;
-}
-// 모닥불 톡: 불꽃 튀는 소리(높이가 매번 다르다).
-function firePop(env) {
-  hiss(env, { kind: 'white', dur: 0.025, gain: 0.3, attack: 0.001, filters: [{ type: 'highpass', f: 3500 }] });
-  tone(env, { f: rnd(env, 800, 1700), dur: 0.035, gain: 0.07, attack: 0.001 });
-  return 0.09;
-}
 
 // ---- 세탁소 ----
-// 천이 스치는 소리.
-function swish(env) {
-  hiss(env, { kind: 'pink', dur: 0.32, gain: 0.28, attack: 0.1, filters: [{ type: 'bandpass', f: 500, to: 1600, q: 0.9 }] });
-  hiss(env, { kind: 'white', dur: 0.3, gain: 0.05, attack: 0.1, filters: [{ type: 'highpass', f: 3000 }] });
-  return 0.36;
-}
-// 세탁기에 퐁당: 둔한 쿵 + 첨벙 + 보글보글.
+// 세탁기에 퐁당: 부드럽게 퐁 + 찰랑(둔한 울림은 작게, 첨벙은 낮고 순하게) + 작은 물방울.
 function washSplash(env) {
-  tone(env, { f: 150, to: 55, dur: 0.25, gain: 0.5, attack: 0.003 });
-  hiss(env, { kind: 'brown', dur: 0.25, gain: 0.3, attack: 0.005, filters: [{ type: 'lowpass', f: 500 }] });
-  hiss(env, { kind: 'white', at: 0.02, dur: 0.5, gain: 0.3, attack: 0.01, filters: [{ type: 'bandpass', f: 2200, to: 1200, q: 0.8 }] });
-  for (let i = 0; i < 6; i++) {
-    const f = rnd(env, 350, 850);
-    tone(env, { f, to: f * 1.6, at: 0.2 + i * 0.1 + rnd(env, 0, 0.05), dur: 0.09, gain: 0.08, attack: 0.008 });
+  tone(env, { f: 140, to: 65, dur: 0.22, gain: 0.3, attack: 0.008 });
+  hiss(env, { kind: 'brown', dur: 0.22, gain: 0.18, attack: 0.01, filters: [{ type: 'lowpass', f: 450 }] });
+  hiss(env, { kind: 'pink', at: 0.03, dur: 0.45, gain: 0.1, attack: 0.03, filters: [{ type: 'bandpass', f: 1400, to: 800, q: 0.7 }] });
+  for (let i = 0; i < 4; i++) {
+    const f = rnd(env, 350, 750);
+    tone(env, { f, to: f * 1.5, at: 0.18 + i * 0.1 + rnd(env, 0, 0.05), dur: 0.09, gain: 0.05, attack: 0.01 });
   }
-  return 1.1;
+  return 0.8;
 }
-// 세탁기 덜덜: 낮은 진동이 13Hz 로 떨리며 잦아든다.
+// 세탁기 덜컹덜컹(세탁하는 동안만 잠깐): 드럼이 흔들리며 낮고 부드럽게 덜컹 하는 소리가 세 번 짝으로 나고 잦아든다(계속 이어지는 웅웅거림 없음).
 function washerRattle(env) {
-  const rumble = chop(env, { freq: 13, depth: 0.45, dur: 1.2, dest: lowpass(env, 220) });
-  tone(env, { type: 'sawtooth', f: 58, dur: 1.2, gain: 0.25, attack: 0.02, dest: rumble });
-  const tin = chop(env, { freq: 13, depth: 0.45, dur: 1.2 });
-  hiss(env, { kind: 'white', dur: 1.15, gain: 0.06, attack: 0.02, filters: [{ type: 'bandpass', f: 900, q: 4 }], dest: tin });
-  return 1.25;
+  [[0, 1], [0.38, 0.8], [0.76, 0.55]].forEach(([at, k]) => {
+    const t0 = at + rnd(env, 0, 0.03);
+    tone(env, { f: rnd(env, 78, 92), to: 55, at: t0, dur: 0.12, gain: 0.3 * k, attack: 0.006 }); // 덜
+    tone(env, { f: rnd(env, 105, 125), to: 70, at: t0 + 0.13, dur: 0.14, gain: 0.34 * k, attack: 0.006 }); // 컹
+    tone(env, { type: 'triangle', f: rnd(env, 190, 250), to: 140, at: t0 + 0.13, dur: 0.07, gain: 0.1 * k, attack: 0.004 }); // 노트북 스피커에서도 들리도록 얹는 짧은 "컹"
+    hiss(env, { kind: 'white', at: t0 + 0.13, dur: 0.07, gain: 0.07 * k, attack: 0.006, filters: [{ type: 'bandpass', f: 650, q: 1.5 }] }); // 통 벽에 닿는 작은 울림
+  });
+  return 1.15;
 }
-// 빨랫줄에 셔츠를 탁 널기: 천이 펄럭이며 튕기는 소리.
+// 빨랫줄에 셔츠를 널기: 천이 살짝 펄럭이는 조용하고 부드러운 소리.
 function flap(env) {
-  hiss(env, { kind: 'white', dur: 0.12, gain: 0.5, attack: 0.003, filters: [{ type: 'bandpass', f: 1400, to: 400, q: 0.7 }] });
-  hiss(env, { kind: 'pink', at: 0.02, dur: 0.25, gain: 0.25, attack: 0.02, filters: [{ type: 'lowpass', f: 3000, to: 500 }] });
-  tone(env, { type: 'triangle', f: 230, to: 130, dur: 0.1, gain: 0.12, attack: 0.003 });
-  return 0.31;
-}
-// 새 셔츠를 입는 옷 스치는 소리(여러 번 비비는 느낌).
-function wearRustle(env) {
-  for (let i = 0; i < 5; i++) {
-    const f = rnd(env, 700, 1600);
-    hiss(env, { kind: 'pink', at: i * 0.11 + rnd(env, 0, 0.04), dur: 0.12, gain: 0.22, attack: 0.02, filters: [{ type: 'bandpass', f, to: f * 1.4, q: 0.9 }] });
-  }
-  hiss(env, { kind: 'pink', at: 0.4, dur: 0.3, gain: 0.15, attack: 0.08, filters: [{ type: 'bandpass', f: 500, to: 1300, q: 0.9 }] });
-  return 0.75;
+  hiss(env, { kind: 'pink', dur: 0.16, gain: 0.3, attack: 0.012, filters: [{ type: 'bandpass', f: 1100, to: 420, q: 0.7 }] });
+  hiss(env, { kind: 'pink', at: 0.03, dur: 0.22, gain: 0.14, attack: 0.03, filters: [{ type: 'lowpass', f: 1800, to: 450 }] });
+  tone(env, { type: 'triangle', f: 200, to: 120, dur: 0.1, gain: 0.05, attack: 0.01 });
+  return 0.28;
 }
 // 짜잔: 반짝이는 올라가는 소리와 맑은 잔향.
 function tada(env) {
@@ -312,12 +232,6 @@ function ding(env) {
   tone(env, { f: NOTE.D7, dur: 0.5, gain: 0.05, attack: 0.004 });
   return 1.05;
 }
-// 선택지 위에 올림: 아주 작은 톡.
-function hover(env) {
-  tone(env, { f: 1800, dur: 0.03, gain: 0.08, attack: 0.001 });
-  hiss(env, { kind: 'white', dur: 0.015, gain: 0.04, attack: 0.001, filters: [{ type: 'highpass', f: 5000 }] });
-  return 0.06;
-}
 // 답변 확정: 올라가는 두 음 "퐁-퐁".
 function confirm(env) {
   tone(env, { f: 660, dur: 0.15, gain: 0.25, attack: 0.005 });
@@ -325,9 +239,9 @@ function confirm(env) {
   tone(env, { f: 1980, at: 0.09, dur: 0.15, gain: 0.06, attack: 0.005 });
   return 0.32;
 }
-// 말풍선 웅얼거림(동물의 숲 말투): 목소리 voice, 음절 수 syllables(글자 수로 정해진다).
+// 말풍선 웅얼거림(동물의 숲 말투): 목소리 voice, 음절 수 syllables(최대 3: 짧고 조용하게).
 function speech(env, o) {
-  return mumble(env, o.voice, Math.max(1, Math.min(8, o.syllables ?? 5)));
+  return mumble(env, o.voice, Math.max(1, Math.min(SPEECH_MAX_SYLLABLES, o.syllables ?? 2)));
 }
 // 박수: 짧은 잡음 박수 서른 번이 붙었다 사라진다.
 function applause(env) {
@@ -364,26 +278,6 @@ function fanfare(env) {
   [3136, 4186].forEach((f, i) => tone(env, { f, at: 0.5 + i * 0.12, dur: 0.8, gain: 0.05, attack: 0.01 }));
   for (let i = 0; i < 6; i++) tone(env, { f: rnd(env, 2500, 5000), at: 0.55 + i * 0.1 + rnd(env, 0, 0.05), dur: 0.2, gain: 0.025, attack: 0.003 });
   return 1.95;
-}
-// 쿵쿵(춤 박자): 큰북 한 번.
-function stomp(env) {
-  tone(env, { f: 160, to: 42, dur: 0.22, gain: 0.55, attack: 0.002 });
-  hiss(env, { kind: 'white', dur: 0.02, gain: 0.2, attack: 0.001, filters: [{ type: 'lowpass', f: 2000 }] });
-  hiss(env, { kind: 'brown', dur: 0.12, gain: 0.2, attack: 0.002, filters: [{ type: 'lowpass', f: 300 }] });
-  return 0.3;
-}
-// 의자 끄는 소리: 끽끽 끌리는 낮은 마찰.
-function scrape(env) {
-  const grit = chop(env, { freq: 38, depth: 0.4, dur: 0.5 });
-  hiss(env, { kind: 'pink', dur: 0.45, gain: 0.3, attack: 0.03, filters: [{ type: 'bandpass', f: 250, to: 350, q: 4 }], dest: grit });
-  tone(env, { type: 'sawtooth', f: 90, to: 110, dur: 0.4, gain: 0.08, attack: 0.03, dest: lowpass(env, 300) });
-  return 0.5;
-}
-// 폴짝: 올라가는 방울.
-function hop(env) {
-  tone(env, { f: 300, to: 720, dur: 0.14, gain: 0.25, attack: 0.005 });
-  tone(env, { type: 'triangle', f: 600, to: 1400, dur: 0.1, gain: 0.06, attack: 0.005 });
-  return 0.22;
 }
 
 // ---- 화면 UI ----
@@ -429,172 +323,61 @@ function fortune(env) {
   return 1.45;
 }
 
-// ---- 앰비언스 곁들임 ----
-// 멀리서 지저귀는 새: 짧은 올림 음 세 번.
-function bird(env) {
-  const f0 = rnd(env, 2600, 3400);
-  [[0, 1.3], [0.1, 1.45], [0.22, 1.2]].forEach(([at, up]) => {
-    tone(env, { f: f0, to: f0 * up, at, dur: 0.065, gain: 0.22, attack: 0.006 });
-    tone(env, { f: f0 * 2, to: f0 * up * 2, at, dur: 0.05, gain: 0.04, attack: 0.006 });
-  });
-  return 0.4;
-}
 
-// ---- 끊기지 않는 소리(앰비언스·불 소리) ----
-// 반복 재생하는 잡음 + 느린 변화. create(env) 는 env.t 에 시작해서 { stop(시각) } 을 돌려준다.
-function loopNoise(env, kind, filters, level, dest) {
-  const { ctx, noise } = env;
-  const src = ctx.createBufferSource();
-  src.buffer = noise[kind];
-  src.loop = true;
-  let node = src;
-  const made = [];
-  for (const spec of filters) {
-    const b = ctx.createBiquadFilter();
-    b.type = spec.type;
-    b.frequency.value = spec.f;
-    b.Q.value = spec.q ?? 0.7;
-    node.connect(b);
-    node = b;
-    made.push(b);
-  }
-  const g = ctx.createGain();
-  g.gain.value = level;
-  node.connect(g);
-  g.connect(dest);
-  src.start(env.t, env.rng() * noise[kind].duration);
-  return { src, filters: made, gain: g };
-}
-// 느린 흔들림(LFO)을 AudioParam 에 더한다.
-function sway(env, param, freq, amount, list) {
-  const lfo = env.ctx.createOscillator();
-  const amt = env.ctx.createGain();
-  lfo.frequency.value = freq;
-  amt.gain.value = amount;
-  lfo.connect(amt);
-  amt.connect(param);
-  lfo.start(env.t);
-  list.push(lfo);
-}
-const stopper = (env, sources) => ({ stop(at) { for (const s of sources) { try { s.stop(at); } catch { /* 이미 멈췄다 */ } } } });
 
-// 모닥불 지글거림(바탕): 낮은 웅웅 + 깜빡이는 바스락. (톡톡 튀는 소리는 firePop 을 가끔 따로 낸다)
+// ---- 끊기지 않는 소리(모닥불 하나뿐: 배경음·앰비언스는 넣지 않는다) ----
+// 모닥불(소각로): 편안한 ASMR 모닥불. 길게 미리 만든 되풀이 표본(audio/fireSynth.js: 불꽃 숨결 + 촘촘한 잔 타닥임 + 가끔 낮은 톡)을 반복 재생한다.
 function fireLoop(env) {
-  const sources = [];
-  const rumble = loopNoise(env, 'brown', [{ type: 'lowpass', f: 380 }], 0.55, env.out);
-  const crackle = loopNoise(env, 'pink', [{ type: 'bandpass', f: 1600, q: 0.6 }], 0.22, env.out);
-  sway(env, crackle.gain.gain, 6.3, 0.1, sources);
-  sway(env, crackle.gain.gain, 9.7, 0.07, sources);
-  sources.push(rumble.src, crackle.src);
-  return stopper(env, sources);
-}
-// 마당: 부드러운 바람(느리게 세졌다 약해진다).
-function ambYardLoop(env) {
-  const sources = [];
-  const wind = loopNoise(env, 'pink', [{ type: 'lowpass', f: 520 }], 0.35, env.out);
-  sway(env, wind.filters[0].frequency, 0.11, 220, sources);
-  sway(env, wind.gain.gain, 0.07, 0.12, sources);
-  const air = loopNoise(env, 'pink', [{ type: 'bandpass', f: 2800, q: 0.8 }], 0.03, env.out);
-  sway(env, air.gain.gain, 0.09, 0.02, sources);
-  sources.push(wind.src, air.src);
-  return stopper(env, sources);
-}
-// 세탁소: 기계 웅웅(50Hz 계열) + 은은한 방 소리.
-function ambLaundryLoop(env) {
-  const sources = [];
-  for (const [f, level, cut] of [[50, 0.12, 160], [100.5, 0.05, 220]]) {
-    const o = env.ctx.createOscillator();
-    o.type = 'sawtooth';
-    o.frequency.value = f;
-    const lp = lowpass(env, cut);
-    const g = env.ctx.createGain();
-    g.gain.value = level;
-    o.connect(g);
-    g.connect(lp);
-    o.start(env.t);
-    sources.push(o);
-  }
-  const room = loopNoise(env, 'pink', [{ type: 'bandpass', f: 700, q: 0.5 }], 0.06, env.out);
-  sway(env, room.gain.gain, 0.08, 0.02, sources);
-  sources.push(room.src);
-  return stopper(env, sources);
-}
-// 면접장: 에어컨 바람 소리와 아주 낮은 전기 웅웅.
-function ambInterviewLoop(env) {
-  const sources = [];
-  const air = loopNoise(env, 'pink', [{ type: 'lowpass', f: 900 }, { type: 'highpass', f: 80 }], 0.22, env.out);
-  sway(env, air.filters[0].frequency, 0.05, 100, sources);
-  const rumble = loopNoise(env, 'brown', [{ type: 'lowpass', f: 300 }], 0.1, env.out);
-  const hum = env.ctx.createOscillator();
-  const humGain = env.ctx.createGain();
-  hum.frequency.value = 120;
-  humGain.gain.value = 0.015;
-  hum.connect(humGain);
-  humGain.connect(env.out);
-  hum.start(env.t);
-  sources.push(air.src, rumble.src, hum);
-  return stopper(env, sources);
+  const { ctx } = env;
+  const data = fireSamples(ctx.sampleRate, env.rng);
+  const buffer = ctx.createBuffer(1, data.length, ctx.sampleRate);
+  buffer.getChannelData(0).set(data);
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  src.loop = true;
+  src.connect(env.out);
+  src.start(env.t, env.rng() * buffer.duration);
+  return { stop(at) { try { src.stop(at); } catch { /* 이미 멈췄다 */ } } };
 }
 
 // ---- 목록 ----
 // run: 레시피, duration: 돌려주는 길이의 허용 범위[최소, 최대](초), priority: 동시 소리가 가득 찼을 때 남는 순서(클수록 중요), gain: 소리 크기,
-// jitter: 부를 때마다 흔드는 비율({ pitch: 음높이 ±, gain: 크기 ± }), minInterval: 같은 소리 연타 최소 간격(초), bus: 'sfx'(효과음) | 'amb'(앰비언스), group/label: 사운드 시험 페이지의 분류·이름.
+// jitter: 부를 때마다 흔드는 비율({ pitch: 음높이 ±, gain: 크기 ± }), minInterval: 같은 소리 연타 최소 간격(초), group/label: 사운드 시험 페이지의 분류·이름.
 const J = { pitch: 0.06, gain: 0.15 };
 const NOJ = { pitch: 0, gain: 0 };
 export const RECIPES = {
-  stepGrass: { run: stepGrass, duration: [0.05, 0.25], priority: 1, gain: 2.42, jitter: { pitch: 0.12, gain: 0.25 }, minInterval: 0.12, group: '이동', label: '풀밭 발소리' },
-  stepStone: { run: stepStone, duration: [0.05, 0.25], priority: 1, gain: 1.35, jitter: { pitch: 0.1, gain: 0.25 }, minInterval: 0.12, group: '이동', label: '광장 돌바닥 발소리' },
-  stepTile: { run: stepTile, duration: [0.05, 0.25], priority: 1, gain: 1.6, jitter: { pitch: 0.08, gain: 0.25 }, minInterval: 0.12, group: '이동', label: '실내 타일 발소리' },
-  marker: { run: marker, duration: [0.08, 0.4], priority: 2, gain: 2.14, jitter: { pitch: 0.04, gain: 0.1 }, minInterval: 0.06, group: '이동', label: '클릭 이동 표식' },
-  sit: { run: sit, duration: [0.2, 0.6], priority: 2, gain: 1.08, jitter: J, minInterval: 0.3, group: '이동', label: '앉기' },
-  stand: { run: stand, duration: [0.2, 0.6], priority: 2, gain: 2.41, jitter: J, minInterval: 0.3, group: '이동', label: '일어서기' },
+  stepGrass: { run: stepGrass, duration: [0.05, 0.25], priority: 1, gain: 1.8, jitter: { pitch: 0.1, gain: 0.25 }, minInterval: 0.12, group: '이동', label: '풀밭 발소리(사박사박)' },
+  stepStone: { run: stepStone, duration: [0.05, 0.25], priority: 1, gain: 1.7, jitter: { pitch: 0.1, gain: 0.25 }, minInterval: 0.12, group: '이동', label: '광장 돌바닥 발소리(자박자박)' },
+  stepTile: { run: stepTile, duration: [0.05, 0.25], priority: 1, gain: 2.2, jitter: { pitch: 0.08, gain: 0.25 }, minInterval: 0.12, group: '이동', label: '실내 타일 발소리' },
   portal: { run: portal, duration: [0.7, 1.4], priority: 4, gain: 1.13, jitter: { pitch: 0.03, gain: 0 }, minInterval: 1.0, group: '이동', label: '공간 전환(차원문)' },
 
-  crumple: { run: crumple, duration: [0.3, 0.8], priority: 2, gain: 1.03, jitter: J, minInterval: 0.3, group: '소각장', label: '종이 구기기' },
-  paperOut: { run: paperOut, duration: [0.15, 0.6], priority: 2, gain: 1.56, jitter: J, minInterval: 0.2, group: '소각장', label: '종이 꺼내기' },
-  toss: { run: toss, duration: [0.15, 0.6], priority: 2, gain: 2.33, jitter: { pitch: 0.1, gain: 0.15 }, minInterval: 0.2, group: '소각장', label: '던지기 휙' },
-  whoof: { run: whoof, duration: [0.5, 1.2], priority: 4, gain: 2.2, jitter: { pitch: 0.08, gain: 0.1 }, minInterval: 0.3, group: '소각장', label: '불 타오름 후웁' },
+  whoof: { run: whoof, duration: [0.3, 0.9], priority: 4, gain: 1.35, jitter: { pitch: 0.06, gain: 0.1 }, minInterval: 0.3, group: '소각장', label: '불 타오름 후웁(부드럽게)' },
   shredder: { run: shredder, duration: [0.6, 1.3], priority: 3, gain: 1.57, jitter: { pitch: 0.06, gain: 0.1 }, minInterval: 0.5, group: '소각장', label: '파쇄기' },
-  sigh: { run: sigh, duration: [0.6, 1.4], priority: 2, gain: 1.07, jitter: J, minInterval: 0.8, group: '소각장', label: '한숨' },
-  relief: { run: relief, duration: [0.6, 1.4], priority: 3, gain: 1.1, jitter: { pitch: 0.05, gain: 0.1 }, minInterval: 0.8, group: '소각장', label: '후련한 "아~"' },
-  tick: { run: tick, duration: [0.05, 0.3], priority: 3, gain: 3.6, jitter: { pitch: 0.05, gain: 0.1 }, minInterval: 0.2, group: '소각장', label: '스트레스 감소 톡' },
-  firePop: { run: firePop, duration: [0.03, 0.2], priority: 1, gain: 1.47, jitter: { pitch: 0.2, gain: 0.5 }, minInterval: 0.08, bus: 'amb', group: '소각장', label: '모닥불 톡' },
 
-  swish: { run: swish, duration: [0.15, 0.6], priority: 2, gain: 2.0, jitter: { pitch: 0.1, gain: 0.15 }, minInterval: 0.2, group: '세탁소', label: '천 스치는 소리' },
-  washSplash: { run: washSplash, duration: [0.7, 1.5], priority: 4, gain: 2.19, jitter: { pitch: 0.06, gain: 0.1 }, minInterval: 0.4, group: '세탁소', label: '세탁기 퐁당·첨벙' },
-  washerRattle: { run: washerRattle, duration: [0.8, 1.6], priority: 2, gain: 1.58, jitter: { pitch: 0.05, gain: 0.1 }, minInterval: 0.5, group: '세탁소', label: '세탁기 덜덜' },
-  flap: { run: flap, duration: [0.15, 0.6], priority: 3, gain: 3.87, jitter: J, minInterval: 0.2, group: '세탁소', label: '셔츠 펄럭' },
-  wearRustle: { run: wearRustle, duration: [0.4, 1.1], priority: 2, gain: 2.26, jitter: J, minInterval: 0.5, group: '세탁소', label: '옷 입는 소리' },
+  washSplash: { run: washSplash, duration: [0.5, 1.2], priority: 4, gain: 2.0, jitter: { pitch: 0.06, gain: 0.1 }, minInterval: 0.4, group: '세탁소', label: '세탁기 퐁당(부드럽게)' },
+  washerRattle: { run: washerRattle, duration: [0.8, 1.6], priority: 2, gain: 0.8, jitter: { pitch: 0.05, gain: 0.1 }, minInterval: 0.5, group: '세탁소', label: '세탁기 덜컹덜컹(세탁할 때만)' },
+  flap: { run: flap, duration: [0.15, 0.6], priority: 3, gain: 3.2, jitter: J, minInterval: 0.2, group: '세탁소', label: '셔츠 널기(조용히)' },
   tada: { run: tada, duration: [0.6, 1.5], priority: 4, gain: 1.86, jitter: { pitch: 0.02, gain: 0 }, minInterval: 0.6, group: '세탁소', label: '짜잔(새 셔츠)' },
 
   ding: { run: ding, duration: [0.6, 1.5], priority: 4, gain: 3.16, jitter: { pitch: 0.02, gain: 0.05 }, minInterval: 0.4, group: '면접장', label: '질문 딩' },
-  hover: { run: hover, duration: [0.02, 0.2], priority: 1, gain: 5.0, jitter: { pitch: 0.05, gain: 0.1 }, minInterval: 0.04, group: '면접장', label: '선택지 올림' },
   confirm: { run: confirm, duration: [0.15, 0.6], priority: 3, gain: 1.26, jitter: { pitch: 0.03, gain: 0.05 }, minInterval: 0.2, group: '면접장', label: '답변 확정' },
-  speech: { run: speech, duration: [0.12, 1.2], priority: 2, gain: 1.0, jitter: NOJ, minInterval: 0.25, group: '면접장', label: '말풍선 웅얼거림', demo: { voice: 'hr', syllables: 6 } },
+  speech: { run: speech, duration: [0.1, 0.6], priority: 2, gain: 1.0, jitter: NOJ, minInterval: 0.25, group: '면접장', label: '말풍선 웅얼(짧고 조용히)', demo: { voice: 'hr', syllables: 3 } },
   applause: { run: applause, duration: [1.0, 2.4], priority: 3, gain: 1.77, jitter: { pitch: 0.05, gain: 0.1 }, minInterval: 1.0, group: '면접장', label: '박수' },
   ohno: { run: ohno, duration: [0.5, 1.2], priority: 3, gain: 1.21, jitter: { pitch: 0.06, gain: 0.1 }, minInterval: 0.6, group: '면접장', label: '당황 "어… 이런"' },
   laugh: { run: laugh, duration: [0.6, 1.3], priority: 3, gain: 1.48, jitter: { pitch: 0.08, gain: 0.1 }, minInterval: 0.8, group: '면접장', label: '폭소' },
   fanfare: { run: fanfare, duration: [1.2, 2.5], priority: 4, gain: 2.31, jitter: { pitch: 0.01, gain: 0 }, minInterval: 1.5, group: '면접장', label: '최종 합격 팡파르' },
-  stomp: { run: stomp, duration: [0.1, 0.5], priority: 2, gain: 2.41, jitter: { pitch: 0.06, gain: 0.1 }, minInterval: 0.2, group: '면접장', label: '쿵(춤 박자)' },
-  scrape: { run: scrape, duration: [0.3, 0.8], priority: 2, gain: 3.75, jitter: { pitch: 0.1, gain: 0.15 }, minInterval: 0.1, group: '면접장', label: '의자 끄는 소리' },
-  hop: { run: hop, duration: [0.1, 0.4], priority: 2, gain: 2.88, jitter: { pitch: 0.06, gain: 0.1 }, minInterval: 0.15, group: '면접장', label: '폴짝' },
 
-  click: { run: click, duration: [0.03, 0.2], priority: 3, gain: 4.24, jitter: { pitch: 0.03, gain: 0.05 }, minInterval: 0.05, group: '화면', label: '버튼 클릭' },
+  click: { run: click, duration: [0.03, 0.2], priority: 3, gain: 4.24, jitter: { pitch: 0.03, gain: 0.05 }, minInterval: 0.05, group: '화면', label: '효과음 켰을 때 딸깍' },
   popupSide: { run: popupSide, duration: [0.5, 1.3], priority: 4, gain: 1.43, jitter: NOJ, minInterval: 0.5, group: '화면', label: '측면 팝업(은은한 차임)' },
   popupModal: { run: popupModal, duration: [1.0, 2.0], priority: 4, gain: 1.42, jitter: NOJ, minInterval: 0.8, group: '화면', label: '가운데 팝업(스트레스 0 축하)' },
   jingle: { run: jingle, duration: [0.8, 1.8], priority: 4, gain: 1.37, jitter: NOJ, minInterval: 0.8, group: '화면', label: '면접 갈 준비 완료 징글' },
   crack: { run: crack, duration: [0.2, 0.7], priority: 3, gain: 0.95, jitter: J, minInterval: 0.3, group: '화면', label: '포춘쿠키 깨기' },
   fortune: { run: fortune, duration: [0.9, 2.0], priority: 4, gain: 1.69, jitter: NOJ, minInterval: 0.6, group: '화면', label: '운세 공개 차임' },
-
-  bird: { run: bird, duration: [0.2, 0.8], priority: 1, gain: 0.51, jitter: { pitch: 0.1, gain: 0.3 }, minInterval: 2, bus: 'amb', group: '앰비언스', label: '새 지저귐(마당)' },
 };
 
-// 끊기지 않는 소리. gain: 소리 크기(sfx.update 가 공간·거리에 따라 0~1 을 곱한다). bus: 'amb'(앰비언스 버스).
+// 끊기지 않는 소리. 배경음·앰비언스는 두지 않고 소각로의 모닥불 하나뿐이다. gain: 소리 크기(sfx.update 가 불과의 거리에 따라 0~1 을 곱한다).
 export const LOOPS = {
-  fire: { run: fireLoop, gain: 0.38, bus: 'amb', group: '앰비언스', label: '모닥불 지글거림(가까울수록)' },
-  ambYard: { run: ambYardLoop, gain: 0.3, bus: 'amb', group: '앰비언스', label: '마당 바람' },
-  ambLaundry: { run: ambLaundryLoop, gain: 0.38, bus: 'amb', group: '앰비언스', label: '세탁소 기계 웅웅' },
-  ambInterview: { run: ambInterviewLoop, gain: 0.45, bus: 'amb', group: '앰비언스', label: '면접장 에어컨 소리' },
+  fire: { run: fireLoop, gain: 0.25, group: '소각장', label: '모닥불 타닥타닥(가까울수록, 편안한 ASMR)' },
 };
 
 export const SOUND_NAMES = Object.keys(RECIPES);

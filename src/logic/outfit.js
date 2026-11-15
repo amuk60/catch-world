@@ -3,7 +3,7 @@
 // clean|dirty -[세탁]-> tank(흰 나시만 입음) -[널기]-> drying(새 흰 셔츠가 줄에서 마르는 중)
 //   -[DRY_SECONDS 경과]-> dry(마름) -[입기(E)]-> clean.
 // 파쇄는 옷을 바꾸지 않고, 상태에 맞지 않는 행동은 옷에 아무 영향이 없다. 타이머는 update(dt) 로 실시간만큼 센다.
-import { DRY_SECONDS } from '../config.js';
+import { DRY_SECONDS, LAUNDRY_GUIDE } from '../config.js';
 
 const NEXT = { burn: [['clean'], 'dirty'], wash: [['clean', 'dirty'], 'tank'], hang: [['tank'], 'drying'] }; // 행동 -> [필요한 상태들, 다음 상태]
 
@@ -54,5 +54,14 @@ export const hasMyShirt = (state) => state === 'drying' || state === 'dry';
 export function outfitPrompt(state, secondsLeft) {
   if (state === 'dry') return { text: '새 셔츠 입기', actionable: true };
   if (state === 'drying') return { text: `셔츠가 마르는 중… (${Math.max(1, Math.ceil(secondsLeft))}초)`, actionable: false };
+  return null;
+}
+
+// 세탁소 순서 안내(1 세탁 -> 2 널기 -> 마를 때까지 기다리기 -> E 새 셔츠 입기)의 앞 두 단계 문구. 세탁소 안에서만 나오고, 눌러도 아무 일 없는 힌트라서 문자열이나 null 만 돌려준다.
+// washing: 세탁 동작이 진행 중인가(옷 상태가 바뀐 뒤에도 셔츠가 세탁기에 들어가 덜컹거리는 동안은 true). 마르는 중·입기는 빨랫줄 곁의 outfitPrompt 가 맡는다.
+export function laundryGuide(state, { washing = false, spaceId = 'laundry' } = {}) {
+  if (spaceId !== 'laundry') return null;
+  if (washing) return LAUNDRY_GUIDE.washing;
+  if (state === 'tank') return LAUNDRY_GUIDE.tank;
   return null;
 }

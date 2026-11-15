@@ -124,8 +124,6 @@ export function createInterviewScene(ctx) {
       case 'clip': {
         const speed = 1;
         character?.playClip(e.name, speed);
-        if (e.name === 'jump') sfx.play('hop');
-        else if (current?.improvId === 'dance') sfx.play('stomp'); // 단체 댄스: 동작마다 쿵
         playerIdleAt = sceneTime + rawDuration(e.name) / speed + 0.05;
         break;
       }
@@ -133,8 +131,8 @@ export function createInterviewScene(ctx) {
         if ('bounce' in e.fx) playerFx.setBounce(e.fx.bounce);
         if (e.fx.spin) playerFx.startSpin(e.fx.spin);
         break;
-      case 'stand': sfx.play('scrape'); character?.idleInPlace(); break; // 의자에서 일어난다: 앉은 자세 -> 서기
-      case 'sit': sfx.play('scrape'); playerIdleAt = -1; character?.sitInPlace(); break; // 다시 앉는다
+      case 'stand': character?.idleInPlace(); break; // 의자에서 일어난다: 앉은 자세 -> 서기
+      case 'sit': playerIdleAt = -1; character?.sitInPlace(); break; // 다시 앉는다
       case 'light': crew.light(e.who, e.spec, 'me'); break; // 담당이 아닌 면접관의 가벼운 반응: 한가할 때만 한다
       case 'finale': { // 마지막 문항: 그때 한가한 면접관까지 셋이, 아니면 담당 혼자 일어나 박수 친다
         const ids = crew.claimFinale(current.assigned, 'me');
@@ -155,7 +153,7 @@ export function createInterviewScene(ctx) {
         else playerFx.moveAnchor({ x: current.home.x, y: 0, z: current.home.z }, e.seconds, 0.4);
         break;
       }
-      case 'papers': sfx.play('toss'); spawnPapers(); break;
+      case 'papers': spawnPapers(); break;
       case 'effect':
         if (current.kind === 'improv') callbacks.track('improv_action', { id: current.improvId });
         callbacks.reduce(); // ACTION_REDUCE (다른 행동과 같은 경로)

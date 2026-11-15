@@ -51,7 +51,7 @@ export function createRemotePlayers({ scene, container, camera, gltf, maxAvatars
     layer.append(label);
     scene.add(root);
     created++;
-    return { id: null, root, body, character, ring, label, alpha: 0, target: 0, anim: null, walking: false, outfit: null, nick: '', lx: NaN, ly: NaN, lo: -1, stepper: createFootstepper(FOOTSTEP_STRIDE), sx: NaN, sz: NaN, seated: undefined, animSound: undefined };
+    return { id: null, root, body, character, ring, label, alpha: 0, target: 0, anim: null, walking: false, outfit: null, nick: '', lx: NaN, ly: NaN, lo: -1, stepper: createFootstepper(FOOTSTEP_STRIDE), sx: NaN, sz: NaN, animSound: undefined };
   }
 
   function acquire(id) {
@@ -70,7 +70,6 @@ export function createRemotePlayers({ scene, container, camera, gltf, maxAvatars
     av.stepper.reset();
     av.sx = NaN;
     av.sz = NaN;
-    av.seated = undefined;
     av.animSound = undefined;
     av.root.visible = true;
     active.set(id, av);
@@ -101,7 +100,7 @@ export function createRemotePlayers({ scene, container, camera, gltf, maxAvatars
     av.anim = p.anim;
   }
 
-  // 다른 방문자의 효과음(발소리·앉기·동작): 같은 공간에서 가까울수록 크게, 아주 작게(거리 감쇠와 초당 상한은 sfx 가 맡는다). 처음 보이는 순간의 자세는 소리 내지 않는다.
+  // 다른 방문자의 효과음(발소리·세탁소 널기): 같은 공간에서 가까울수록 크게, 아주 작게(거리 감쇠와 초당 상한은 sfx 가 맡는다). 처음 보이는 순간의 자세는 소리 내지 않는다.
   function sounds(av, p, space) {
     const at = { x: p.x, z: p.z };
     const opts = { at, space, remote: true };
@@ -110,9 +109,6 @@ export function createRemotePlayers({ scene, container, camera, gltf, maxAvatars
     } else av.stepper.reset();
     av.sx = p.x;
     av.sz = p.z;
-    const seated = Boolean(p.seat);
-    if (av.seated !== undefined && av.seated !== seated) sfx.play(seated ? 'sit' : 'stand', opts);
-    av.seated = seated;
     if (av.animSound !== undefined && av.animSound !== p.anim) {
       const cue = remoteAnimCue(p.anim, space);
       if (cue) sfx.play(cue, opts);

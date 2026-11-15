@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   distanceGain, panFromOffset, panFromScreenX, volumeToGain, DEFAULT_VOLUME, footstepInterval, createFootstepper, createThrottle,
-  voiceDecision, createRateLimiter, stepFade, ambienceTargets, sameSpace, varied, semitoneRatio, surfaceAt, speechPlan, speakerVoice, remotePitch,
+  voiceDecision, createRateLimiter, stepFade, sameSpace, varied, semitoneRatio, surfaceAt, speechPlan, speakerVoice, remotePitch,
   crewCue, lightCue, remoteAnimCue, STEP_SOUND, FOOTSTEP_STRIDE,
 } from '../src/logic/audioPolicy.js';
 
@@ -184,13 +184,7 @@ test('createRateLimiter: 이상한 시간 값은 허용하지 않는다', () => 
   assert.equal(r.take(NaN), false);
 });
 
-// ---- 공간별 앰비언스 ----
-test('ambienceTargets: 지금 공간만 1, 나머지 0(모르는 공간은 모두 0)', () => {
-  assert.deepEqual(ambienceTargets('yard'), { yard: 1, laundry: 0, interview: 0 });
-  assert.deepEqual(ambienceTargets('interview'), { yard: 0, laundry: 0, interview: 1 });
-  assert.deepEqual(ambienceTargets('moon'), { yard: 0, laundry: 0, interview: 0 });
-});
-
+// ---- 소리 크기 페이드(모닥불) ----
 test('stepFade: 목표 쪽으로 fadeSeconds 에 걸쳐 직선으로 가고 넘치지 않는다', () => {
   assert.equal(stepFade(0, 1, 0.5, 1), 0.5);
   assert.equal(stepFade(0.9, 1, 0.5, 1), 1);
@@ -240,11 +234,12 @@ test('surfaceAt: 광장 안은 돌바닥, 마당의 나머지는 풀, 실내는 
 });
 
 // ---- 말소리(웅얼거림) ----
-test('speechPlan: 글자 수에 비례하되 2~8 음절', () => {
+test('speechPlan: 말풍선 웅얼거림은 길이와 상관없이 아주 짧다(2~3 음절)', () => {
   assert.equal(speechPlan(0), 2);
   assert.equal(speechPlan(3), 2);
-  assert.ok(speechPlan(20) > speechPlan(8));
-  assert.equal(speechPlan(500), 8);
+  assert.equal(speechPlan(22), 2);
+  assert.ok(speechPlan(60) >= speechPlan(22));
+  assert.equal(speechPlan(500), 3);
   assert.equal(speechPlan(NaN), 2);
 });
 
@@ -267,7 +262,7 @@ test('remotePitch: 같은 방문자는 늘 같은 높이, 0.85~1.35 사이', () 
 });
 
 // ---- 장면 이벤트 -> 효과음 ----
-test('crewCue: 박수 자세는 박수 소리, 고개 젓기는 아이고, 크게 튀는 반응은 웃음, 일어나기·앉기는 의자 소리', () => {
+test('crewCue: 박수 자세는 박수 소리, 고개 젓기는 아이고, 크게 튀는 반응은 웃음, 일어나기·앉기 같은 나머지는 소리 없음', () => {
   assert.equal(crewCue({ type: 'pose', who: 'hr', name: 'clap' }), 'applause');
   assert.equal(crewCue({ type: 'pose', who: 'hr', name: null }), null);
   assert.equal(crewCue({ type: 'clip', who: 'leader', name: 'emote-no' }), 'ohno');
@@ -276,8 +271,8 @@ test('crewCue: 박수 자세는 박수 소리, 고개 젓기는 아이고, 크�
   assert.equal(crewCue({ type: 'fx', who: 'mentor', fx: { bounce: { amp: 0.07, freq: 4 } } }), null, '돌발행동의 작은 튀기는 웃음이 아니다');
   assert.equal(crewCue({ type: 'fx', who: 'mentor', fx: { bounce: null } }), null);
   assert.equal(crewCue({ type: 'fx', who: 'mentor', fx: { spin: { turns: 1 } } }), null);
-  assert.equal(crewCue({ type: 'stand', who: 'hr' }), 'scrape');
-  assert.equal(crewCue({ type: 'sit', who: 'hr' }), 'scrape');
+  assert.equal(crewCue({ type: 'stand', who: 'hr' }), null);
+  assert.equal(crewCue({ type: 'sit', who: 'hr' }), null);
   assert.equal(crewCue({ type: 'say', who: 'hr', text: 'x' }), null);
   assert.equal(crewCue(null), null);
 });
@@ -290,14 +285,14 @@ test('lightCue: 가벼운 반응 spec 에서 소리를 고른다(박수 > 아이
   assert.equal(lightCue(undefined), null);
 });
 
-test('remoteAnimCue: 다른 방문자의 동작(클립 이름)을 공간에 맞는 작은 소리로', () => {
-  assert.equal(remoteAnimCue('pick-up', 'yard'), 'paperOut');
-  assert.equal(remoteAnimCue('attack-melee-right', 'yard'), 'toss');
-  assert.equal(remoteAnimCue('attack-melee-right', 'laundry'), 'swish');
+test('remoteAnimCue: 다른 방문자의 동작 소리는 세탁소에서 셔츠를 너는 소리 하나뿐', () => {
   assert.equal(remoteAnimCue('interact-right', 'laundry'), 'flap');
   assert.equal(remoteAnimCue('interact-right', 'interview'), null);
-  assert.equal(remoteAnimCue('emote-no', 'yard'), 'sigh');
-  assert.equal(remoteAnimCue('jump', 'interview'), 'hop');
+  assert.equal(remoteAnimCue('pick-up', 'yard'), null);
+  assert.equal(remoteAnimCue('attack-melee-right', 'yard'), null);
+  assert.equal(remoteAnimCue('attack-melee-right', 'laundry'), null);
+  assert.equal(remoteAnimCue('emote-no', 'yard'), null);
+  assert.equal(remoteAnimCue('jump', 'interview'), null);
   assert.equal(remoteAnimCue('idle', 'yard'), null);
   assert.equal(remoteAnimCue('walk', 'yard'), null);
   assert.equal(remoteAnimCue(null, 'yard'), null);

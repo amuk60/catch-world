@@ -103,11 +103,7 @@ export function createRateLimiter({ perSecond, burst }) {
   };
 }
 
-// ---- 공간별 앰비언스 ----
-export const AMBIENCE_SPACES = ['yard', 'laundry', 'interview'];
-export function ambienceTargets(spaceId) {
-  return Object.fromEntries(AMBIENCE_SPACES.map((id) => [id, id === spaceId ? 1 : 0]));
-}
+// ---- 소리 크기 페이드(모닥불) ----
 // 현재 값을 목표 쪽으로 fadeSeconds 에 걸쳐 직선으로 옮긴다(넘치지 않는다).
 export function stepFade(current, target, dt, fadeSeconds) {
   if (!(dt > 0)) return current;
@@ -137,9 +133,9 @@ export const STEP_SOUND = { grass: 'stepGrass', stone: 'stepStone', tile: 'stepT
 export const FOOTSTEP_STRIDE = 1.33; // 한 걸음의 거리(월드 단위): 걷기 클립 한 바퀴(0.667초)에 두 걸음이고 이동 속도가 4 이므로 4 x 0.333. 발이 땅에 닿는 박자와 맞는다
 
 // ---- 말소리(웅얼거림) ----
-const SYLLABLE_CHARS = 3.5; // 글자 몇 개에 음절 한 번
+const SYLLABLE_CHARS = 14; // 글자 몇 개에 음절 한 번(말풍선 웅얼거림은 길이와 상관없이 아주 짧게: 2~3음절)
 export function speechPlan(textLength) {
-  return clamp(Math.round((Number.isFinite(textLength) ? textLength : 0) / SYLLABLE_CHARS), 2, 8);
+  return clamp(Math.round((Number.isFinite(textLength) ? textLength : 0) / SYLLABLE_CHARS), 2, 3);
 }
 // hud 말풍선 id -> 목소리 이름(플레이어·면접관 3명·다른 방문자).
 const VOICES = new Set(['player', 'leader', 'hr', 'mentor']);
@@ -164,8 +160,6 @@ export function crewCue(e) {
     case 'pose': return e.name === 'clap' ? 'applause' : null;
     case 'clip': return e.name === 'emote-no' ? 'ohno' : null;
     case 'fx': return hasBounce(e.fx?.bounce) ? 'laugh' : null;
-    case 'stand':
-    case 'sit': return 'scrape';
     default: return null;
   }
 }
@@ -176,14 +170,7 @@ export function lightCue(spec) {
   if (spec.clip === 'emote-no') return 'ohno';
   return hasBounce(spec.bounce) ? 'laugh' : null;
 }
-// 다른 방문자가 새로 시작한 동작 클립 -> 작은 효과음(공간에 따라 같은 클립도 다른 소리).
+// 다른 방문자가 새로 시작한 동작 클립 -> 작은 효과음. 꼭 필요한 것만: 세탁소에서 셔츠를 너는 소리 하나뿐이다.
 export function remoteAnimCue(anim, spaceId) {
-  switch (anim) {
-    case 'pick-up': return 'paperOut';
-    case 'attack-melee-right': return spaceId === 'yard' ? 'toss' : 'swish';
-    case 'interact-right': return spaceId === 'laundry' ? 'flap' : null;
-    case 'emote-no': return 'sigh';
-    case 'jump': return 'hop';
-    default: return null;
-  }
+  return anim === 'interact-right' && spaceId === 'laundry' ? 'flap' : null;
 }

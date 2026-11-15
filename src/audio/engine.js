@@ -1,6 +1,6 @@
-// 오디오 엔진(저수준): AudioContext 를 첫 사용자 입력 때 한 번만 만들고, 마스터 체인(효과음·앰비언스 버스 -> 리미터 -> 마스터 볼륨 -> 소프트 클립 -> 스피커),
+// 오디오 엔진(저수준): AudioContext 를 첫 사용자 입력 때 한 번만 만들고, 마스터 체인(효과음 버스 -> 리미터 -> 마스터 볼륨 -> 소프트 클립 -> 스피커),
 // 동시 소리 수 제한(우선순위로 끊기), 공용 잡음 버퍼, 음소거·볼륨 저장, 탭이 숨겨지면 멈춤을 맡는다. 무엇이 실패해도 게임 루프로 던지지 않고 조용히 꺼진다.
-// 이름 붙은 소리(재생·위치·앰비언스)는 audio/sfx.js 가 이 위에서 한다.
+// 이름 붙은 소리(재생·위치·모닥불)는 audio/sfx.js 가 이 위에서 한다.
 import { voiceDecision, volumeToGain, DEFAULT_VOLUME } from '../logic/audioPolicy.js';
 
 export const STORAGE_KEYS = { muted: 'catch-world-sfx-muted', volume: 'catch-world-sfx-volume' };
@@ -9,7 +9,6 @@ const NOISE_SECONDS = 3; // 잡음 버퍼 길이(반복해서 쓴다)
 const NOISE_SEAM = 2048; // 반복 이음매를 부드럽게 맞출 표본 수
 const START_DELAY = 0.01; // 소리 시작 여유(초): 지금 시각에 정확히 예약하면 앞부분이 잘릴 수 있다
 const MUTE_RAMP = 0.04; // 음소거·볼륨 바꿀 때 딸깍 소리가 나지 않게 천천히 옮기는 시간 상수(초)
-const AMB_BUS_GAIN = 0.7; // 앰비언스 버스의 기본 크기(효과음보다 살짝 낮게)
 const LIMITER = { threshold: -6, knee: 6, ratio: 20, attack: 0.002, release: 0.2 }; // 마스터 압축기(터지는 소리를 눌러 준다)
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
@@ -51,11 +50,9 @@ export function createNoiseBuffers(ctx, rng = Math.random) {
 }
 
 // ---- 마스터 체인 ----
-// sfxBus / ambBus -> 압축기(리미터 구실) -> 마스터 게인 -> 소프트 클립(어떤 경우에도 1 을 넘지 않게) -> 출력.
+// sfxBus -> 압축기(리미터 구실) -> 마스터 게인 -> 소프트 클립(어떤 경우에도 1 을 넘지 않게) -> 출력.
 export function createGraph(ctx, { masterGain = volumeToGain(DEFAULT_VOLUME) } = {}) {
   const sfxBus = ctx.createGain();
-  const ambBus = ctx.createGain();
-  ambBus.gain.value = AMB_BUS_GAIN;
   const comp = ctx.createDynamicsCompressor();
   comp.threshold.value = LIMITER.threshold;
   comp.knee.value = LIMITER.knee;
@@ -69,11 +66,10 @@ export function createGraph(ctx, { masterGain = volumeToGain(DEFAULT_VOLUME) } =
   for (let i = 0; i < curve.length; i++) curve[i] = Math.tanh((i / (curve.length - 1)) * 2 - 1);
   clip.curve = curve;
   sfxBus.connect(comp);
-  ambBus.connect(comp);
   comp.connect(master);
   master.connect(clip);
   clip.connect(ctx.destination);
-  return { sfxBus, ambBus, comp, master, clip };
+  return { sfxBus, comp, master, clip };
 }
 
 // ---- 소리 한 번(목소리) 만들기: 레시피 -> 소리별 게인 -> (좌우 위치) -> 버스. 엔진과 오프라인 시험이 같은 코드를 쓴다. ----
@@ -214,8 +210,8 @@ export function createEngine({ win = globalThis.window, storage, rng = Math.rand
       notify();
     },
 
-    // 소리 하나를 시작한다. { name, priority, bus: 'sfx'|'amb', run, opts, gain, pan, rate }. 시작했으면 목소리({ id, ... }), 아니면 null.
-    startVoice({ name, priority = 2, bus = 'sfx', run, opts, gain = 1, pan = 0, rate = 1 }) {
+    // 소리 하나를 시작한다. { name, priority, run, opts, gain, pan, rate }. 시작했으면 목소리({ id, ... }), 아니면 null.
+    startVoice({ name, priority = 2, run, opts, gain = 1, pan = 0, rate = 1 }) {
       if (!api.canPlay) return null;
       const now = ctx.currentTime;
       prune(now);
@@ -230,18 +226,18 @@ export function createEngine({ win = globalThis.window, storage, rng = Math.rand
           voices.splice(voices.indexOf(victim), 1); // 목록에서는 바로 뺀다(자리를 비운다)
         }
       }
-      const built = buildVoice({ ctx, bus: bus === 'amb' ? graph.ambBus : graph.sfxBus, noise, rng, run, opts, gain, pan, rate });
+      const built = buildVoice({ ctx, bus: graph.sfxBus, noise, rng, run, opts, gain, pan, rate });
       const voice = { id: nextId++, name, priority, start: built.t, end: built.t + built.duration + 0.15, out: built.out, panner: built.panner };
       voices.push(voice);
       return voice;
     },
 
-    // 끊기지 않는 소리를 시작한다(앰비언스·불). def: { run, gain, bus }. 돌려주는 핸들: { setLevel(0~1), stop() }.
+    // 끊기지 않는 소리를 시작한다(모닥불). def: { run, gain }. 돌려주는 핸들: { setLevel(0~1), stop() }.
     startLoop(def, level = 0) {
       if (!api.canPlay) return null;
       const g = ctx.createGain();
       g.gain.value = level * def.gain;
-      g.connect(def.bus === 'amb' ? graph.ambBus : graph.sfxBus);
+      g.connect(graph.sfxBus);
       let handle;
       try {
         handle = def.run({ ctx, out: g, t: ctx.currentTime, noise, rng, rate: 1 });

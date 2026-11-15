@@ -35,7 +35,7 @@ import { createTransition } from './logic/transition.js';
 import { createPassive } from './logic/passive.js';
 import { createOnce } from './logic/once.js';
 import { shareLines, shareFilename, shareUrl, resultPlan } from './logic/cta.js';
-import { createOutfit, outfitPrompt } from './logic/outfit.js';
+import { createOutfit, outfitPrompt, laundryGuide } from './logic/outfit.js';
 import { createLine } from './logic/line.js';
 import { makeId } from './logic/net.js';
 import { initAnalytics, track } from './analytics.js';
@@ -61,6 +61,7 @@ const PAPER_FLIGHT_SEC = 0.35; // 던진 종이가 불까지 날아가는 시간
 const PAPER_SLIDE_SEC = 0.2; // 파쇄기 투입구로 들어가는 시간
 const PAPER_ARC = 0.6; // 던질 때 포물선이 올라가는 높이
 const PAPER_FIRE_Y = 0.9; // 종이가 도착하는 불 위 높이
+const WASH_GUIDE_TAIL = 1.6; // 셔츠가 세탁기에 들어간 뒤 "세탁 중" 안내를 더 보이는 시간(초: 덜컹거림이 끝날 때까지)
 const SHIRT_FLIGHT_SEC = 0.45; // 구겨진 셔츠가 세탁기까지 날아가는 시간
 const SHIRT_ARC = 0.8; // 셔츠가 날아갈 때 포물선 높이
 const POP_HEIGHT = 1.6; // -3 팝업이 뜨는 머리 위 높이
@@ -224,7 +225,6 @@ if (isMobileUA(navigator.userAgent)) {
     hud.updateStressBar(value);
     if (before - value > 0) {
       popDelta(`-${before - value}`);
-      sfx.play('tick');
     }
     const plan = resultPlan({ justGoal, justEmpty });
     if (plan !== 'none') onResultPlan(plan, justGoal, value);
@@ -307,6 +307,7 @@ if (isMobileUA(navigator.userAgent)) {
   let pull = null; // 주머니에서 꺼내는 중 { t, dur }
   let crumple = null; // 태우기에서 종이를 구기는 중 { t, dur }
   let actionId = null;
+  let washTail = 0; // 세탁기에 셔츠가 들어간 뒤 덜컹거림이 끝날 때까지 "세탁 중" 안내를 이어 가는 남은 시간(초)
   const tmpFrom = new THREE.Vector3();
   const tmpHand = new THREE.Vector3();
   const pocketPos = new THREE.Vector3(...POCKET.pos);
@@ -402,10 +403,7 @@ if (isMobileUA(navigator.userAgent)) {
       return;
     }
     character?.playClip(step.name, byAction[action]?.speeds[step.name] ?? speeds[step.name] ?? 1);
-    if (step.name === 'emote-no') sfx.play('sigh'); // 한숨(소각장 행동의 첫 단계)
-    else if (step.name === 'emote-yes') sfx.play('relief'); // 후련(마지막 단계)
     if (step.event === 'paperOut') {
-      sfx.play('paperOut');
       // 재킷 가슴 주머니에서 작은 종이가 나와 paperOut 순간까지 손으로 올라온다.
       pull = { t: 0, dur: step.seconds * step.eventAt };
       handAttach.add(held); // 손 기준으로 움직여 손에 닿을 때 튀지 않는다.
@@ -414,7 +412,6 @@ if (isMobileUA(navigator.userAgent)) {
       updatePaper(0);
     } else if (step.effect && action === 'burn') {
       crumple = { t: 0, dur: step.seconds * CRUMPLE_FRACTION }; // 던지기 앞부분에서 종이를 구긴다
-      sfx.play('crumple');
     }
   }
 
@@ -450,10 +447,8 @@ if (isMobileUA(navigator.userAgent)) {
     };
     if (id === 'burn') {
       flight.to.set(FURNACE.x, PAPER_FIRE_Y, FURNACE.z);
-      sfx.play('toss');
     } else if (id === 'wash') {
       laundry.washers.entryWorld(washIndex, flight.to);
-      sfx.play('swish');
       net?.sendRoom({ k: 'fx', i: washIndex }); // 같은 세탁소의 다른 방문자 화면에서도 그 세탁기가 흔들린다
     } else {
       shredder.slotWorld(flight.to);
@@ -480,7 +475,6 @@ if (isMobileUA(navigator.userAgent)) {
     hud.hideTooltip();
     hud.hideBubble();
     wearing = { t: 0, swapped: false };
-    sfx.play('wearRustle');
     if (character) {
       const c = interior.clothesline.centre;
       character.beginAction();
@@ -589,6 +583,7 @@ if (isMobileUA(navigator.userAgent)) {
         laundry.washers.splash(flight.washer);
         sfx.play('washSplash');
         sfx.play('washerRattle');
+        washTail = WASH_GUIDE_TAIL;
       }
       clearPaper();
     }
@@ -596,6 +591,7 @@ if (isMobileUA(navigator.userAgent)) {
 
   // 매 프레임: AUTO 유효성 확인 -> 러너 진행(효과/끝 처리) -> 손 소품·날아가는 종이 -> 행동 막대·불멍 안내·불멍 감소.
   function updateActions(dt) {
+    washTail = Math.max(0, washTail - dt);
     // 지금 있는 행동 구역(가장 가까운 구역 안, 없으면 null). 걷는 중에도 구역이 바뀌면 행동 막대가 바뀐다.
     currentZone = currentZoneFor({ mode, pos: player.position, seat: seatItem, zones, spaceId });
     // AUTO 해제 조건: 걷기 시작·앉기·포춘·구역 밖(진행 중인 행동은 끝까지 한다). 다음 행동의 사정거리 밖이면 러너가 canStart 로 끈다.
@@ -661,7 +657,6 @@ if (isMobileUA(navigator.userAgent)) {
     const p = pushOut(standPoint(seatItem.seat));
     player.position.set(p.x, 0, p.z);
     seatItem = null;
-    sfx.play('stand');
   }
 
   // 이벤트로 모드를 바꾸고, 떠나는 모드의 정리를 한다. 바뀌었으면 true.
@@ -816,7 +811,6 @@ if (isMobileUA(navigator.userAgent)) {
       if (!dispatch('interact:seat')) return;
       stopWalking();
       seatItem = item;
-      sfx.play('sit');
     } else if (type === 'fortune') {
       if (!dispatch('interact:fortune')) return;
       stopWalking();
@@ -886,7 +880,6 @@ if (isMobileUA(navigator.userAgent)) {
       runner.cancelAuto();
       dispatch('move');
       walkTo(target);
-      sfx.play('marker');
     },
     onHover: (ndc, clientX, clientY) => {
       const item = ndc && mode !== 'transition' && pickInteractable(ndc);
@@ -943,7 +936,7 @@ if (isMobileUA(navigator.userAgent)) {
       player.position.x = pushed.x;
       player.position.z = pushed.z;
       // 발소리: 걸은 거리가 보폭만큼 쌓일 때마다(바닥 종류: 풀·광장 돌·실내 타일). 느리게 걸으면 드문드문, 장애물에 막혀 못 가면 나지 않는다.
-      if (stepper.advance(Math.hypot(pushed.x - cur.x, pushed.z - cur.z))) sfx.play(STEP_SOUND[surfaceAt(spaceId, pushed.x, pushed.z, layout.plaza)], { rate: stepper.foot ? 1 : 0.94 });
+      if (stepper.advance(Math.hypot(pushed.x - cur.x, pushed.z - cur.z))) sfx.play(STEP_SOUND[surfaceAt(spaceId, pushed.x, pushed.z, layout.plaza)], { rate: stepper.foot ? 1 : 0.94, pan: stepper.foot ? 0.18 : -0.18 }); // 왼발·오른발 번갈아 살짝 좌우로
       if (next.arrived) stopWalking();
     } else stepper.reset();
     if (mode === 'seated') {
@@ -988,6 +981,11 @@ if (isMobileUA(navigator.userAgent)) {
           actionable = sp.actionable;
         } else nextPrompt = act ? act.prompt : null;
       }
+      // 세탁소 순서 안내(세탁 중 / 세탁 끝: 다음은 널기): 다른 안내(문·빨랫줄 곁 문구)가 없을 때 눌러도 아무 일 없는 힌트로 띄운다. 세탁소 밖에서는 나오지 않는다.
+      if (!nextPrompt && mode === 'free') {
+        const guide = laundryGuide(outfit.state, { washing: actionId === 'wash' || washTail > 0, spaceId });
+        if (guide) { nextPrompt = guide; actionable = false; }
+      }
     }
     const promptKey = nextPrompt && (actionable ? nextPrompt : `~${nextPrompt}`);
     if (promptKey !== promptText) {
@@ -1004,7 +1002,7 @@ if (isMobileUA(navigator.userAgent)) {
     interviewers.update(dt);
     crew.update(dt);
     interviewScene.update(dt);
-    // 효과음: 듣는 사람 = 플레이어 위치, 좌우는 카메라의 오른쪽 방향 기준. 공간별 앰비언스와 모닥불 소리를 갱신한다.
+    // 효과음: 듣는 사람 = 플레이어 위치, 좌우는 카메라의 오른쪽 방향 기준. 모닥불 소리(소각로와의 거리)를 갱신한다.
     const camRight = camera.matrixWorld.elements;
     listenerPos.x = player.position.x;
     listenerPos.z = player.position.z;
