@@ -69,8 +69,9 @@ const STAND_HOLD = 0.35; // 걸어가는 단계의 끝부분(비율): 이때 파
 const SPEECH_KEY = 'line-self'; // 소각장 멘트 말풍선 id
 const LINE_SECONDS = 2.2; // 멘트가 떠 있는 시간(초)
 const SHOW_SCALE = 1.5; // 물건을 들여다볼 때 종이를 키우는 배율(멀리서도 읽히게)
-const SHOW_LIFT = 0.45; // 들여다볼 때 종이를 올리는 높이(월드 단위)
-const SHOW_FORWARD = 0.35; // 들여다볼 때 종이를 카메라 쪽으로 내미는 거리
+const SHOW_LIFT = 0.65; // 들여다볼 때 종이를 올리는 높이(월드 단위)
+const SHOW_FORWARD = 0.8; // 들여다볼 때 종이를 카메라 쪽으로 내미는 거리(캐릭터 뒤에서 봐도 몸 앞으로 나오게)
+const SHOW_SIDE = 0.5; // 들여다볼 때 종이를 화면 오른쪽으로 비키는 거리(몸·머리와 겹치지 않게)
 const EMBER_AT = [0.0, 0.45]; // 지켜보는 단계에서 불씨를 띄우는 시각(초)
 const PAPER_ARC = 0.6; // 던질 때 포물선이 올라가는 높이
 const PAPER_FIRE_Y = 0.9; // 종이가 도착하는 불 위 높이
@@ -342,6 +343,7 @@ if (isMobileUA(navigator.userAgent)) {
   let crumple = null; // 태우기에서 종이를 구기는 중 { t, dur }
   const tmpV = new THREE.Vector3();
   const tmpV2 = new THREE.Vector3();
+  const tmpV3 = new THREE.Vector3();
   const tmpM = new THREE.Matrix4();
   const faceQ = new THREE.Quaternion();
   let actionId = null;
@@ -450,6 +452,10 @@ if (isMobileUA(navigator.userAgent)) {
     tmpV.y += SHOW_LIFT * blend;
     tmpV.x += tmpV2.x * SHOW_FORWARD * blend;
     tmpV.z += tmpV2.z * SHOW_FORWARD * blend;
+    tmpV3.setFromMatrixColumn(camera.matrixWorld, 0); // 카메라 오른쪽(수평)
+    tmpV3.y = 0;
+    if (tmpV3.lengthSq() > 1e-6) tmpV3.normalize();
+    tmpV.addScaledVector(tmpV3, SHOW_SIDE * blend);
     held.position.copy(held.parent.worldToLocal(tmpV));
   }
 
