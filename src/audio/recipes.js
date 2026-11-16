@@ -324,22 +324,32 @@ function jingle(env) {
   tone(env, { f: 3136, at: 0.5, dur: 0.5, gain: 0.04, attack: 0.01 });
   return 1.25;
 }
-// 포춘쿠키 깨기: 딱 갈라지는 소리 + 바삭한 조각.
-function crack(env) {
-  hiss(env, { kind: 'white', dur: 0.03, gain: 0.6, attack: 0.001, filters: [{ type: 'highpass', f: 2000 }] });
-  tone(env, { f: 200, to: 90, dur: 0.06, gain: 0.3, attack: 0.002 });
-  [0.03, 0.07, 0.11].forEach((at) => hiss(env, { kind: 'white', at, dur: rnd(env, 0.04, 0.08), gain: 0.22, attack: 0.002, filters: [{ type: 'bandpass', f: rnd(env, 2500, 4000), q: 0.8 }] }));
-  hiss(env, { kind: 'white', at: 0.22, dur: 0.03, gain: 0.35, attack: 0.001, filters: [{ type: 'highpass', f: 2500 }] });
-  return 0.4;
+// 쿠키 알갱이 하나: 거른 잡음을 아주 짧게 톡(종소리 같은 음높이 없이 잡음만). f 는 대역 중심(Hz).
+function grain(env, { at, f, dur, gain, q = 1.4 }) {
+  hiss(env, { kind: 'white', at, dur, gain, attack: 0.001, filters: [{ type: 'bandpass', f, q }] });
 }
-// 운세 공개: 맑은 종소리 네 음.
-function fortune(env) {
-  [NOTE.D6, NOTE.Fs6, NOTE.A6, NOTE.D7].forEach((f, i) => fm(env, { f, ratio: 3.01, index: 0.9, at: i * 0.12, dur: 1.0, gain: 0.16 }));
-  tone(env, { f: 4186, at: 0.4, dur: 0.6, gain: 0.03, attack: 0.01 });
-  return 1.45;
+// 포춘쿠키 연타 한 번: 아주 작고 짧은 바삭 알갱이 2~3개(매번 조금씩 다르다).
+function crackTap(env) {
+  const n = 2 + Math.floor(env.rng() * 1.99);
+  let at = 0;
+  for (let i = 0; i < n; i++) {
+    grain(env, { at, f: rnd(env, 1500, 6000), dur: rnd(env, 0.012, 0.03), gain: rnd(env, 0.2, 0.34) });
+    at += rnd(env, 0.008, 0.022);
+  }
+  return 0.09;
 }
-
-
+// 포춘쿠키 깨짐: 파삭 바삭. 첫 갈라짐 + 낮은 몸통(300~600Hz 잡음) + 120~220ms 에 걸친 바삭 알갱이 8개 + 끝의 작은 부스러기 틱. 음높이 있는 소리(종·삑)는 없다.
+function crackBreak(env) {
+  hiss(env, { kind: 'white', dur: 0.02, gain: 0.85, attack: 0.001, filters: [{ type: 'highpass', f: 2200 }] }); // 첫 갈라짐
+  hiss(env, { kind: 'pink', dur: 0.07, gain: 0.3, attack: 0.003, filters: [{ type: 'bandpass', f: rnd(env, 300, 600), q: 0.9 }] }); // 몸통
+  const n = 8;
+  for (let i = 0; i < n; i++) {
+    const at = 0.012 + (i / (n - 1)) * 0.17 + rnd(env, -0.008, 0.008); // 약 12~190ms
+    grain(env, { at: Math.max(0.005, at), f: rnd(env, 1500, 6000), dur: rnd(env, 0.012, 0.03), gain: rnd(env, 0.13, 0.26) * (1 - i * 0.04) });
+  }
+  [0.21, 0.255, 0.31].forEach((at) => grain(env, { at: at + rnd(env, -0.01, 0.01), f: rnd(env, 3500, 7000), dur: 0.01, gain: rnd(env, 0.06, 0.1), q: 1.8 })); // 부스러기 틱
+  return 0.36;
+}
 
 // ---- 끊기지 않는 소리(모닥불 하나뿐: 배경음·앰비언스는 넣지 않는다) ----
 // 모닥불(소각로): 편안한 ASMR 모닥불. 길게 미리 만든 되풀이 표본(audio/fireSynth.js: 아주 작은 불꽃 숨결 + 하나하나 또렷하고 간격이 제각각인 타닥임)을 반복 재생한다.
@@ -399,8 +409,8 @@ export const RECIPES = {
   popupSide: { run: popupSide, duration: [0.5, 1.3], priority: 4, gain: 1.43, jitter: NOJ, minInterval: 0.5, group: '화면', label: '측면 팝업(은은한 차임)' },
   popupModal: { run: popupModal, duration: [1.0, 2.0], priority: 4, gain: 1.42, jitter: NOJ, minInterval: 0.8, group: '화면', label: '가운데 팝업(스트레스 0 축하)' },
   jingle: { run: jingle, duration: [0.8, 1.8], priority: 4, gain: 1.37, jitter: NOJ, minInterval: 0.8, group: '화면', label: '면접 갈 준비 완료 징글' },
-  crack: { run: crack, duration: [0.2, 0.7], priority: 3, gain: 0.95, jitter: J, minInterval: 0.3, group: '화면', label: '포춘쿠키 깨기' },
-  fortune: { run: fortune, duration: [0.9, 2.0], priority: 4, gain: 1.69, jitter: NOJ, minInterval: 0.6, group: '화면', label: '운세 공개 차임' },
+  crackTap: { run: crackTap, duration: [0.04, 0.2], priority: 2, gain: 0.9, jitter: { pitch: 0.08, gain: 0.2 }, minInterval: 0.05, group: '화면', label: '포춘쿠키 연타(톡, 아주 작게)' },
+  crackBreak: { run: crackBreak, duration: [0.2, 0.6], priority: 3, gain: 0.9, jitter: { pitch: 0.05, gain: 0.1 }, minInterval: 0.3, group: '화면', label: '포춘쿠키 깨짐(파삭 바삭)' },
 };
 
 // 끊기지 않는 소리. 배경음·앰비언스는 두지 않고 소각로의 모닥불 하나뿐이다. gain: 소리 크기(sfx.update 가 불과의 거리에 따라 0~1 을 곱한다).

@@ -19,7 +19,10 @@ import { createHud } from './hud.js';
 import { interactTarget, hoverLabel, nearestInRange, actionOf, standPoint } from './logic/interaction.js';
 import { nextMode, holdsSeat, showPrompt as promptAllowed } from './logic/playerMode.js';
 import { occupiedSeats, seatOfRemote, seatPromptFor, SEAT_OCCUPIED_RADIUS } from './logic/seats.js';
-import { pickFortune } from './logic/fortune.js';
+import { pickFortuneFor } from './logic/fortune.js';
+import { createCookieCrack } from './logic/cookieCrack.js';
+import { fortuneCatchUrl } from './logic/catchUrl.js';
+import { buildFortuneStall } from './fortuneStall.js';
 import { createControls } from './controls.js';
 import { createGameState } from './logic/gameState.js';
 import { ACTION_DEFS, createRunner, fitDurations, canPerform } from './logic/actions.js';
@@ -51,7 +54,7 @@ import { initAnalytics, track } from './analytics.js';
 import { renderShareCard, saveShareCard, copyText } from './share.js';
 import { easeInOut } from './logic/burn.js';
 import {
-  ORBIT, CAMERA_CLEAR, TRANSITION, PLAYER, PLAYER_MODEL, FURNACE, STRESS, SPAWN, SEED, COMFORT_MESSAGES, FORTUNES,
+  ORBIT, CAMERA_CLEAR, TRANSITION, PLAYER, PLAYER_MODEL, FURNACE, STRESS, SPAWN, SEED, COMFORT_MESSAGES, FORTUNES, FORTUNE_CTA, FORTUNE_UTM, COOKIE_KINDS,
   INCINERATOR, ACTION_REDUCE, ACTION_EFFECT_AT, ACTION_TARGET_SECONDS, ACTION_TURN_SECONDS, AUTO_GAP, PASSIVE, MARSHMALLOW, FIRST_PERSON,
   FIRE_RANGE, SHREDDER_RANGE, WASHER_RANGE, CLOTHESLINE_RANGE, FIRE_ZONE_RADIUS, CATCH_URL, GA_MEASUREMENT_ID, WEAR_SECONDS, WEAR_SWAP_AT,
   INTERVIEW, INTERVIEW_ROUND, INTERVIEW_BONUS, INTERVIEW_ZONE_RADIUS, INTERVIEW_ANSWER_SECONDS, INTERVIEW_IMPROV_SECONDS, INTERVIEW_FINALE_SECONDS, SPEECH_SECONDS,
@@ -132,6 +135,7 @@ if (isMobileUA(navigator.userAgent)) {
   const zones = buildZones(layout, interior, interviewData);
   const { updateTreeOcclusion } = buildDecor(yardRoot, layout, models);
   buildSign(yardRoot, layout.sign);
+  const fortuneStall = buildFortuneStall(yardRoot, layout.stall);
   // 모델이 없으면 도형 대체물.
   if (!models.get('nature/campfire_stones')) buildFurnace(yardRoot);
   const treeCount = [...models.keys()].filter((k) => k.startsWith('nature/tree_') && models.get(k)).length;
@@ -152,7 +156,12 @@ if (isMobileUA(navigator.userAgent)) {
   }
   const marker = buildMarker(scene);
   const hud = createHud(document.getElementById('game'), {
-    onCrack: () => hud.crackFortune(),
+    fortuneHandlers: {
+      onPick: (i) => chooseCookie(i),
+      onTap: () => pressCookie(false),
+      onMore: () => fortuneMore(),
+      onCta: (category) => openFortuneCta(category),
+    },
     onClose: () => dispatch('close'),
   });
   createSoundButton(document.getElementById('game'), sfx); // 우상단 효과음 켜기/끄기(M 키도 같다). 소리는 첫 입력 뒤에야 난다
@@ -1201,7 +1210,7 @@ if (isMobileUA(navigator.userAgent)) {
     const next = nextMode(mode, event);
     if (next === mode) return false;
     if (holdsSeat(mode) && !holdsSeat(next)) standUp(); // 앉은 모드 사이(앉기 <-> 면접 선택·연출)를 오갈 때는 일어나지 않는다
-    if (mode === 'fortune') hud.closeFortune();
+    if (mode === 'fortune') hud.fortune.close();
     mode = next;
     keys.clear(); // 모드가 바뀌면 눌려 있던 이동 키는 잊는다(걷기가 혼자 계속되지 않게)
     if (mode !== 'free') { runner.cancelAuto(); abortAction(); } // 앉기·포춘 모달을 열면 자동이 꺼지고 진행 중인 행동도 취소된다.
@@ -1328,14 +1337,44 @@ if (isMobileUA(navigator.userAgent)) {
     else track('enter_space', { space: toId });
   }
 
+  // ---- 포춘쿠키: 쿠키 고르기 -> 연타로 깨기 -> 운세 종이 + 캐치 이동 버튼 ----
+  const crack = createCookieCrack();
+  let cookieKind = null;
+  function openFortune() {
+    cookieKind = null;
+    hud.fortune.openPicker(COOKIE_KINDS);
+    track('fortune_open');
+  }
+  function chooseCookie(i) {
+    if (mode !== 'fortune' || hud.fortune.stage() !== 'pick' || !COOKIE_KINDS[i]) return;
+    cookieKind = COOKIE_KINDS[i];
+    crack.reset();
+    hud.fortune.startCrack(cookieKind);
+  }
+  function pressCookie(repeat) {
+    if (mode !== 'fortune' || hud.fortune.stage() !== 'crack') return;
+    const r = crack.press({ repeat });
+    if (!r.counted) return;
+    hud.fortune.tap(r);
+    if (!r.broken) { sfx.play('crackTap'); return; }
+    sfx.play('crackBreak');
+    const pick = pickFortuneFor(FORTUNES, Math.random, lastFortune, cookieKind.favors);
+    lastFortune = pick.index;
+    const { category, cta } = pick.fortune;
+    hud.fortune.burst(pick.fortune, FORTUNE_CTA[category].name, cta.label, category);
+    track('fortune_crack', { cookie: cookieKind.id, category, presses: r.presses });
+  }
+  function fortuneMore() {
+    if (mode === 'fortune' && hud.fortune.stage() === 'card') { cookieKind = null; hud.fortune.openPicker(COOKIE_KINDS); }
+  }
+  function openFortuneCta(category) {
+    window.open(fortuneCatchUrl(CATCH_URL, FORTUNE_UTM, category), '_blank', 'noopener');
+    track('fortune_cta_click', { category });
+    track('cta_click', { source: 'fortune', category });
+  }
+
   // E 키: 포춘 모달이면 깨기/닫기, 앉은 상태면 일어나기, 아니면 가장 가까운 대상의 동작(소각로는 E 동작이 없다).
   function onInteractKey() {
-    if (mode === 'fortune') {
-      const stage = hud.fortuneStage();
-      if (stage === 'cookie') hud.crackFortune();
-      else if (stage === 'card') dispatch('close');
-      return;
-    }
     if (runner.isBusy() || mode === 'roasting' || mode === 'transition' || mode === 'wearing' || mode === 'interview-choice' || mode === 'interview-play' || mode === 'item-choice') return; // 행동·전환·옷 갈아입기·면접 중에는 E 동작을 하지 않는다.
     if (mode === 'seated') { dispatch('interact'); return; }
     const item = nearestInRange(player.position, here().interactables);
@@ -1352,9 +1391,7 @@ if (isMobileUA(navigator.userAgent)) {
     } else if (type === 'fortune') {
       if (!dispatch('interact:fortune')) return;
       stopWalking();
-      const pick = pickFortune(FORTUNES, Math.random, lastFortune);
-      lastFortune = pick.index;
-      hud.openFortune(pick.text);
+      openFortune();
     }
   }
 
@@ -1382,6 +1419,15 @@ if (isMobileUA(navigator.userAgent)) {
         else if (e.code === 'KeyE') cancelRoast(); // 아직 굽기 전(꺼내 드는 중): E 는 취소
       }
       if (e.code === 'Space') e.preventDefault();
+      return;
+    }
+    if (mode === 'fortune') { // 포춘쿠키: 고르기는 1·2·3, 깨기는 Space·E·Enter 연타(키 반복은 세지 않는다), 종이가 나온 뒤에는 R(한 개 더)·Esc. 이동 키는 아래 이동 핸들러가 모드로 막는다.
+      if (e.code === 'Escape') { dispatch('close'); return; }
+      const fstage = hud.fortune.stage();
+      if (fstage === 'pick') { if (!e.repeat) { const i = pickIndexFromCode(e.code, COOKIE_KINDS.length); if (i >= 0) chooseCookie(i); } }
+      else if (fstage === 'crack') { if (e.code === 'Space' || e.code === 'KeyE' || e.code === 'Enter' || e.code === 'NumpadEnter') pressCookie(e.repeat); }
+      else if (fstage === 'card') { if (!e.repeat && e.code === 'KeyR') fortuneMore(); }
+      if (e.code === 'Space' || e.code === 'Enter') e.preventDefault();
       return;
     }
     if (mode === 'result') { // 종료 화면 중에는 Esc(계속 둘러보기)만 받는다.
@@ -1553,6 +1599,8 @@ if (isMobileUA(navigator.userAgent)) {
     updateWear(dt);
     updateActions(dt);
     fire.update(dt, time);
+    fortuneStall.update(time);
+    if (mode === 'fortune' && hud.fortune.stage() === 'crack') hud.fortune.setProgress(crack.update()); // 멈추면 줄어드는 게이지
     shredder.update(dt);
     glitter.update(dt);
     if (hud.isBubbleVisible()) {

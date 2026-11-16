@@ -32,24 +32,67 @@
     #prompt.visible { opacity: 1; }
     .keycap { display: inline-block; min-width: 22px; padding: 2px 7px; border-radius: 6px; background: #fff; color: #1b1b2f;
       font-weight: 700; text-align: center; box-shadow: 0 2px 0 #9a9ab8; }
+    /* 포춘쿠키 모달: 고르기(pick) -> 깨기(crack) -> 깨지는 연출(burst) -> 운세 종이(card) */
     #fortune { position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
-      background: rgba(10, 10, 20, 0.65); z-index: 3; }
+      background: rgba(10, 10, 20, 0.7); z-index: 3; }
     #fortune.open { display: flex; }
-    .fortune-stage { display: none; flex-direction: column; align-items: center; text-align: center; }
-    #fortune[data-stage="cookie"] .fortune-cookie, #fortune[data-stage="cracking"] .fortune-cookie,
+    .fortune-stage { display: none; flex-direction: column; align-items: center; text-align: center; max-width: 94%; }
+    #fortune[data-stage="pick"] .fortune-pick, #fortune[data-stage="crack"] .fortune-crack, #fortune[data-stage="burst"] .fortune-crack,
     #fortune[data-stage="card"] .fortune-card { display: flex; }
-    .cookie { font-size: 110px; line-height: 1; padding: 0; border: 0; background: none; cursor: pointer; }
-    #fortune[data-stage="cracking"] .cookie { animation: crack 0.4s ease-in-out forwards; }
-    @keyframes crack {
-      0% { transform: scale(1) rotate(0); } 20% { transform: scale(1.1) rotate(-12deg); }
-      40% { transform: scale(1.15) rotate(10deg); } 60% { transform: scale(1.2) rotate(-8deg); }
-      80% { transform: scale(1.3) rotate(6deg); } 100% { transform: scale(1.4) rotate(0); opacity: 0; }
-    }
-    .fortune-cookie p { margin: 14px 0 0; color: #fff; font-size: 17px; }
-    .fortune-card { position: relative; width: min(420px, 80%); padding: 34px 28px 18px; border-radius: 6px;
-      background: #fdf6e3; color: #3a2f1f; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); }
-    .fortune-text { margin: 0; font-size: 19px; line-height: 1.6; word-break: keep-all; }
-    .fortune-hint { margin: 16px 0 0; font-size: 12px; color: #8a7a5f; }
+    #fortune kbd { display: inline-block; min-width: 18px; padding: 0 6px; border-radius: 5px; background: #fff; color: #1b1b2f; font: 700 12px/18px system-ui, sans-serif; box-shadow: 0 2px 0 #9a9ab8; }
+    .fortune-pick h2 { margin: 0 0 18px; color: #fff; font-size: 20px; }
+    .pick-row { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+    .pick-cookie { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 150px; padding: 14px 10px 12px; border: 2px solid rgba(255, 240, 214, 0.25);
+      border-radius: 16px; background: rgba(255, 240, 214, 0.08); color: #fff; font: 600 15px system-ui, 'Malgun Gothic', sans-serif; cursor: pointer;
+      transition: transform 0.15s, background 0.15s, border-color 0.15s; }
+    .pick-cookie:hover { transform: translateY(-6px) rotate(-2deg); background: rgba(255, 240, 214, 0.18); border-color: #ffd37a; }
+    .pick-cookie svg { width: 110px; height: auto; filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.4)); }
+    .fortune-hint { margin: 16px 0 0; font-size: 12px; color: #c9bfa6; }
+    .fortune-crack .crack-label { margin: 14px 0 0; color: #fff; font-size: 17px; font-weight: 600; min-height: 22px; }
+    .crack-cookie { position: relative; width: 300px; height: 210px; cursor: pointer; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+    .cookie-body { position: absolute; inset: 0; transform-origin: 50% 85%; }
+    .cookie-body .half { position: absolute; inset: 0; filter: drop-shadow(0 10px 12px rgba(0, 0, 0, 0.45)); transition: transform 0.55s cubic-bezier(0.2, 0.8, 0.3, 1.2), opacity 0.4s 0.5s; }
+    .cookie-body .half svg { width: 100%; height: 100%; }
+    .half-l { clip-path: polygon(0 0, 50% 0, 47% 14%, 53% 30%, 47% 46%, 53% 62%, 48% 78%, 51% 100%, 0 100%); }
+    .half-r { clip-path: polygon(50% 0, 100% 0, 100% 100%, 51% 100%, 48% 78%, 53% 62%, 47% 46%, 53% 30%, 47% 14%); }
+    .cracks { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    .cracks path { fill: none; stroke: #2b1708; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; opacity: 0; transition: opacity 0.12s; }
+    .crack-cookie[data-level="1"] .crack-1, .crack-cookie[data-level="2"] .crack-2, .crack-cookie[data-level="2"] .crack-2b,
+    .crack-cookie[data-level="3"] .crack-2, .crack-cookie[data-level="3"] .crack-2b { opacity: 0.9; }
+    .crack-cookie[data-level="3"] .cracks path { stroke-width: 4; }
+    .crack-cookie[data-level="3"] .cookie-body { animation: cookie-wobble 0.18s ease-in-out infinite; }
+    .cookie-body.tap { animation: cookie-squish 0.14s ease-out; }
+    .crack-cookie[data-level="3"] .cookie-body.tap { animation: cookie-squish 0.14s ease-out, cookie-wobble 0.18s 0.14s ease-in-out infinite; }
+    @keyframes cookie-squish { 0% { transform: scale(1, 1) rotate(0); } 40% { transform: scale(1.1, 0.86) rotate(-2deg); } 100% { transform: scale(1, 1) rotate(0); } }
+    @keyframes cookie-wobble { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg) translateX(2px); } }
+    .cookie-body.broken { animation: none; }
+    .cookie-body.broken .cracks { display: none; }
+    .cookie-body.broken .half-l { transform: translate(-70px, 16px) rotate(-22deg); }
+    .cookie-body.broken .half-r { transform: translate(70px, 16px) rotate(22deg); }
+    .slip-peek { position: absolute; left: 50%; top: 44%; width: 96px; height: 20px; margin-left: -48px; border-radius: 3px; background: #fdf6e3; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+      transform: translateY(0) scaleX(0.2); opacity: 0; z-index: -1; }
+    .cookie-body.broken .slip-peek { z-index: 1; opacity: 1; transform: translateY(-26px) scaleX(1); transition: transform 0.45s 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.1), opacity 0.1s 0.2s; }
+    .crumbs { position: absolute; left: 50%; top: 52%; width: 0; height: 0; pointer-events: none; }
+    .crumbs i { position: absolute; left: 0; top: 0; width: var(--s); height: var(--s); border-radius: 30%; background: #f0b445; transform: rotate(var(--r)); animation: crumb-pop 0.7s ease-out forwards; }
+    #fortune[data-kind="choco"] .crumbs i { background: #8a5333; }
+    #fortune[data-kind="matcha"] .crumbs i { background: #a9c97d; }
+    @keyframes crumb-pop { 0% { transform: translate(0, 0) rotate(var(--r)); opacity: 1; } 60% { opacity: 1; } 100% { transform: translate(var(--dx), calc(var(--dy) + 50px)) rotate(calc(var(--r) + 240deg)); opacity: 0; } }
+    .crack-gauge { width: 260px; height: 12px; margin-top: 10px; border-radius: 6px; background: rgba(255, 255, 255, 0.18); overflow: hidden; }
+    .crack-fill { width: 0; height: 100%; border-radius: 6px; background: linear-gradient(90deg, #ffd37a, #ff9a4a); transition: width 0.08s linear; }
+    #fortune[data-stage="burst"] .crack-gauge, #fortune[data-stage="burst"] .crack-hint { visibility: hidden; }
+    .fortune-card { position: relative; width: min(440px, 88%); padding: 30px 28px 16px; border-radius: 6px; background: #fdf6e3; color: #3a2f1f;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); animation: slip-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.1); }
+    @keyframes slip-in { 0% { transform: translateY(-40px) scale(0.85, 0.5); opacity: 0; } 100% { transform: none; opacity: 1; } }
+    .fortune-cat { display: inline-block; margin-bottom: 12px; padding: 3px 12px; border-radius: 999px; background: #ffe2b8; color: #8a4b10; font-size: 13px; font-weight: 700; }
+    .fortune-text { margin: 0 0 16px; font-size: 19px; line-height: 1.6; word-break: keep-all; }
+    .fortune-cta { width: 100%; padding: 12px 16px; border: 0; border-radius: 12px; background: #ff7a2f; color: #fff; font: 700 16px system-ui, 'Malgun Gothic', sans-serif; cursor: pointer;
+      box-shadow: 0 3px 0 #c75a16; transition: transform 0.1s, filter 0.1s; }
+    .fortune-cta:hover { filter: brightness(1.07); transform: translateY(-1px); }
+    .fortune-cta::after { content: ' →'; }
+    .fortune-more-row { margin-top: 10px; }
+    .fortune-more { padding: 7px 14px; border: 1px solid #d9c9a3; border-radius: 999px; background: #fff; color: #5a4a30; font: 600 14px system-ui, 'Malgun Gothic', sans-serif; cursor: pointer; }
+    .fortune-more:hover { background: #fff6e0; }
+    .fortune-card .fortune-hint { color: #8a7a5f; margin-top: 12px; }
     .fortune-close { position: absolute; top: 6px; right: 8px; border: 0; background: none; font-size: 18px; color: #8a7a5f; cursor: pointer; }
     #stress { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); display: none; flex-direction: column;
       align-items: center; gap: 6px; padding: 8px 14px; border-radius: 12px; background: rgba(18, 18, 31, 0.7);

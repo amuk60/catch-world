@@ -31,7 +31,7 @@ test('세탁소를 추가해도 기존 배치(나무·덤불·바위·랜턴·�
     trees: L.trees, bushes: L.bushes, rocks: L.rocks, lanterns: L.lanterns, furnaceItems: L.furnaceItems, sign: L.sign, shredder: L.shredder,
     interactables: L.interactables.slice(0, 10), obstacles: L.obstacles.slice(0, 34), buildingSlots: L.buildingSlots, plaza: L.plaza,
   };
-  assert.equal(createHash('sha1').update(JSON.stringify(before)).digest('hex'), '59834baa8d607438192a4f4496b6c97ee6cd590a');
+  assert.equal(createHash('sha1').update(JSON.stringify(before)).digest('hex'), '6b30dc2d41be33554ba94a65fb5cf545470650a9');
   assert.equal(L.interactables.length, 14); // 세탁소 건물·문과 면접장 건물·문이 추가됐다(앞의 10개 = 소각로·위로 3·통나무 자리 6은 그대로)
 });
 
@@ -184,7 +184,7 @@ test('건물 상호작용(호버/클릭)은 그대로 E 동작이 없다', () =>
 test('세탁소 외관 물체들은 랜턴(과 그 장애물)·위로 오브젝트·스폰과 겹치지 않는다', () => {
   const mine = buildingCircles;
   const others = L.obstacles.filter((o) => !mine.includes(o) && o.radius !== L.buildings[1].obstacleRadius); // 면접장 외곽 원은 interviewLayout.test.js 에서 본다
-  assert.equal(others.length, 34); // 통나무 자리 6개의 원 12개가 더해졌다
+  assert.equal(others.length, 36); // 통나무 자리 6개의 원 12개 + 쿠키 노점 양 끝 원 2개
   for (const m of mine) {
     for (const o of others) assert.ok(d(m, o) >= m.radius + o.radius + 0.2, `${JSON.stringify(m)} vs ${JSON.stringify(o)}`);
     assert.ok(d(m, SPAWN) >= m.radius + PLAYER.radius);

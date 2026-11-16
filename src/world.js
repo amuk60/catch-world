@@ -199,7 +199,7 @@ export function buildCity(scene, layout) {
 // 상호작용 대상마다 보이지 않는 클릭/호버 판정 부피(원기둥)를 만든다. 레이캐스트는 재질이 안 보여도 동작한다.
 export function buildPickables(scene, interactables) {
   return interactables.map((it) => {
-    const r = it.radius * 1.4;
+    const r = it.pickRadius ?? it.radius * 1.4; // 노점처럼 넓은 대상은 pickRadius 로 넓힌다
     const h = it.pickHeight ?? 2.2; // 건물처럼 키가 큰 대상은 pickHeight 로 높인다
     const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h), new THREE.MeshBasicMaterial());
     mesh.material.visible = false;

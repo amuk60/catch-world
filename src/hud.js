@@ -2,9 +2,9 @@
 import { barRatio } from './logic/burn.js';
 import { emptyMessage, goalMessage, readyMessage } from './logic/cta.js';
 import { sfx } from './audio/sfx.js';
+import { createFortuneModal } from './fortuneModal.js';
 
 const BUBBLE_MS = 3000;
-const CRACK_MS = 400; // index.html 의 crack 애니메이션 길이와 같게 둔다.
 const DELTA_MS = 800; // index.html 의 delta-rise 애니메이션 길이와 같게 둔다.
 const MEDITATE_TEXT = '불멍 중… 가만히 있어도 지수가 줄어요 · V 시점 전환';
 const MEDITATE_TEXT_FP = '불멍 중… V 시점 전환';
@@ -12,8 +12,9 @@ const AUTO_BUTTON = { id: 'auto', key: 'R', label: '자동' };
 const TOO_FAR = '더 가까이 가세요';
 const PORTAL_OPEN_PERCENT = 112; // 구멍이 완전히 열렸을 때의 반지름(%): 가장 먼 모서리(100%)와 빛의 띠가 화면 밖으로 나가는 값
 
-// onCrack: 쿠키를 클릭했을 때, onClose: ✕ 를 눌렀을 때 (main.js 가 상태를 결정한다).
-export function createHud(container, { onCrack = () => {}, onClose = () => {} } = {}) {
+// fortuneHandlers: 포춘쿠키 모달의 onPick·onTap·onMore·onCta, onClose: ✕ 를 눌렀을 때 (main.js 가 상태를 결정한다). 모달은 hud.fortune 으로 쓴다(fortuneModal.js).
+export function createHud(container, { fortuneHandlers = {}, onClose = () => {} } = {}) {
+  const fortune = createFortuneModal(container, { ...fortuneHandlers, onClose });
   const tooltip = document.createElement('div');
   tooltip.id = 'tooltip';
   const bubble = document.createElement('div');
@@ -26,21 +27,6 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
   const promptLabel = document.createElement('span');
   prompt.append(keycap, promptLabel);
 
-  // 포춘쿠키 모달: 흐린 배경 + 쿠키 단계 + 종이 카드 단계.
-  const fortune = document.createElement('div');
-  fortune.id = 'fortune';
-  fortune.innerHTML = `
-    <div class="fortune-stage fortune-cookie">
-      <button type="button" class="cookie" aria-label="쿠키 깨기">🥠</button>
-      <p>클릭하거나 E를 눌러 깨 보세요</p>
-    </div>
-    <div class="fortune-stage fortune-card">
-      <button type="button" class="fortune-close" aria-label="닫기">✕</button>
-      <p class="fortune-text"></p>
-      <p class="fortune-hint">E 또는 Esc로 닫기</p>
-    </div>`;
-  const cookieButton = fortune.querySelector('.cookie');
-  const fortuneText = fortune.querySelector('.fortune-text');
   // 전역 스트레스 바(상단 중앙).
   const stress = document.createElement('div');
   stress.id = 'stress';
@@ -192,22 +178,10 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
     if (button) pickerHandlers.onPick?.(Number(button.dataset.index));
     else if (!e.target.closest('.picker-card') || e.target.closest('.picker-cancel')) pickerHandlers.onCancel?.();
   });
-  container.append(tooltip, bubble, speechLayer, prompt, fortune, stress, actionBar, meditate, roastPanel, ctaChip, side, result, choice, picker, portal);
+  container.append(tooltip, bubble, speechLayer, prompt, stress, actionBar, meditate, roastPanel, ctaChip, side, result, choice, picker, portal);
   let stressStart = 100;
 
-  cookieButton.addEventListener('click', () => onCrack());
-  fortune.querySelector('.fortune-close').addEventListener('click', () => onClose());
-
   let bubbleTimer = 0;
-  let crackTimer = 0;
-  let stage = null; // null(닫힘) | 'cookie' | 'cracking' | 'card'
-
-  function setStage(next) {
-    stage = next;
-    fortune.classList.toggle('open', next !== null);
-    fortune.dataset.stage = next ?? '';
-  }
-
   function removeSpeech(id) {
     const s = speeches.get(id);
     if (!s) return;
@@ -367,22 +341,6 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
     hidePrompt() {
       prompt.classList.remove('visible');
     },
-    openFortune(text) {
-      clearTimeout(crackTimer);
-      fortuneText.textContent = text;
-      setStage('cookie');
-    },
-    // 쿠키 단계에서만 동작: 400ms 깨지는 애니메이션 뒤에 종이 카드를 보여 준다.
-    crackFortune() {
-      if (stage !== 'cookie') return;
-      setStage('cracking');
-      sfx.play('crack');
-      crackTimer = setTimeout(() => { setStage('card'); sfx.play('fortune'); }, CRACK_MS);
-    },
-    closeFortune() {
-      clearTimeout(crackTimer);
-      setStage(null);
-    },
     // 전역 스트레스 바: 항상 보인다. 처음 한 번 만들고 값이 바뀔 때마다 update.
     showStressBar(value, start) {
       stressStart = start;
@@ -517,7 +475,6 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
     hideCtaChip() {
       ctaChip.classList.remove('visible');
     },
-    isFortuneOpen: () => stage !== null,
-    fortuneStage: () => stage,
+    fortune, // 포춘쿠키 모달: openPicker·startCrack·tap·burst·close·stage
   };
 }
