@@ -72,11 +72,12 @@
     #action-bar.busy button:not(.on) { opacity: 0.6; pointer-events: none; }
     #action-bar button.on { background: #e8833a; color: #fff; box-shadow: 0 0 0 2px #ffd9a8 inset; }
     #action-bar button.on .keycap { background: #fff3e0; }
-    /* 불멍 안내: 벤치에 앉아 있고 굽는 중이 아닐 때 행동 막대 위에 뜬다. */
+    /* 불멍 안내: 통나무에 앉아 있고 굽는 중이 아닐 때 행동 막대 위에 뜬다. */
     #meditate { position: absolute; left: 50%; bottom: 118px; transform: translateX(-50%); padding: 8px 16px; border-radius: 999px;
       background: rgba(18, 18, 31, 0.8); color: #fff; font-size: 15px; white-space: nowrap; pointer-events: none;
       opacity: 0; transition: opacity 0.15s; z-index: 2; }
     #meditate.visible { opacity: 1; }
+    #meditate.fp.visible { opacity: 0.72; padding: 5px 12px; font-size: 13px; bottom: 124px; } /* 1인칭 불멍: 시야를 가리지 않게 작고 옅게 */
     /* 마시멜로 굽기 패널: 불 위에 있던 시간을 보여 주는 가는 줄(황금 구간 표시 없음) + 꺼내기 버튼 + 안내. 행동 막대 자리. */
     #roast-panel { position: absolute; left: 50%; bottom: 66px; transform: translateX(-50%); display: none; flex-direction: column; align-items: center; gap: 8px;
       padding: 10px 14px; border-radius: 18px; background: rgba(18, 18, 31, 0.82); z-index: 2; color: #fff; }

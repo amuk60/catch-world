@@ -55,9 +55,17 @@ const COMFORT_OBJECTS = [
   { name: 'statue_head', label: '조용한 조각상', kind: 'comfort', messageIndex: 2, x: 6.0, z: 9.0, scale: 1.3, rotY: Math.PI / 4 },
 ];
 
-// 소각로 곁 벤치 2개(소각로를 사이에 두고 마주 본다). Kenney furniture 'bench' 원본은 폭 0.4 x 깊이 0.2 x 높이 0.47 이고
-// 원점이 모서리라서 중심이 로컬 (0.2, -0.1) 이다. 앉는 면 높이는 0.24, 등받이는 로컬 -z 쪽이라 +z 가 앞이다.
-const BENCH = { scale: 3.6, radius: 0.7, distance: 3.2, seatTop: 0.24, center: { x: 0.2, z: -0.1 } };
+// 소각로 곁 통나무 자리 6개: 소각로를 둘러싼 고리(반지름 3.0~3.4)에 눕힌 통나무(Nature Kit log_large: 길이 1.0 x 높이 0.417 x 너비 ~0.55, 길이 방향이 로컬 x, 원점은 중심 아래)를 접선 방향으로 놓는다.
+// 기준 각도(소각로에서 atan2(z, x), 도)는 걸어 들어갈 틈 두 곳을 비워 둔다: 스폰(35도)·파쇄기(70~80도) 쪽 틈(358~112도)과 간판(-90도) 쪽 틈(226~322도). 각도·반지름·크기·접선 기울기는 시드로 조금씩 흔들되 시드 흐름은 따로 쓴다(마당의 나무·덤불·바위 배치는 그대로).
+// 앉는 높이는 통나무 위(높이 x seatTopRatio), 일어서는 자리는 고리 바깥쪽이다.
+const LOG_SEAT = {
+  model: 'log_large', length: 1.0, height: 0.4167, label: '통나무 의자',
+  anglesDeg: [322, 358, 112, 150, 188, 226], angleJitterDeg: 4, radius: [3.0, 3.4], scale: [1.5, 1.8], tiltJitter: 0.12,
+  seatTopRatio: 0.92, pickRadius: 0.8, obstacleRadius: 0.5, standDistance: 1.1,
+};
+const LOG_SEAT_KEEP = { tree: 1.6, other: 1.4 }; // 통나무 중심과 나무·덤불·바위 사이 최소 거리(안 되면 각도를 비켜 보고, 그래도 덤불·바위는 치운다)
+// 예전(벤치 시절) 자리: 마당 나무·덤불·바위 배치의 난수 흐름이 바뀌지 않도록, 그 배치를 고를 때는 예전 벤치 자리를 그대로 피한다.
+const BENCH = { distance: 3.2 };
 const BENCH_KEEP_OUT = 2.0; // 숲 내부 장식과의 최소 거리
 const BENCH_CLEARANCE = 1.7; // 통나무·간판과의 선호 최소 거리(규칙은 1.5)
 // 카메라(+x,+z 쪽)에서 볼 때 소각로 양옆이 되는 방향(각도: atan2(z, x)).
@@ -69,9 +77,6 @@ const BENCH_PREFERRED_ANGLE = -Math.PI / 4;
 const SHREDDER = { radius: 0.7, angle: (78 * Math.PI) / 180, distances: [6.8, 6.4, 7.2, 6.0, 7.6, 7.9], standDistance: 1.1 };
 const PROP_CLEARANCE = 1.5; // 다른 배치물과의 최소 거리(중심 사이)
 const PROP_ANGLE_STEP = Math.PI / 36; // 5도
-
-// 나무토막이 놓이는 각도 호(소각로에서 atan2(z, x), 라디안): 서쪽(185~205도), 북서쪽(212~228도). 파쇄기(5도)·벤치(-45도·135도)·스폰(35도)·간판(-90도) 방향과 떨어져 있다.
-const LOG_ARCS = [[(185 * Math.PI) / 180, (205 * Math.PI) / 180], [(212 * Math.PI) / 180, (228 * Math.PI) / 180]];
 
 const nature = (name, x, z, scale, rotY) => ({ pack: 'nature', name, x, z, scale, rotY });
 
@@ -137,11 +142,13 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
 
   // 소각로 주변 (소각로 자체 장애물은 이동 코드에서 FURNACE로 처리).
   const furnaceItems = [nature('campfire_stones', FURNACE.x, FURNACE.z, 4.4, 0)];
-  // 나무토막은 길목(스폰·파쇄기·벤치·간판 쪽)을 피해 소각로 뒤쪽(서~북서) 호에만 놓는다. 난수는 예전처럼 항목당 3번 뽑아 뒤의 배치 흐름을 지키고, 각도만 호 안으로 접는다.
+  // 예전의 장식 나무토막 2개는 이제 통나무 자리가 대신하므로 놓지 않는다. 뒤의 배치 난수 흐름이 그대로이도록 항목당 3번 뽑는 것은 남기고, 벤치 자리 계산(아래 legacy)에만 쓴다.
+  const legacyLogs = [];
   for (let i = 0; i < 2; i++) {
-    const a = LOG_ARCS[i][0] + rand(rng, 0, 1) * (LOG_ARCS[i][1] - LOG_ARCS[i][0]);
+    const a = (i === 0 ? 185 + rand(rng, 0, 1) * 20 : 212 + rand(rng, 0, 1) * 16) * (Math.PI / 180);
     const r = rand(rng, 2.0, 2.4);
-    furnaceItems.push(nature('log', FURNACE.x + Math.cos(a) * r, FURNACE.z + Math.sin(a) * r, 2.5, rand(rng, 0, Math.PI * 2)));
+    legacyLogs.push({ x: FURNACE.x + Math.cos(a) * r, z: FURNACE.z + Math.sin(a) * r });
+    rand(rng, 0, Math.PI * 2);
   }
 
   // 랜턴: 광장 서쪽 가장자리.
@@ -158,11 +165,11 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
   for (const a of [0, -(sign.width / 2 - 0.4), sign.width / 2 - 0.4]) {
     obstacles.push({ x: sign.x + a * Math.cos(sign.rotY), z: sign.z - a * Math.sin(sign.rotY), radius: sign.obstacleRadius });
   }
-  // 벤치 위치: 선호 방향에서 가까운 순서로 훑어 통나무·간판에서 충분히 떨어진 첫 각도를 쓴다(없으면 가장 여유 있는 각도).
+  // (예전) 벤치 위치: 선호 방향에서 가까운 순서로 훑어 통나무·간판에서 충분히 떨어진 첫 각도를 쓴다(없으면 가장 여유 있는 각도).
   const benchSpots = (angle) => [angle, angle + Math.PI].map((a) => ({ x: FURNACE.x + Math.cos(a) * BENCH.distance, z: FURNACE.z + Math.sin(a) * BENCH.distance }));
   const signCircles = obstacles.filter((o) => o.radius === sign.obstacleRadius);
   const benchClearance = (angle) => Math.min(...benchSpots(angle).flatMap((s) => [
-    ...furnaceItems.slice(1).map((it) => Math.hypot(s.x - it.x, s.z - it.z)),
+    ...legacyLogs.map((it) => Math.hypot(s.x - it.x, s.z - it.z)),
     ...signCircles.map((o) => Math.hypot(s.x - o.x, s.z - o.z) - o.radius),
   ]));
   let benchAngle = BENCH_PREFERRED_ANGLE;
@@ -173,7 +180,7 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
     if (clearance > best) { best = clearance; benchAngle = angle; }
   }
 
-  // 상호작용 대상: 소각로(이미 만들어진 모델) + 위로 오브젝트 3개 + 벤치 2개. 위로 오브젝트와 벤치는 충돌 원도 둔다.
+  // 상호작용 대상: 소각로(이미 만들어진 모델) + 위로 오브젝트 3개 + 통나무 자리 6개(아래, 마당 장식을 고른 뒤). 위로 오브젝트와 통나무는 충돌 원도 둔다.
   const interactables = [{
     id: 'furnace', label: '소각로', kind: 'furnace', x: FURNACE.x, z: FURNACE.z, radius: FURNACE.radius,
     interactRange: FURNACE.radius + PLAYER.radius + INTERACT_MARGIN,
@@ -187,19 +194,6 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
     });
     obstacles.push({ x: c.x, z: c.z, radius: COMFORT_RADIUS });
   });
-  benchSpots(benchAngle).forEach((s, index) => {
-    const rotY = headingY(s, FURNACE); // 소각로를 바라본다(+z 가 앞).
-    const lx = BENCH.center.x * BENCH.scale;
-    const lz = BENCH.center.z * BENCH.scale;
-    interactables.push({
-      id: `seat-${index}`, label: '벤치', kind: 'seat', x: s.x, z: s.z, radius: BENCH.radius,
-      interactRange: BENCH.radius + PLAYER.radius + INTERACT_MARGIN,
-      seat: { x: s.x, z: s.z, rotY, y: BENCH.seatTop * BENCH.scale },
-      // 모델 원점은 모서리이므로 중심이 (s.x, s.z) 에 오도록 원점을 옮긴다.
-      item: { pack: 'furniture', name: 'bench', x: s.x - (lx * Math.cos(rotY) + lz * Math.sin(rotY)), z: s.z - (-lx * Math.sin(rotY) + lz * Math.cos(rotY)), scale: BENCH.scale, rotY },
-    });
-    obstacles.push({ x: s.x, z: s.z, radius: BENCH.radius });
-  });
 
   // 숲 구역 내부 장식: 거절 표집(항목당 최대 200회, 실패하면 건너뜀).
   const placed = []; // 이미 놓은 숲 내부 항목(간격 유지용)
@@ -211,7 +205,7 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
         if (Math.hypot(x - FURNACE.x, z - FURNACE.z) < minFurnace) continue;
         if (Math.hypot(x - SPAWN.x, z - SPAWN.z) < minSpawn) continue;
         if (Math.hypot(x - sign.x, z - sign.z) < SIGN_KEEP_OUT) continue;
-        if (interactables.some((o) => o.kind !== 'furnace' && Math.hypot(x - o.x, z - o.z) < (o.kind === 'seat' ? BENCH_KEEP_OUT : COMFORT_KEEP_OUT))) continue;
+        if (interactables.some((o) => o.kind !== 'furnace' && Math.hypot(x - o.x, z - o.z) < COMFORT_KEEP_OUT) || benchSpots(benchAngle).some((o) => Math.hypot(x - o.x, z - o.z) < BENCH_KEEP_OUT)) continue;
         if (placed.some((o) => Math.hypot(x - o.x, z - o.z) < gap)) continue;
         const item = nature(pick(rng, names), x, z, rand(rng, smin, smax), rand(rng, 0, Math.PI * 2));
         into.push(item);
@@ -231,9 +225,47 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
   const rocks = [];
   scatterForest({ count: params.rocks, names: SMALL_ROCKS, smin: 2.5, smax: 3, xmin: -walk, obstacleRadius: 0.4, minFurnace: 3.2, gap: 1.2, into: rocks });
 
+  // 통나무 자리 6개: 자기 시드 흐름(마당 배치와 따로). 나무·덤불·바위와 겹치면 각도를 비켜 보고, 그래도 안 되면 덤불·바위를 치운다.
+  const logRng = mulberry32((seed ^ 0x5eed10c5) >>> 0);
+  const logSeats = [];
+  LOG_SEAT.anglesDeg.forEach((baseDeg, index) => {
+    let spot = null;
+    for (let k = 0; k <= 12 && !spot; k++) {
+      const offset = Math.ceil(k / 2) * 3 * (k % 2 ? 1 : -1); // 0, +3, -3, +6, ... 도
+      const a = ((baseDeg + offset + rand(logRng, -LOG_SEAT.angleJitterDeg, LOG_SEAT.angleJitterDeg)) * Math.PI) / 180;
+      const r = rand(logRng, LOG_SEAT.radius[0], LOG_SEAT.radius[1]);
+      const cand = { a, r, x: FURNACE.x + Math.cos(a) * r, z: FURNACE.z + Math.sin(a) * r, scale: rand(logRng, LOG_SEAT.scale[0], LOG_SEAT.scale[1]), tilt: rand(logRng, -LOG_SEAT.tiltJitter, LOG_SEAT.tiltJitter) };
+      if (trees.every((t) => Math.hypot(cand.x - t.x, cand.z - t.z) >= LOG_SEAT_KEEP.tree) || k === 12) spot = cand;
+    }
+    const { a, x, z, scale, tilt } = spot;
+    for (const list of [bushes, rocks]) {
+      for (let i = list.length - 1; i >= 0; i--) if (Math.hypot(x - list[i].x, z - list[i].z) < LOG_SEAT_KEEP.other) {
+        const [gone] = list.splice(i, 1);
+        const oi = obstacles.findIndex((o) => o.x === gone.x && o.z === gone.z);
+        if (oi >= 0) obstacles.splice(oi, 1);
+      }
+    }
+    const rotY = headingY({ x, z }, FURNACE); // 소각로를 바라보고 앉는다(+z 가 앞)
+    const itemRot = Math.atan2(-Math.cos(a), -Math.sin(a)) + tilt; // 로컬 x(길이 방향)가 고리의 접선이 되는 회전(+ 조금 기울임)
+    const axis = { x: Math.cos(itemRot), z: -Math.sin(itemRot) }; // 월드에서 본 통나무 길이 방향
+    const half = Math.max(0, (LOG_SEAT.length * scale) / 2 - LOG_SEAT.obstacleRadius);
+    const seatY = LOG_SEAT.height * scale * LOG_SEAT.seatTopRatio;
+    logSeats.push({ x, z, scale, rotY, itemRot, axis, half, seatY, index });
+  });
+  logSeats.forEach((l) => {
+    interactables.push({
+      id: `seat-${l.index}`, label: LOG_SEAT.label, kind: 'seat', x: l.x, z: l.z, radius: LOG_SEAT.pickRadius,
+      interactRange: LOG_SEAT.pickRadius + PLAYER.radius + INTERACT_MARGIN,
+      // stand: 일어서는 자리(고리 바깥쪽, 소각로 반대편)
+      seat: { x: l.x, z: l.z, rotY: l.rotY, y: l.seatY, stand: { x: l.x - Math.sin(l.rotY) * LOG_SEAT.standDistance, z: l.z - Math.cos(l.rotY) * LOG_SEAT.standDistance } },
+      item: nature(LOG_SEAT.model, l.x, l.z, l.scale, l.itemRot),
+    });
+    for (const sgn of [-1, 1]) obstacles.push({ x: l.x + l.axis.x * l.half * sgn, z: l.z + l.axis.z * l.half * sgn, radius: LOG_SEAT.obstacleRadius });
+  });
+
   // 파쇄기(소각로와 따로 떨어진 자리) + 그 앞 작업 자리.
   const fixed = [
-    ...interactables.filter((i) => i.kind !== 'furnace'), ...furnaceItems.slice(1), ...trees, ...bushes, ...rocks, ...signCircles,
+    ...interactables.filter((i) => i.kind !== 'furnace'), ...trees, ...bushes, ...rocks, ...signCircles,
   ];
   const inBounds = (p) => Math.min(walk - Math.abs(p.x), walkZ - Math.abs(p.z));
   function placeProp(spec) {

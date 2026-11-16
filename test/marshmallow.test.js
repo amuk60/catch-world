@@ -371,7 +371,7 @@ test('마시멜로 구역: 소각로 옆(FIRE_ZONE_RADIUS 안) 벤치에만 묶�
   assert.equal(zone.auto, false);
   assert.deepEqual(autoActionsOf(zone), []);
   const near = benches.filter((b) => dist(b) <= FIRE_ZONE_RADIUS).map((b) => b.id).sort();
-  assert.ok(near.length >= 1);
+  assert.equal(near.length, 6); // 불 둘레 통나무 자리 6개가 모두 마시멜로·불멍 구역이다
   assert.deepEqual([...zone.seatIds].sort(), near);
   const def = ACTION_DEFS.roast;
   assert.deepEqual({ zone: def.zone, key: def.key, label: def.label }, { zone: 'marshmallow', key: '1', label: '마시멜로 굽기' });

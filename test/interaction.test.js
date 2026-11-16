@@ -127,3 +127,8 @@ test('standPoint: 앉은 방향(모델의 앞 = (sin, cos)) 앞쪽 한 칸에 �
   near(standPoint({ x: 5, z: 7, rotY: Math.PI / 2 }), { x: 6, z: 7 });
   near(standPoint({ x: 5, z: 7, rotY: Math.PI }, 2.5), { x: 5, z: 4.5 });
 });
+
+test('standPoint: seat.stand 가 있으면(통나무 자리: 고리 바깥쪽) 앉은 방향과 상관없이 그 자리에 선다', () => {
+  assert.deepEqual(standPoint({ x: 5, z: 7, rotY: 0, stand: { x: 5, z: 5.9 } }), { x: 5, z: 5.9 });
+  assert.deepEqual(standPoint({ x: 5, z: 7, rotY: 0, stand: { x: 5, z: 5.9 } }, 3), { x: 5, z: 5.9 });
+});

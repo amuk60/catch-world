@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { buildLayout } from '../src/logic/layout.js';
 import { YARD, FURNACE, PLAYER, SEED, SPAWN, ZONES, FIRE_ZONE_RADIUS, FIRE_RANGE, SHREDDER_RANGE } from '../src/config.js';
 import { headingY } from '../src/logic/movement.js';
@@ -94,14 +95,10 @@ test('건물 터 2개: 광장 안에 완전히 들어가고 서로 겹치지 않
 
 test('소각로는 숲 구역에 있고 둘레 장식이 있다', () => {
   assert.ok(FURNACE.x <= ZONES.forestMaxX);
-  assert.equal(L.furnaceItems.length, 3);
-  const [fire, ...logs] = L.furnaceItems;
+  assert.equal(L.furnaceItems.length, 1); // 장식 나무토막은 통나무 자리 6개가 대신한다
+  const [fire] = L.furnaceItems;
   assert.equal(fire.name, 'campfire_stones');
   assert.deepEqual([fire.x, fire.z, fire.scale], [FURNACE.x, FURNACE.z, 4.4]);
-  for (const it of logs) {
-    assert.equal(it.name, 'log');
-    assert.ok(d(it, FURNACE) >= 2.0 - 1e-9 && d(it, FURNACE) <= 2.4 + 1e-9);
-  }
 });
 
 test('스폰 지점은 어떤 장애물과도, 소각로와도 겹치지 않는다', () => {
@@ -123,13 +120,13 @@ test('개수와 장애물', () => {
   assert.equal(L.obstacles.filter((o) => o.radius === 0.45).length, 0);
   assert.equal(L.obstacles.filter((o) => o.radius === 0.3).length, 4);
   assert.equal(L.obstacles.filter((o) => o.radius === 0.4).length, interiorTrees.length + L.rocks.length); // 나무·바위
-  assert.equal(L.obstacles.filter((o) => o.radius === 0.7).length, 3 + 2 + 1); // 간판 + 벤치 2개 + 파쇄기
-  assert.equal(L.obstacles.filter((o) => o.radius === 0.5).length, 3); // 위로 오브젝트
+  assert.equal(L.obstacles.filter((o) => o.radius === 0.7).length, 3 + 1); // 간판 + 파쇄기
+  assert.equal(L.obstacles.filter((o) => o.radius === 0.5).length, 3 + 12); // 위로 오브젝트 + 통나무 자리 6개(양 끝 원 2개씩)
   // 세탁소 건물 외곽 원의 장애물은 따로 센다(laundryLayout.test.js). 세탁기·빨랫줄은 실내(interiors.test.js)로 옮겼다.
   const laundryR = L.buildings.map((b) => b.obstacleRadius); // 세탁소 + 면접장 외곽 원
   const laundryCount = L.obstacles.filter((o) => laundryR.includes(o.radius)).length;
   assert.ok(laundryCount >= 8);
-  assert.equal(L.obstacles.length - laundryCount, interiorTrees.length + L.rocks.length + 4 + 3 + 3 + 2 + 1);
+  assert.equal(L.obstacles.length - laundryCount, interiorTrees.length + L.rocks.length + 4 + 3 + 3 + 12 + 1);
   // 소각로 원은 obstacles 에 들어가지 않는다(이동 코드가 따로 처리).
   assert.ok(!L.obstacles.some((o) => o.x === FURNACE.x && o.z === FURNACE.z));
 });
@@ -204,9 +201,9 @@ const comfort = L.interactables.filter((i) => i.kind === 'comfort' || i.kind ===
 const seats = L.interactables.filter((i) => i.kind === 'seat');
 const furnaceI = L.interactables.find((i) => i.id === 'furnace');
 
-test('상호작용 대상 10개: 소각로 + 위로 오브젝트 3개 + 벤치 2개 + 세탁소 건물·문 + 면접장 건물·문', () => {
-  assert.equal(L.interactables.length, 10);
-  assert.deepEqual(L.interactables.map((i) => i.id), ['furnace', 'comfort-0', 'comfort-1', 'comfort-2', 'seat-0', 'seat-1', 'laundry', 'laundry-door', 'interview', 'interview-door']);
+test('상호작용 대상 14개: 소각로 + 위로 오브젝트 3개 + 통나무 자리 6개 + 세탁소 건물·문 + 면접장 건물·문', () => {
+  assert.equal(L.interactables.length, 14);
+  assert.deepEqual(L.interactables.map((i) => i.id), ['furnace', 'comfort-0', 'comfort-1', 'comfort-2', 'seat-0', 'seat-1', 'seat-2', 'seat-3', 'seat-4', 'seat-5', 'laundry', 'laundry-door', 'interview', 'interview-door']);
   assert.deepEqual(furnaceI, {
     id: 'furnace', label: '소각로', kind: 'furnace', x: FURNACE.x, z: FURNACE.z, radius: FURNACE.radius,
     interactRange: FURNACE.radius + PLAYER.radius + 0.8,
@@ -256,100 +253,101 @@ test('상호작용 범위는 반경 + 플레이어 반경보다 크다, 위로 �
 test('숲 내부 장식은 위로 오브젝트에서 2.0 이상 떨어져 있다(여러 시드)', () => {
   for (const seed of [1, 2, 3, 42, 777, 20261111]) {
     const l = buildLayout(seed);
-    for (const c of l.interactables.filter((i) => i.kind !== 'furnace')) {
+    for (const c of l.interactables.filter((i) => i.kind !== 'furnace' && i.kind !== 'seat')) { // 통나무 자리는 따로(아래)
       for (const o of [...l.trees.filter(inWalk), ...l.bushes, ...l.rocks]) assert.ok(d(o, c) >= 2.0, `seed ${seed} ${c.id}`);
     }
   }
 });
 
 test('상호작용 대상은 시드와 무관하게 같은 위치', () => {
-  assert.deepEqual(buildLayout(1).interactables, buildLayout(2).interactables);
+  const fixedOnly = (l) => l.interactables.filter((i) => i.kind !== 'seat'); // 통나무 자리는 시드로 조금씩 흔들린다
+  assert.deepEqual(fixedOnly(buildLayout(1)), fixedOnly(buildLayout(2)));
 });
 
-// ---- 벤치(앉을 자리) ----
+// ---- 통나무 자리 6개(앉을 자리) ----
 const SEEDS = [1, 2, 3, 42, 777, 20261111];
-const logs = L.furnaceItems.filter((i) => i.name === 'log');
-const toFurnaceHeading = (s) => headingY(s, FURNACE);
+const itemAxis = (s) => ({ x: Math.cos(s.item.rotY), z: -Math.sin(s.item.rotY) }); // 통나무 길이 방향(모델 로컬 x)
 
-test('벤치 2개: furniture/bench 모델, 소각로에서 2.6~3.4, 소각로 쪽을 본다', () => {
-  assert.equal(seats.length, 2);
+// 통나무 자리 규칙(시드 공통): 6개, 소각로에서 3.0~3.4, 소각로를 바라보고, 서로 1.4 이상, 나무·간판·파쇄기·스폰과 겹치지 않고, 걸어 들어갈 틈이 있다.
+function assertLogSeatRules(l, seed) {
+  const tag = `seed ${seed}`;
+  const ss = l.interactables.filter((i) => i.kind === 'seat');
+  assert.equal(ss.length, 6, tag);
+  assert.deepEqual(ss.map((s) => s.id), ['seat-0', 'seat-1', 'seat-2', 'seat-3', 'seat-4', 'seat-5'], tag);
+  for (const s of ss) {
+    assert.equal(s.label, '통나무 의자', tag);
+    assert.equal(s.item.pack, 'nature', tag);
+    assert.equal(s.item.name, 'log_large', tag);
+    assert.ok(d(s, FURNACE) >= 3.0 - 1e-9 && d(s, FURNACE) <= 3.4 + 1e-9, `${tag} ${s.id} ${d(s, FURNACE)}`);
+    assert.ok(Math.abs(s.seat.rotY - headingY(s, FURNACE)) < 1e-9, `${tag} ${s.id} rotY`);
+    assert.deepEqual([s.seat.x, s.seat.z], [s.x, s.z], tag);
+    assert.deepEqual([s.item.x, s.item.z], [s.x, s.z], tag); // 모델 원점은 통나무 중심
+    assert.ok(s.item.scale >= 1.5 && s.item.scale <= 1.8, `${tag} scale`);
+    assert.ok(s.seat.y > 0.3 * s.item.scale && s.seat.y <= 0.4167 * s.item.scale, `${tag} seat.y ${s.seat.y}`); // 통나무 위(높이 0.4167 x 배율, 약간 눌러 앉음)
+    // 통나무 길이 방향은 소각로를 둘러싼 고리의 접선(기울기 0.15 라디안 이내)이다.
+    const ax = itemAxis(s);
+    const radial = { x: (s.x - FURNACE.x) / d(s, FURNACE), z: (s.z - FURNACE.z) / d(s, FURNACE) };
+    assert.ok(Math.abs(ax.x * radial.x + ax.z * radial.z) < Math.sin(0.15) + 1e-9, `${tag} ${s.id} tangent`);
+    // 일어서는 자리: 고리 바깥쪽(소각로 반대편)으로 1.1
+    assert.ok(Math.abs(d(s.seat.stand, s) - 1.1) < 1e-9 && d(s.seat.stand, FURNACE) > d(s, FURNACE), `${tag} ${s.id} stand outside`);
+    assert.ok(s.interactRange >= s.radius + PLAYER.radius + 0.8 - 1e-9, tag);
+    assert.ok(inWalk(s), `${tag} walkable`);
+    assert.ok(s.x <= ZONES.forestMaxX, `${tag} forest zone`);
+    assert.ok(d(s, SPAWN) >= 3, `${tag} spawn`);
+    assert.ok(d(s, l.shredder) >= 3, `${tag} shredder`);
+    for (const c of signCircles(l)) assert.ok(d(s, c) >= 1.4, `${tag} ${s.id} sign`);
+    for (const t of l.trees) assert.ok(d(s, t) >= 1.6 - 1e-9, `${tag} ${s.id} tree`);
+    for (const o of [...l.bushes, ...l.rocks]) assert.ok(d(s, o) >= 1.4 - 1e-9, `${tag} ${s.id} bush/rock`);
+  }
+  // 앉은 사람끼리 겹치지 않는다: 모든 쌍이 1.4 이상 떨어져 있다.
+  for (let i = 0; i < ss.length; i++) for (let j = i + 1; j < ss.length; j++) assert.ok(d(ss[i], ss[j]) >= 1.4, `${tag} seats ${i}-${j} ${d(ss[i], ss[j])}`);
+  // 걸어 들어갈 틈: 스폰 방향·파쇄기 방향(남동쪽)과 간판 방향(북쪽, -90도)에는 통나무가 없다.
+  const angOf = (p) => (Math.atan2(p.z - FURNACE.z, p.x - FURNACE.x) * 180) / Math.PI;
+  const angDist = (a, b) => Math.abs(((a - b + 540) % 360) - 180);
+  for (const s of ss) {
+    assert.ok(angDist(angOf(s), angOf(SPAWN)) >= 20, `${tag} ${s.id} spawn gap`);
+    if (seed === SEED) assert.ok(angDist(angOf(s), angOf(l.shredder)) >= 20, `${tag} ${s.id} shredder gap`); // 파쇄기 자리는 시드마다 다르다: 통로는 기본 시드에서만 보장한다
+    assert.ok(angDist(angOf(s), -90) >= 40, `${tag} ${s.id} north gap`);
+  }
+}
+
+test('통나무 자리 6개: nature/log_large, 소각로 둘레 3.0~3.4, 소각로를 보고 접선 방향으로 누워 있다', () => {
+  assert.equal(seats.length, 6);
+  assertLogSeatRules(L, SEED);
+});
+
+test('통나무 자리 규칙은 여러 시드에서도 유지된다(걸어 들어갈 틈 포함)', () => {
+  for (const seed of SEEDS) assertLogSeatRules(buildLayout(seed), seed);
+});
+
+test('통나무 자리: 길이 방향 양 끝에 반경 0.5 장애물 원 2개씩(지나갈 수 없다)', () => {
   for (const s of seats) {
-    assert.equal(s.label, '벤치');
-    assert.equal(s.item.pack, 'furniture');
-    assert.equal(s.item.name, 'bench');
-    assert.ok(d(s, FURNACE) >= 2.6 && d(s, FURNACE) <= 3.4, `${s.id} ${d(s, FURNACE)}`);
-    assert.ok(Math.abs(s.seat.rotY - toFurnaceHeading(s)) < 1e-6, `${s.id} rotY`);
-    assert.equal(s.item.rotY, s.seat.rotY);
-    assert.equal(s.seat.x, s.x);
-    assert.equal(s.seat.z, s.z);
-    assert.ok(s.seat.y > 0 && s.seat.y < 1.5, `seat.y ${s.seat.y}`);
-    assert.ok(s.item.scale >= 3 && s.item.scale <= 4.5, 'scale'); // 원본 폭 0.4 -> 1.2~1.8
+    const ax = itemAxis(s);
+    const half = (s.item.scale * 1.0) / 2 - 0.5;
+    for (const sgn of [-1, 1]) assert.ok(L.obstacles.some((o) => o.radius === 0.5 && Math.abs(o.x - (s.x + ax.x * half * sgn)) < 1e-9 && Math.abs(o.z - (s.z + ax.z * half * sgn)) < 1e-9), `${s.id} end ${sgn}`);
   }
 });
 
-test('벤치 모델의 중심(원본 원점은 모서리)이 벤치 위치에 오도록 배치한다', () => {
+test('통나무 자리는 스폰-불 직선과 불-파쇄기 직선에서 1.5 이상 떨어져 있다(corridors.test.js 가 서 있는 자리끼리 통로를 따로 본다)', () => {
+  const seg = (a, b, p) => {
+    const vx = b.x - a.x;
+    const vz = b.z - a.z;
+    const t = Math.max(0, Math.min(1, ((p.x - a.x) * vx + (p.z - a.z) * vz) / (vx * vx + vz * vz)));
+    return Math.hypot(a.x + vx * t - p.x, a.z + vz * t - p.z);
+  };
   for (const s of seats) {
-    // 모델 로컬 중심 (0.2, -0.1) 이 rotY 와 scale 로 월드에 놓인 점.
-    const lx = 0.2 * s.item.scale;
-    const lz = -0.1 * s.item.scale;
-    const c = { x: s.item.x + lx * Math.cos(s.item.rotY) + lz * Math.sin(s.item.rotY), z: s.item.z - lx * Math.sin(s.item.rotY) + lz * Math.cos(s.item.rotY) };
-    assert.ok(Math.abs(c.x - s.x) < 1e-9 && Math.abs(c.z - s.z) < 1e-9, s.id);
+    assert.ok(seg(SPAWN, FURNACE, s) >= 1.5, `${s.id} spawn-fire`);
+    assert.ok(seg(L.shredder, FURNACE, s) >= 1.5, `${s.id} shredder-fire`);
   }
 });
 
-test('벤치는 서로 소각로 반대편에 있고 2.5 이상 떨어져 있다', () => {
-  const [a, b] = seats;
-  assert.ok(d(a, b) >= 2.5, `gap ${d(a, b)}`);
-  // 소각로를 사이에 둔다: 소각로 -> 두 벤치의 방향 내적이 음수.
-  const dot = (a.x - FURNACE.x) * (b.x - FURNACE.x) + (a.z - FURNACE.z) * (b.z - FURNACE.z);
-  assert.ok(dot < 0, 'opposite sides');
-});
-
-test('벤치: 통나무·다른 장애물·나무·간판에서 1.5 이상, 걸을 수 있는 영역 안, 스폰과 겹치지 않음', () => {
-  for (const s of seats) {
-    for (const lg of logs) assert.ok(d(s, lg) >= 1.5, `${s.id} log ${d(s, lg)}`);
-    for (const o of L.obstacles) {
-      if (o.x === s.x && o.z === s.z) continue; // 자기 자신
-      assert.ok(d(s, o) >= 1.5, `${s.id} obstacle ${JSON.stringify(o)}`);
-    }
-    for (const t of L.trees) assert.ok(d(s, t) >= 1.5, `${s.id} tree`);
-    for (const o of [...L.bushes, ...L.rocks]) assert.ok(d(s, o) >= 1.5, `${s.id} bush/rock`);
-    assert.ok(d(s, L.sign) >= 1.5 + L.sign.obstacleRadius, `${s.id} sign`);
-    assert.ok(inWalk(s), `${s.id} walkable`);
-    assert.ok(s.x <= ZONES.forestMaxX, `${s.id} forest zone`);
-    assert.ok(d(s, SPAWN) >= s.radius + PLAYER.radius, `${s.id} spawn`);
-  }
-});
-
-test('벤치는 장애물(반경 0.7)로 등록되고 상호작용 범위가 반경 + 플레이어 반경보다 크다', () => {
-  for (const s of seats) {
-    assert.equal(s.radius, 0.7);
-    assert.ok(L.obstacles.some((o) => o.x === s.x && o.z === s.z && o.radius === 0.7), s.id);
-    assert.ok(s.interactRange >= s.radius + PLAYER.radius + 0.8 - 1e-9, s.id);
-    assert.equal(s.kind, 'seat');
-  }
-});
-
-test('벤치 배치는 시드마다 규칙을 지킨다(통나무·나무·간판 1.5 이상, 방향, 거리)', () => {
-  for (const seed of SEEDS) {
-    const l = buildLayout(seed);
-    const ss = l.interactables.filter((i) => i.kind === 'seat');
-    const lgs = l.furnaceItems.filter((i) => i.name === 'log');
-    assert.equal(ss.length, 2, `seed ${seed}`);
-    for (const s of ss) {
-      assert.ok(d(s, FURNACE) >= 2.6 && d(s, FURNACE) <= 3.4, `seed ${seed}`);
-      assert.ok(Math.abs(s.seat.rotY - headingY(s, FURNACE)) < 1e-6, `seed ${seed}`);
-      for (const lg of lgs) assert.ok(d(s, lg) >= 1.5, `seed ${seed} log`);
-      for (const t of l.trees) assert.ok(d(s, t) >= 1.5, `seed ${seed} tree`);
-      for (const o of [...l.bushes, ...l.rocks]) assert.ok(d(s, o) >= 1.5, `seed ${seed} bush/rock`);
-      assert.ok(d(s, l.sign) >= 1.5 + l.sign.obstacleRadius, `seed ${seed} sign`);
-    }
-    assert.ok(d(ss[0], ss[1]) >= 2.5, `seed ${seed} gap`);
-  }
-});
-
-test('벤치 위치는 결정적이다', () => {
+test('통나무 자리 위치는 결정적이다', () => {
   assert.deepEqual(buildLayout(SEED).interactables.filter((i) => i.kind === 'seat'), seats);
+});
+
+test('마당 나무·바위·파쇄기 배치는 통나무 자리를 넣기 전과 같다(시드 흐름 유지; 통나무와 겹친 덤불·바위만 치워질 수 있다)', () => {
+  const sha = createHash('sha1').update(JSON.stringify({ trees: L.trees, rocks: L.rocks, shredder: L.shredder })).digest('hex');
+  assert.equal(sha, '519ed35aee17e1150fae640e9aeae6aa893117c6');
 });
 
 // ---- 파쇄기(소각로 곁의 상시 소품) ----
@@ -368,7 +366,6 @@ function assertShredderRules(l, seed) {
   assert.ok(shredder.x <= ZONES.forestMaxX, `${tag} forest zone`);
   assert.ok(d(shredder, SPAWN) >= shredder.radius + PLAYER.radius, `${tag} spawn`);
   for (const it of l.interactables.filter((i) => i.kind !== 'furnace')) assert.ok(d(shredder, it) >= 1.5, `${tag} interactable ${it.id}`);
-  for (const lg of l.furnaceItems.filter((i) => i.name === 'log')) assert.ok(d(shredder, lg) >= 1.5, `${tag} log`);
   for (const t of l.trees) assert.ok(d(shredder, t) >= 1.5, `${tag} tree`);
   for (const o of [...l.bushes, ...l.rocks]) assert.ok(d(shredder, o) >= 1.5, `${tag} bush/rock`);
   for (const c of signCircles(l)) assert.ok(d(shredder, c) >= 1.5, `${tag} sign`);
@@ -382,7 +379,7 @@ function assertShredderRules(l, seed) {
 }
 
 test('종이 더미는 없다(layout 키 목록에도, 반경 0.5 장애물에도 위로 오브젝트 말고는 없다)', () => {
-  assert.equal(L.obstacles.filter((o) => o.radius === 0.5 && !comfort.some((c) => c.x === o.x && c.z === o.z)).length, 0);
+  assert.equal(L.obstacles.filter((o) => o.radius === 0.5 && !comfort.some((c) => c.x === o.x && c.z === o.z) && !seats.some((l) => d(l, o) <= 1.0)).length, 0); // 통나무 자리의 양 끝 원은 제외
 });
 
 test('파쇄기: 기본 시드의 위치는 소각로에서 6~8단위 떨어진 남쪽 숲 자리의 고정값(정면은 스폰 쪽)', () => {
@@ -401,20 +398,13 @@ test('파쇄기는 obstacles 에 같은 좌표·반경으로 들어 있다', () 
   assert.ok(L.obstacles.some((o) => o.x === L.shredder.x && o.z === L.shredder.z && o.radius === L.shredder.radius));
 });
 
-test('파쇄기 규칙은 여러 시드에서도 유지된다(벤치·통나무·나무는 그대로)', () => {
+test('파쇄기 규칙은 여러 시드에서도 유지된다', () => {
   for (const seed of SEEDS) assertShredderRules(buildLayout(seed), seed);
 });
 
 test('파쇄기 배치는 결정적이다', () => {
   assert.deepEqual(buildLayout(SEED).shredder, buildLayout(SEED).shredder);
   assert.deepEqual(L.shredder, buildLayout(SEED).shredder);
-});
-
-test('벤치 위치는 파쇄기를 추가하기 전과 같다(고정값)', () => {
-  const near = (a, b) => Math.abs(a - b) < 1e-9;
-  assert.equal(seats.length, 2);
-  assert.ok(near(seats[0].x, -4.237258300203047) && near(seats[0].z, -3.762741699796952), JSON.stringify(seats[0]));
-  assert.ok(near(seats[1].x, -8.762741699796951) && near(seats[1].z, 0.7627416997969525), JSON.stringify(seats[1]));
 });
 
 test('서 있을 수 있는 자리: 파쇄기 구역 안에서 장애물 밖에 설 수 있는 점이 충분하고 작업 자리는 소각로(태우기) 범위 밖이다', () => {

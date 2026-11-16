@@ -39,6 +39,7 @@ import { createTransition } from './logic/transition.js';
 import { createRoast, canRoast, gaugeMap, colorAt, inGoodBand, stageLine, resultLine } from './logic/marshmallow.js';
 import { createRoastStick, createConfetti } from './marshmallowProps.js';
 import { createPassive, isMeditating } from './logic/passive.js';
+import { createFireView, isFireViewKey } from './logic/fireView.js';
 import { createFpBlend, blendPose, lookFromPointer, followLook, lookDirection, sway, shouldHideBody } from './logic/fpCamera.js';
 import { computeFov } from './logic/camera.js';
 import { createOnce } from './logic/once.js';
@@ -196,6 +197,7 @@ if (isMobileUA(navigator.userAgent)) {
   let orbit = { azimuthDeg: ORBIT.azimuthDeg, polarDeg: ORBIT.polarDeg, distance: ORBIT.distance };
   // 1인칭(마시멜로 굽기): 섞임 계수 fpBlend(0 이면 궤도 카메라 그대로). 1인칭 동안 orbit·targetPos 는 건드리지 않고 카메라 자세만 섞으므로, 끝나면 원래 궤도 시점으로 정확히 돌아온다.
   const fpBlend = createFpBlend(FIRST_PERSON);
+  const fireView = createFireView(); // V 로 켜는 불멍 1인칭(앉아서 불멍 중에만 유지된다)
   const fpPointer = { x: 0, y: 0 }; // 마우스 위치(화면 중앙 0, 가장자리 ±1, 아래가 +): 굽는 동안 작게 둘러보는 데 쓴다
   let fpLook = { yawDeg: 0, pitchDeg: 0 };
   let fpFovDirty = false;
@@ -290,7 +292,8 @@ if (isMobileUA(navigator.userAgent)) {
     return chairId ? interviewData.assignments[chairId] : null;
   };
   const NO_SEATS = new Set();
-  const seatsTaken = () => (net && spaceId === 'interview' ? occupiedSeats(interviewSeatPoints, net.remotes, SEAT_OCCUPIED_RADIUS) : NO_SEATS);
+  const yardSeatPoints = layout.interactables.filter((i) => i.kind === 'seat').map((i) => ({ id: i.id, x: i.seat.x, z: i.seat.z })); // 불 둘레 통나무 자리 6개
+  const seatsTaken = () => (net && spaceId === 'interview' ? occupiedSeats(interviewSeatPoints, net.remotes, SEAT_OCCUPIED_RADIUS) : net && spaceId === 'yard' ? occupiedSeats(yardSeatPoints, net.remotes, SEAT_OCCUPIED_RADIUS) : NO_SEATS);
 
   // ---- 소각장 행동: 러너가 시간을 재고, 여기서 캐릭터 동작·종이·효과를 맡는다. ----
   // (소각장만 한숨 ->) 주머니에서 종이 꺼내기 -> (대상 쪽으로 돌기) -> 던지기/치기 -> 후련. 던지기/치기 클립만 총 길이가 ACTION_TARGET_SECONDS 가 되도록 느려진다(행동별 표: 세탁소 행동은 한숨이 없다).
@@ -1035,7 +1038,7 @@ if (isMobileUA(navigator.userAgent)) {
 
   // 1인칭 카메라 자료: 눈 위치(머리 뼈 + 앞·위 보정 + 숨쉬기), 시선(불 쪽 + 마우스로 ±lookDeg 둘러보기). 매 프레임 캐릭터 애니메이션이 끝난 뒤에 부른다.
   function updateFirstPerson(dt) {
-    const wanted = Boolean(roast) && mode === 'roasting' && FP_PHASES.includes(roast.phase);
+    const wanted = (Boolean(roast) && mode === 'roasting' && FP_PHASES.includes(roast.phase)) || fireView.on; // 불멍 1인칭을 켜 둔 채 굽기를 시작하면 끊김 없이 이어지고, 끝나면 불멍 1인칭으로 돌아온다
     const k = fpBlend.update(dt, wanted);
     if (!fpBlend.active) {
       fpEyeReady = false;
@@ -1117,6 +1120,7 @@ if (isMobileUA(navigator.userAgent)) {
   }
 
   // 매 프레임: AUTO 유효성 확인 -> 러너 진행(효과/끝 처리) -> 손 소품·날아가는 종이 -> 마시멜로 굽기 -> 행동 막대.
+  const fireMeditating = () => isMeditating({ mode, spaceId, seatDistance: seatItem ? Math.hypot(seatItem.x - FURNACE.x, seatItem.z - FURNACE.z) : null }, FIRE_ZONE_RADIUS); // 불 둘레 통나무에 앉아 있는가
   function updateActions(dt) {
     washTail = Math.max(0, washTail - dt);
     // 지금 있는 행동 구역(가장 가까운 구역 안, 없으면 null). 걷는 중에도 구역이 바뀌면 행동 막대가 바뀐다.
@@ -1135,8 +1139,9 @@ if (isMobileUA(navigator.userAgent)) {
     updateStage(dt);
     updatePaper(dt);
 
-    const meditating = isMeditating({ mode, spaceId, seatDistance: seatItem ? Math.hypot(seatItem.x - FURNACE.x, seatItem.z - FURNACE.z) : null }, FIRE_ZONE_RADIUS);
-    const relief = passive.update(dt, meditating); // 굽는 중에도 같이 흐른다
+    const meditating = fireMeditating();
+    fireView.sync({ mode, meditating }); // 일어나거나 공간이 바뀌면 1인칭 요청을 끈다(카메라는 fpBlend 가 궤도로 부드럽게 돌려보낸다)
+    const relief = passive.update(dt, meditating); // 1인칭 불멍·굽는 중에도 같이 흐른다
     if (meditating && once('game_start')) track('game_start');
     if (relief > 0) applyReduction(relief, false); // 불멍은 행동 횟수에 넣지 않는다
     updateRoast(dt);
@@ -1164,7 +1169,7 @@ if (isMobileUA(navigator.userAgent)) {
     } else if (hud.isActionBarVisible()) {
       hud.hideActionBar();
     }
-    if (meditating && mode === 'seated' && !roast) hud.showMeditate(); // 굽는 중에는 굽기 패널이 대신한다(불멍은 같이 흐른다)
+    if (meditating && mode === 'seated' && !roast) hud.showMeditate(fireView.on); // 굽는 중에는 굽기 패널이 대신한다(불멍은 같이 흐른다)
     else hud.hideMeditate();
   }
 
@@ -1386,7 +1391,9 @@ if (isMobileUA(navigator.userAgent)) {
     if (e.code === 'KeyE') {
       if (!e.repeat) onInteractKey();
     } else if (e.code === 'Escape') {
-      dispatch('close');
+      if (!fireView.off()) dispatch('close'); // 불멍 1인칭이면 먼저 시점만 되돌린다
+    } else if (isFireViewKey(e)) {
+      fireView.toggle({ mode, meditating: fireMeditating(), typing: false }); // 입력창에 쓰는 중이면 이 핸들러까지 오지 않는다(맨 위에서 걸러짐)
     } else if (e.code in ACTION_KEYS) {
       if (!e.repeat) requestAction(zoneActions(currentZone)[ACTION_KEYS[e.code]]);
     } else if (e.code === 'KeyR') {
@@ -1415,7 +1422,7 @@ if (isMobileUA(navigator.userAgent)) {
   });
   window.addEventListener('keyup', (e) => { keys.up(e.code); });
   window.addEventListener('blur', () => keys.clear());
-  document.addEventListener('visibilitychange', () => keys.clear());
+  document.addEventListener('visibilitychange', () => { keys.clear(); if (document.hidden) fireView.off(); });
 
   // 화면 좌표(ndc)에 보이는 상호작용 대상(없으면 null).
   function pickInteractable(ndc) {

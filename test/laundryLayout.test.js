@@ -26,13 +26,13 @@ const circlesOf = (r) => L.obstacles.filter((o) => o.radius === r);
 const buildingCircles = circlesOf(laundry.obstacleRadius);
 
 // ---- 기존 배치는 그대로 ----
-test('세탁소를 추가해도 기존 배치(나무·덤불·바위·랜턴·통나무·간판·파쇄기·상호작용·장애물 24개)는 기본 시드에서 그대로다(세탁기·빨랫줄은 실내로 옮겼다)', () => {
+test('세탁소를 추가해도 기존 배치(나무·덤불·바위·랜턴·소각로 장식·간판·파쇄기·위로 오브젝트·통나무 자리·장애물 34개)는 기본 시드에서 그대로다(세탁기·빨랫줄은 실내로 옮겼다)', () => {
   const before = {
     trees: L.trees, bushes: L.bushes, rocks: L.rocks, lanterns: L.lanterns, furnaceItems: L.furnaceItems, sign: L.sign, shredder: L.shredder,
-    interactables: L.interactables.slice(0, 6), obstacles: L.obstacles.slice(0, 24), buildingSlots: L.buildingSlots, plaza: L.plaza,
+    interactables: L.interactables.slice(0, 10), obstacles: L.obstacles.slice(0, 34), buildingSlots: L.buildingSlots, plaza: L.plaza,
   };
-  assert.equal(createHash('sha1').update(JSON.stringify(before)).digest('hex'), 'f47bed214fa2819d9b7925c80867e47cd59d43e8');
-  assert.equal(L.interactables.length, 10); // 세탁소 문·면접장 건물·면접장 문이 추가됐다(앞의 6개는 그대로)
+  assert.equal(createHash('sha1').update(JSON.stringify(before)).digest('hex'), '59834baa8d607438192a4f4496b6c97ee6cd590a');
+  assert.equal(L.interactables.length, 14); // 세탁소 건물·문과 면접장 건물·문이 추가됐다(앞의 10개 = 소각로·위로 3·통나무 자리 6은 그대로)
 });
 
 test('여러 시드에서도 두 건물은 같은 자리이고(시드 무관), 세탁소가 먼저 면접장이 다음이다', () => {
@@ -184,7 +184,7 @@ test('건물 상호작용(호버/클릭)은 그대로 E 동작이 없다', () =>
 test('세탁소 외관 물체들은 랜턴(과 그 장애물)·위로 오브젝트·스폰과 겹치지 않는다', () => {
   const mine = buildingCircles;
   const others = L.obstacles.filter((o) => !mine.includes(o) && o.radius !== L.buildings[1].obstacleRadius); // 면접장 외곽 원은 interviewLayout.test.js 에서 본다
-  assert.equal(others.length, 24);
+  assert.equal(others.length, 34); // 통나무 자리 6개의 원 12개가 더해졌다
   for (const m of mine) {
     for (const o of others) assert.ok(d(m, o) >= m.radius + o.radius + 0.2, `${JSON.stringify(m)} vs ${JSON.stringify(o)}`);
     assert.ok(d(m, SPAWN) >= m.radius + PLAYER.radius);

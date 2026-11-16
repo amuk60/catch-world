@@ -53,3 +53,17 @@ test('면접장 모든 의자(지원자 3 + 대기 3)가 점유 판정 대상이
   const g = items[0];
   assert.deepEqual([...occupiedSeats(points, [remote('r', g.seat.x, g.seat.z - 1.0)], SEAT_OCCUPIED_RADIUS)], [g.id]);
 });
+
+test('마당 통나무 자리 6개: 앉은 방문자 6명이 각자 다른 통나무를 차지하고(겹치지 않음) 서 있는 방문자는 차지하지 않는다', async () => {
+  const { buildLayout } = await import('../src/logic/layout.js');
+  const { SEED } = await import('../src/config.js');
+  const points = buildLayout(SEED).interactables.filter((i) => i.kind === 'seat').map((i) => ({ id: i.id, x: i.seat.x, z: i.seat.z }));
+  assert.equal(points.length, 6);
+  const sitters = points.map((p, i) => remote(`r${i}`, p.x, p.z));
+  assert.deepEqual([...occupiedSeats(points, sitters)].sort(), points.map((p) => p.id).sort());
+  assert.equal(occupiedSeats(points, sitters.map((r) => ({ ...r, seat: false }))).size, 0);
+  const one = occupiedSeats(points, [remote('x', points[3].x + 0.3, points[3].z - 0.2)]);
+  assert.deepEqual([...one], ['seat-3']); // 한 명은 한 통나무만 차지한다
+  assert.deepEqual(seatPromptFor({ kind: 'seat', id: 'seat-3' }, one, '앉기'), { text: '사용 중', actionable: false });
+  assert.equal(seatPromptFor({ kind: 'seat', id: 'seat-2' }, one, '앉기').actionable, true);
+});

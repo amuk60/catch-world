@@ -6,6 +6,8 @@ import { sfx } from './audio/sfx.js';
 const BUBBLE_MS = 3000;
 const CRACK_MS = 400; // index.html 의 crack 애니메이션 길이와 같게 둔다.
 const DELTA_MS = 800; // index.html 의 delta-rise 애니메이션 길이와 같게 둔다.
+const MEDITATE_TEXT = '불멍 중… 가만히 있어도 지수가 줄어요 · V 시점 전환';
+const MEDITATE_TEXT_FP = '불멍 중… V 시점 전환';
 const AUTO_BUTTON = { id: 'auto', key: 'R', label: '자동' };
 const TOO_FAR = '더 가까이 가세요';
 const PORTAL_OPEN_PERCENT = 112; // 구멍이 완전히 열렸을 때의 반지름(%): 가장 먼 모서리(100%)와 빛의 띠가 화면 밖으로 나가는 값
@@ -71,7 +73,7 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
   // 불멍 안내(소각로 옆 벤치에 앉아 있고 굽는 중이 아닐 때, 행동 막대 위에 뜬다).
   const meditate = document.createElement('div');
   meditate.id = 'meditate';
-  meditate.textContent = '불멍 중… 가만히 있어도 지수가 줄어요';
+  meditate.textContent = MEDITATE_TEXT;
   // 마시멜로 굽기 패널(굽는 동안 행동 막대 자리에 뜬다): 불 위에 있던 시간을 보여 주는 가는 줄(황금 구간 표시 없음) + 꺼내기 버튼 + 안내 글.
   const roastPanel = document.createElement('div');
   roastPanel.id = 'roast-panel';
@@ -424,7 +426,10 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
     },
     isActionBarVisible: () => actionBar.classList.contains('visible'),
     actionBarZone: () => barZone,
-    showMeditate() {
+    // firstPerson: 1인칭 불멍 중이면 작고 옅게 + 시점 되돌리기 안내.
+    showMeditate(firstPerson = false) {
+      meditate.classList.toggle('fp', firstPerson);
+      meditate.textContent = firstPerson ? MEDITATE_TEXT_FP : MEDITATE_TEXT;
       meditate.classList.add('visible');
     },
     hideMeditate() {

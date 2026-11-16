@@ -8,7 +8,9 @@ export function interactTarget(item) {
 
 // 의자·벤치에서 일어날 때 서는 지점: 앉은 방향(rotY, 모델의 앞은 (sin, cos))으로 distance 만큼 앞. 장애물 밖으로 밀어내는 것은 부르는 쪽이 한다.
 export const STAND_DISTANCE = 1.0;
+// seat.stand({ x, z })가 있으면 그 자리(통나무 자리: 고리 바깥쪽)를 쓴다.
 export function standPoint(seat, distance = STAND_DISTANCE) {
+  if (seat.stand) return { x: seat.stand.x, z: seat.stand.z };
   return { x: seat.x + Math.sin(seat.rotY) * distance, z: seat.z + Math.cos(seat.rotY) * distance };
 }
 
