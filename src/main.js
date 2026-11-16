@@ -98,7 +98,8 @@ const PAPER_HAND = { pos: [-0.38, 0, 0.05] };
 if (isMobileUA(navigator.userAgent)) {
   document.getElementById('mobile-notice').style.display = 'flex';
 } else {
-  initAnalytics(GA_MEASUREMENT_ID);
+  // 내 컴퓨터(localhost)에서 개발·시험하는 접속은 통계에 섞이지 않게 분석을 켜지 않는다.
+  if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) initAnalytics(GA_MEASUREMENT_ID);
   const { scene, camera, renderer, onFrame } = createStage(document.getElementById('game'));
   renderer.localClippingEnabled = true; // 파쇄: 투입구로 들어간 종이의 아랫부분을 클리핑 평면으로 가린다
   const layout = buildLayout(SEED);

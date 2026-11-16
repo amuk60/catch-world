@@ -1,8 +1,8 @@
 // 캐치 사이트 주소. 배포 전 브라우저에서 열어 캐치 사이트가 맞는지 확인한다.
 export const CATCH_URL = 'https://www.catch.co.kr';
 
-// GA4 측정 ID ('G-'로 시작). 비어 있으면 분석이 꺼진다. Task 10에서 입력한다.
-export const GA_MEASUREMENT_ID = '';
+// GA4 측정 ID ('G-'로 시작). 비어 있으면 분석이 꺼진다. localhost 에서는 켜지지 않는다.
+export const GA_MEASUREMENT_ID = 'G-RN2Z8252B8';
 
 export const STRESS = { start: 100, goal: 20 };
 
