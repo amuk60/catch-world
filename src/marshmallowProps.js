@@ -21,6 +21,55 @@ function steamTexture() {
   return new THREE.CanvasTexture(canvas);
 }
 
+// 완벽하게 구웠을 때 터지는 작은 색종이(점 40개, 1.4초). 월드 위치에서 사방으로 튀었다가 중력으로 떨어진다.
+export function createConfetti(count = 40) {
+  const positions = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const vel = new Float32Array(count * 3);
+  const palette = ['#ffd166', '#ff8fa3', '#8ecae6', '#b8f2a1', '#ffffff', '#e2ab5c'].map((c) => new THREE.Color(c));
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const mat = new THREE.PointsMaterial({ size: 0.13, vertexColors: true, transparent: true, opacity: 1, depthWrite: false, fog: false });
+  const points = new THREE.Points(geo, mat);
+  points.frustumCulled = false;
+  points.visible = false;
+  let age = -1;
+  const LIFE = 1.4;
+  return {
+    points,
+    burst(origin) {
+      for (let i = 0; i < count; i++) {
+        positions.set([origin.x, origin.y, origin.z], i * 3);
+        const a = Math.random() * Math.PI * 2;
+        const sp = 0.8 + Math.random() * 1.6;
+        vel.set([Math.cos(a) * sp, 1.6 + Math.random() * 1.8, Math.sin(a) * sp], i * 3);
+        const c = palette[i % palette.length];
+        colors.set([c.r, c.g, c.b], i * 3);
+      }
+      geo.attributes.position.needsUpdate = true;
+      geo.attributes.color.needsUpdate = true;
+      mat.opacity = 1;
+      points.visible = true;
+      age = 0;
+    },
+    update(dt) {
+      if (age < 0) return;
+      age += dt;
+      if (age >= LIFE) { age = -1; points.visible = false; return; }
+      for (let i = 0; i < count; i++) {
+        vel[i * 3 + 1] -= 4.2 * dt;
+        vel[i * 3] *= 1 - 0.8 * dt;
+        vel[i * 3 + 2] *= 1 - 0.8 * dt;
+        for (let k = 0; k < 3; k++) positions[i * 3 + k] += vel[i * 3 + k] * dt;
+      }
+      geo.attributes.position.needsUpdate = true;
+      mat.opacity = Math.min(1, (LIFE - age) / 0.5);
+    },
+    hide() { age = -1; points.visible = false; },
+  };
+}
+
 export function createRoastStick() {
   const group = new THREE.Group();
   group.name = 'roast-stick';
@@ -66,16 +115,23 @@ export function createRoastStick() {
     wisps,
     mallow,
     // 굽는 정도(0..1)에 맞춘 색·부풂·처짐. eaten(0..1)은 먹어서 줄어든 정도.
-    setLevel(level, eaten = 0) {
-      const [r, g, b] = colorAt(level);
+    // fx: { glow(0..1: 좋음 띠 전체에 걸친 아주 은은한 밝기 힌트), blush(0..1: 가짜 신호, 잠깐 노릇해 보임), steam(0..1: 김의 세기) }. 완벽 한가운데만 알리는 반짝임은 일부러 없다.
+    setLevel(level, eaten = 0, fx = {}) {
+      const [r0, g0, b0] = colorAt(level);
+      const blush = (level < 0.45 ? 1 : 0) * 0.45 * (fx.blush ?? 0);
+      const [br, bg, bb] = colorAt(0.5);
+      const r = r0 + (br - r0) * blush;
+      const g = g0 + (bg - g0) * blush;
+      const b = b0 + (bb - b0) * blush;
       mallowMat.color.setRGB(r, g, b);
-      const warm = Math.max(0, 1 - Math.abs(level - 0.55) / 0.35); // 노릇해질 때 은은히 달아오른 빛
-      mallowMat.emissive.setRGB(0.32 * warm * (r + 0.2), 0.12 * warm, 0.02 * warm);
+      const warm = Math.max(0, 1 - Math.abs(level - 0.55) / 0.35) + 0.35 * (fx.blush ?? 0); // 노릇해질 때 은은히 달아오른 빛
+      const glow = 0.05 * (fx.glow ?? 0);
+      mallowMat.emissive.setRGB(0.32 * warm * (r + 0.2) + glow, 0.12 * warm + glow * 0.7, 0.02 * warm + glow * 0.3);
       const { puff, sag } = shapeAt(level);
       const keep = Math.max(0.001, 1 - eaten);
       mallowHolder.scale.set(puff * (1 + 0.1 * sag) * keep, puff * (1 - 0.12 * sag) * keep, puff * keep);
       mallowHolder.position.y = -0.045 * sag; // 아래로 처진다
-      steam = Math.max(0, 1 - Math.abs(level - 0.5) / 0.3); // 황금빛 근처에서 가장 많이
+      steam = Math.min(1, fx.steam ?? 0);
     },
     // 막대를 start(손 뒤쪽)에서 tip(끝)까지 맞춘다. visible 이 false 면 숨긴다.
     place(start, tip, visible = true) {

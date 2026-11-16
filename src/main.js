@@ -34,8 +34,11 @@ import { createSpaces } from './spaces.js';
 import { buildLaundryInterior, buildInterviewInterior } from './logic/interiors.js';
 import { arrivalPoint, clampToSpace } from './logic/spaces.js';
 import { createTransition } from './logic/transition.js';
-import { createRoast, canRoast, gaugeMap, colorAt, classify, stageLine, resultLine } from './logic/marshmallow.js';
-import { createRoastStick } from './marshmallowProps.js';
+import { createRoast, canRoast, gaugeMap, colorAt, inGoodBand, stageLine, resultLine } from './logic/marshmallow.js';
+import { createRoastStick, createConfetti } from './marshmallowProps.js';
+import { createPassive, isMeditating } from './logic/passive.js';
+import { createFpBlend, blendPose, lookFromPointer, followLook, lookDirection, sway, shouldHideBody } from './logic/fpCamera.js';
+import { computeFov } from './logic/camera.js';
 import { createOnce } from './logic/once.js';
 import { shareLines, shareFilename, shareUrl, resultPlan } from './logic/cta.js';
 import { createOutfit, outfitPrompt, laundryGuide } from './logic/outfit.js';
@@ -46,7 +49,7 @@ import { renderShareCard, saveShareCard, copyText } from './share.js';
 import { easeInOut } from './logic/burn.js';
 import {
   ORBIT, CAMERA_CLEAR, TRANSITION, PLAYER, PLAYER_MODEL, FURNACE, STRESS, SPAWN, SEED, COMFORT_MESSAGES, FORTUNES,
-  INCINERATOR, ACTION_REDUCE, ACTION_EFFECT_AT, ACTION_TARGET_SECONDS, ACTION_TURN_SECONDS, AUTO_GAP, MARSHMALLOW,
+  INCINERATOR, ACTION_REDUCE, ACTION_EFFECT_AT, ACTION_TARGET_SECONDS, ACTION_TURN_SECONDS, AUTO_GAP, PASSIVE, MARSHMALLOW, FIRST_PERSON,
   FIRE_RANGE, SHREDDER_RANGE, WASHER_RANGE, CLOTHESLINE_RANGE, FIRE_ZONE_RADIUS, CATCH_URL, GA_MEASUREMENT_ID, WEAR_SECONDS, WEAR_SWAP_AT,
   INTERVIEW, INTERVIEW_ROUND, INTERVIEW_BONUS, INTERVIEW_ZONE_RADIUS, INTERVIEW_ANSWER_SECONDS, INTERVIEW_IMPROV_SECONDS, INTERVIEW_FINALE_SECONDS, SPEECH_SECONDS,
   MULTIPLAYER, SUPABASE_URL, SUPABASE_ANON_KEY, CLOTHESLINE_SLOTS, QUICK_CHAT,
@@ -188,6 +191,11 @@ if (isMobileUA(navigator.userAgent)) {
   }
 
   let orbit = { azimuthDeg: ORBIT.azimuthDeg, polarDeg: ORBIT.polarDeg, distance: ORBIT.distance };
+  // 1인칭(마시멜로 굽기): 섞임 계수 fpBlend(0 이면 궤도 카메라 그대로). 1인칭 동안 orbit·targetPos 는 건드리지 않고 카메라 자세만 섞으므로, 끝나면 원래 궤도 시점으로 정확히 돌아온다.
+  const fpBlend = createFpBlend(FIRST_PERSON);
+  const fpPointer = { x: 0, y: 0 }; // 마우스 위치(화면 중앙 0, 가장자리 ±1, 아래가 +): 굽는 동안 작게 둘러보는 데 쓴다
+  let fpLook = { yawDeg: 0, pitchDeg: 0 };
+  let fpFovDirty = false;
   const targetPos = new THREE.Vector3(player.position.x, ORBIT.targetHeight, player.position.z);
   const desired = new THREE.Vector3();
   let moveTarget = null;
@@ -232,6 +240,7 @@ if (isMobileUA(navigator.userAgent)) {
 
   // 플레이어 머리 위 월드 점을 화면(컨테이너 기준 px)으로 투영해 팝업을 띄운다.
   function popDelta(text) {
+    if (fpBlend.value > 0.3) { hud.popDelta(text, renderer.domElement.clientWidth * 0.5, renderer.domElement.clientHeight * 0.32); return; } // 1인칭: 머리가 카메라 안이라 화면 위쪽 가운데에 띄운다
     camera.updateMatrixWorld();
     popPoint.set(player.position.x, POP_HEIGHT, player.position.z).project(camera);
     hud.popDelta(text, (popPoint.x * 0.5 + 0.5) * renderer.domElement.clientWidth, (-popPoint.y * 0.5 + 0.5) * renderer.domElement.clientHeight);
@@ -296,6 +305,7 @@ if (isMobileUA(navigator.userAgent)) {
     },
   });
   const lastAuto = {}; // 자동이 행동별로 마지막에 고른 물건 id
+  const passive = createPassive(PASSIVE); // 불멍: 소각로 옆 벤치에 앉아 있는 동안(굽는 중에도) 천천히 줄어든다
 
   // 손에 붙일 자리. 캐릭터 모델이 없으면 상자 플레이어 옆에 고정 위치.
   let handAttach;
@@ -774,7 +784,9 @@ if (isMobileUA(navigator.userAgent)) {
       timers[i].left -= dt;
       if (timers[i].left <= 0) { const { fn } = timers[i]; timers.splice(i, 1); fn(); }
     }
-    if (hud.speechSize(SPEECH_KEY)) { // 멘트 말풍선: 머리 위 1.9 지점
+    if (hud.speechSize(SPEECH_KEY) && fpBlend.value > 0.5) { // 1인칭: 머리가 카메라 안이라 말풍선을 화면 위쪽 가운데에 둔다
+      hud.positionSpeech(SPEECH_KEY, renderer.domElement.clientWidth * 0.5, renderer.domElement.clientHeight * 0.26);
+    } else if (hud.speechSize(SPEECH_KEY)) { // 멘트 말풍선: 머리 위 1.9 지점
       camera.updateMatrixWorld();
       bubblePoint.set(player.position.x, player.position.y + 1.9, player.position.z).project(camera);
       if (bubblePoint.z >= 1) hud.clearSpeech(SPEECH_KEY);
@@ -861,14 +873,21 @@ if (isMobileUA(navigator.userAgent)) {
     }
   }
 
-  // ---- 마시멜로 굽기: 소각로 옆 벤치에 앉은 채 1번. 상태 기계(logic/marshmallow.js)가 시간을 재고, 여기서 자세·소품·게이지·멘트·지수 감소를 맡는다. ----
+  // ---- 마시멜로 굽기: 소각로 옆 벤치에 앉은 채 1번. 상태 기계(logic/marshmallow.js)가 시간을 재고(판마다 타이밍이 다르다), 여기서 1인칭 카메라·자세·소품·게이지·멘트·지수 감소를 맡는다. ----
   const roastProp = createRoastStick();
-  yardRoot.add(roastProp.group, roastProp.wisps);
+  const confetti = createConfetti();
+  yardRoot.add(roastProp.group, roastProp.wisps, confetti.points);
   let roast = null; // 진행 중인 굽기(createRoast)
   let roastClock = 0; // 지금 단계에서 지난 시간(초): 자세·소품 보간용
   let roastEmberAt = 0; // 다음 불씨를 띄울 시각
+  let roastGlow = 0; // 좋음 띠 안에 있는 동안 아주 은은히 오르는 밝기 힌트(0..1)
+  let flareEmberAt = 0;
+  let swayClock = 0;
   const ROAST_GRIP = 0.35; // 막대가 손 뒤로 나온 길이
   const ROAST_FIRE = { edge: 0.45, y: 1.0 }; // 마시멜로를 대는 곳: 불 가장자리(소각로 중심에서 손 쪽으로 edge) 위 y
+  const FP_FIRE_Y = 1.25; // 1인칭에서 바라보는 불의 높이
+  const FP_PHASES = ['take', 'reach', 'toast', 'bring']; // 1인칭인 단계(씹기부터는 바깥 시점으로 돌아와 후련해하는 모습과 축하를 본다)
+  const UP = new THREE.Vector3(0, 1, 0);
   const rHand = new THREE.Vector3();
   const rStart = new THREE.Vector3();
   const rTip = new THREE.Vector3();
@@ -876,6 +895,16 @@ if (isMobileUA(navigator.userAgent)) {
   const rTake = new THREE.Vector3();
   const rMouth = new THREE.Vector3();
   const rDir = new THREE.Vector3();
+  const fpHead = new THREE.Vector3();
+  const fpEye = new THREE.Vector3();
+  const fpDir = new THREE.Vector3(); // 시선(둘러보기 포함)
+  const fpDir0 = new THREE.Vector3(); // 불 쪽 기본 방향(둘러보기 없이: 마시멜로는 월드에 고정되어 보인다)
+  const fpRight = new THREE.Vector3();
+  const fpStart = new THREE.Vector3();
+  const fpTip = new THREE.Vector3();
+  const fpTmp = new THREE.Vector3();
+  const fpFireP = new THREE.Vector3();
+  let fpEyeReady = false;
   const clipRate = (name, seconds) => (character ? (character.getRawClipDurations()[name] ?? seconds) / seconds : 1); // 클립을 seconds 에 맞춰 재생하는 배속
   const roastCss = (level) => `rgb(${colorAt(level, MARSHMALLOW).map((v) => Math.round(v * 255)).join(',')})`;
 
@@ -886,9 +915,11 @@ if (isMobileUA(navigator.userAgent)) {
     renderer.domElement.style.cursor = '';
     hud.hideTooltip();
     hud.clearSpeech(SPEECH_KEY);
-    roast = createRoast(MARSHMALLOW);
+    roast = createRoast(MARSHMALLOW); // 판마다 새로 뽑는다(완벽 구간 위치·속도·불 튐·가짜 신호)
     roastClock = 0;
     roastEmberAt = 0;
+    roastGlow = 0;
+    flareEmberAt = 0;
     character?.beginAction();
     hud.showRoast({ onPull: roastPull });
     if (once('game_start')) track('game_start');
@@ -896,7 +927,7 @@ if (isMobileUA(navigator.userAgent)) {
     return true;
   }
 
-  // 굽기를 정리하고 앉은 상태로 돌아온다(끝났거나 취소됐을 때). 소품·게이지·자세를 모두 치운다.
+  // 굽기를 정리하고 앉은 상태로 돌아온다(끝났거나 취소됐을 때). 소품·게이지·자세를 모두 치운다. 카메라는 fpBlend 가 알아서 궤도 시점으로 돌아온다.
   function finishRoast() {
     if (!roast) return;
     roast = null;
@@ -927,13 +958,23 @@ if (isMobileUA(navigator.userAgent)) {
       else if (e.phase === 'chew') { character?.playClip('holding-right', 1); character?.setPose({ lean: 0.03 }); }
       else if (e.phase === 'relief') { character?.playClip('emote-yes', clipRate('emote-yes', cfg.eat.reliefSeconds)); character?.setPose({}); }
     } else if (e.type === 'stage') {
-      hud.say(SPEECH_KEY, stageLine(e.id, MARSHMALLOW), { seconds: LINE_SECONDS, silent: true });
+      if (!(roast && roast.flare > 0)) hud.say(SPEECH_KEY, stageLine(e.id, MARSHMALLOW), { seconds: LINE_SECONDS, silent: true }); // 불이 튀는 동안은 "불이 튀었다" 말풍선이 먼저다
+    } else if (e.type === 'flare') { // 불이 튀었다: 불길이 솟고 불티가 튀며 한동안 더 빨리 익는다
+      fire.flare();
+      flareEmberAt = 0;
+      hud.say(SPEECH_KEY, MARSHMALLOW.flareLine, { seconds: LINE_SECONDS, silent: true });
     } else if (e.type === 'pulled') {
       hud.hideRoast(); // 이제 먹는다: 꺼내기·취소는 끝
     } else if (e.type === 'reduce') {
-      applyReduction(ACTION_REDUCE); // 결과와 상관없이 한 번, 다른 행동과 같은 경로(행동 횟수에 들어간다)
-      track('marshmallow', { result: e.result });
+      applyReduction(e.amount); // 결과별 감소량(config 의 MARSHMALLOW.rewards: 완벽 8 · 좋음 6 · 덜 익음/살짝 탐 4 · 숯덩이 3). 한 번만, 다른 행동과 같은 경로(행동 횟수에 들어간다)
+      track('marshmallow', { result: e.result }); // perfect | good | under | over | burnt
       hud.say(SPEECH_KEY, resultLine(e.result, MARSHMALLOW), { seconds: 3, silent: true });
+      if (e.result === 'perfect') { // 완벽: 작은 색종이와 불티
+        player.updateMatrixWorld(true);
+        if (!character || !character.headWorld(rMouth)) rMouth.set(player.position.x, player.position.y + 1.2, player.position.z);
+        confetti.burst(rMouth.set(rMouth.x + Math.sin(player.rotation.y) * 0.35, rMouth.y + 0.25, rMouth.z + Math.cos(player.rotation.y) * 0.35));
+        fire.embers(6);
+      }
     } else if (e.type === 'done') {
       finishRoast();
     }
@@ -960,19 +1001,50 @@ if (isMobileUA(navigator.userAgent)) {
     if (phase === 'toast') {
       character?.setPose({ lean: 0.14 + 0.01 * Math.sin(roastClock * 2.2) });
       if (roastClock >= roastEmberAt) { fire.embers(2); roastEmberAt = roastClock + 0.7; } // 불씨가 반짝반짝
+      if (roast.flare > 0 && roastClock >= flareEmberAt) { fire.embers(3); flareEmberAt = roastClock + 0.12; } // 불이 튀는 동안 불티가 쏟아진다
     } else if (phase === 'chew') {
       character?.setPose({ lean: 0.03, nod: 0.16 * Math.sin(roastClock * 11) }); // 오물오물
     }
     if (phase === 'take' || phase === 'reach' || phase === 'toast') {
-      const level = roast.level;
       hud.updateRoast({
-        ...gaugeMap(level, MARSHMALLOW), color: roastCss(level), canPull: roast.canPull, inGolden: phase === 'toast' && classify(level, MARSHMALLOW) === 'perfect',
+        ...gaugeMap(roast.toastSeconds, MARSHMALLOW), color: roastCss(roast.level), canPull: roast.canPull,
         hint: roast.canPull ? '1·E·Space 꺼내기 / Esc 취소' : 'Esc 취소',
       });
     }
   }
 
-  // 손 뼈를 따라가는 막대는 캐릭터 애니메이션이 끝난 뒤(손 위치가 정해진 뒤) 맞춘다.
+  // 1인칭 카메라 자료: 눈 위치(머리 뼈 + 앞·위 보정 + 숨쉬기), 시선(불 쪽 + 마우스로 ±lookDeg 둘러보기). 매 프레임 캐릭터 애니메이션이 끝난 뒤에 부른다.
+  function updateFirstPerson(dt) {
+    const wanted = Boolean(roast) && mode === 'roasting' && FP_PHASES.includes(roast.phase);
+    const k = fpBlend.update(dt, wanted);
+    if (!fpBlend.active) {
+      fpEyeReady = false;
+      fpLook = { yawDeg: 0, pitchDeg: 0 };
+      if (!player.visible) player.visible = true;
+      return;
+    }
+    swayClock += dt;
+    player.updateMatrixWorld(true);
+    if (!character || !character.headWorld(fpHead)) fpHead.set(player.position.x, player.position.y + 1.2, player.position.z);
+    const dx = FURNACE.x - fpHead.x;
+    const dz = FURNACE.z - fpHead.z;
+    const yaw = Math.atan2(dx, dz);
+    const flareShake = roast ? roast.flare : 0;
+    const bob = sway(swayClock, FIRST_PERSON.sway * (1 + 2.5 * flareShake));
+    fpTmp.set(fpHead.x + Math.sin(yaw) * FIRST_PERSON.eyeForward, fpHead.y + FIRST_PERSON.eyeUp + bob.eye, fpHead.z + Math.cos(yaw) * FIRST_PERSON.eyeForward);
+    if (!fpEyeReady) { fpEye.copy(fpTmp); fpEyeReady = true; } else fpEye.lerp(fpTmp, 1 - Math.exp(-14 * dt));
+    const pitch = Math.atan2(FP_FIRE_Y - fpEye.y, Math.hypot(FURNACE.x - fpEye.x, FURNACE.z - fpEye.z));
+    const goal = wanted ? lookFromPointer(fpPointer.x, fpPointer.y, FIRST_PERSON.lookDeg) : { yawDeg: 0, pitchDeg: 0 };
+    fpLook = followLook(fpLook, goal, dt, FIRST_PERSON.lookRate);
+    const yawEye = Math.atan2(FURNACE.x - fpEye.x, FURNACE.z - fpEye.z);
+    fpDir0.set(...lookDirection(yawEye, pitch, { yawDeg: 0, pitchDeg: 0 }));
+    fpDir.set(...lookDirection(yawEye, pitch, fpLook));
+    fpRight.crossVectors(fpDir, UP).normalize();
+    // 몸은 카메라가 머리 안으로 들어가기 시작하면 숨긴다(머리·머리카락·몸통이 시야를 가리지 않게. 외형을 따로 가리는 부분 없이 통째로 숨기고, 막대는 카메라 앞에 따로 둔다).
+    player.visible = !shouldHideBody(k, FIRST_PERSON.hideAt);
+  }
+
+  // 손 뼈를 따라가는 막대는 캐릭터 애니메이션이 끝난 뒤(손 위치가 정해진 뒤) 맞춘다. 1인칭이면 막대는 카메라 앞 아래쪽에서 불 위로 뻗는다(전환 중에는 두 위치를 섞는다).
   function updateRoastProp(dt) {
     if (!roast) return;
     const { phase } = roast;
@@ -995,8 +1067,31 @@ if (isMobileUA(navigator.userAgent)) {
     rDir.subVectors(rTip, rHand).normalize();
     rStart.copy(rHand).addScaledVector(rDir, -ROAST_GRIP);
     if (phase === 'take') rTip.lerpVectors(rHand, rTip, Math.max(0.2, show)); // 꺼내며 막대가 자라난다
+    const fpK = fpBlend.value;
+    if (fpK > 0 && fpEyeReady) {
+      const bob = sway(swayClock, FIRST_PERSON.sway * (1 + 3 * roast.flare));
+      fpStart.copy(fpEye).addScaledVector(fpDir, 0.3).addScaledVector(fpRight, 0.2 + bob.handX * 0.4).addScaledVector(UP, -0.26 + bob.handY * 0.4); // 쥔 손: 카메라 오른쪽 아래
+      fpFireP.copy(fpEye).addScaledVector(fpDir0, 1.25).addScaledVector(UP, -0.12 + bob.handY).addScaledVector(fpRight, bob.handX); // 불 위로 내민 끝(월드에 고정)
+      if (phase === 'take') {
+        fpTip.copy(fpEye).addScaledVector(fpDir0, 0.5).addScaledVector(fpRight, 0.28).addScaledVector(UP, -0.42);
+        fpTip.lerpVectors(fpStart, fpTip, Math.max(0.2, show));
+      } else if (phase === 'reach') {
+        fpTmp.copy(fpEye).addScaledVector(fpDir0, 0.5).addScaledVector(fpRight, 0.28).addScaledVector(UP, -0.42);
+        fpTip.lerpVectors(fpTmp, fpFireP, easeInOut(Math.min(1, roastClock / cfg.reachSeconds)));
+      } else if (phase === 'toast') fpTip.copy(fpFireP);
+      else { // bring: 입(카메라 바로 앞 아래)으로
+        fpTmp.copy(fpEye).addScaledVector(fpDir0, 0.55).addScaledVector(UP, -0.16);
+        fpTip.lerpVectors(fpFireP, fpTmp, easeInOut(Math.min(1, roastClock / cfg.eat.bringSeconds)));
+      }
+      rStart.lerp(fpStart, fpK);
+      rTip.lerp(fpTip, fpK);
+    }
     const eaten = phase === 'chew' ? easeInOut(Math.min(1, roastClock / cfg.eat.chewSeconds)) : phase === 'relief' ? 1 : 0;
-    roastProp.setLevel(roast.level, eaten);
+    const level = roast.level;
+    const inBand = phase === 'toast' && inGoodBand(level, roast.round);
+    roastGlow += ((inBand ? 1 : 0) - roastGlow) * (1 - Math.exp(-5 * dt));
+    const cue = roast.cue;
+    roastProp.setLevel(level, eaten, { glow: roastGlow, blush: cue.blush, steam: phase === 'toast' ? 0.4 * roastGlow + 0.9 * cue.steam + 0.5 * roast.flare : 0 });
     roastProp.place(rStart, rTip, phase !== 'relief');
     roastProp.update(dt);
   }
@@ -1020,6 +1115,10 @@ if (isMobileUA(navigator.userAgent)) {
     updateStage(dt);
     updatePaper(dt);
 
+    const meditating = isMeditating({ mode, spaceId, seatDistance: seatItem ? Math.hypot(seatItem.x - FURNACE.x, seatItem.z - FURNACE.z) : null }, FIRE_ZONE_RADIUS);
+    const relief = passive.update(dt, meditating); // 굽는 중에도 같이 흐른다
+    if (meditating && once('game_start')) track('game_start');
+    if (relief > 0) applyReduction(relief, false); // 불멍은 행동 횟수에 넣지 않는다
     updateRoast(dt);
     if (pending && !runner.isBusy() && !interviewScene.busy && mode !== 'roasting' && (pending.kind === 'side' || (mode !== 'fortune' && mode !== 'transition' && mode !== 'wearing' && mode !== 'item-choice'))) {
       pending.wait -= dt;
@@ -1045,6 +1144,8 @@ if (isMobileUA(navigator.userAgent)) {
     } else if (hud.isActionBarVisible()) {
       hud.hideActionBar();
     }
+    if (meditating && mode === 'seated' && !roast) hud.showMeditate(); // 굽는 중에는 굽기 패널이 대신한다(불멍은 같이 흐른다)
+    else hud.hideMeditate();
   }
 
   // 장애물 밖으로 밀어낸 목표 지점으로 이동을 시작한다.
@@ -1287,6 +1388,11 @@ if (isMobileUA(navigator.userAgent)) {
     stopWalking(); // 클릭 경로와 표시를 지운다
     keys.down(e.code);
   });
+  window.addEventListener('pointermove', (e) => { // 굽는 동안 마우스로 작게 둘러본다(화면 중앙 0, 가장자리 ±1)
+    const rect = renderer.domElement.getBoundingClientRect();
+    fpPointer.x = ((e.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1;
+    fpPointer.y = ((e.clientY - rect.top) / Math.max(1, rect.height)) * 2 - 1;
+  });
   window.addEventListener('keyup', (e) => { keys.up(e.code); });
   window.addEventListener('blur', () => keys.clear());
   document.addEventListener('visibilitychange', () => keys.clear());
@@ -1300,14 +1406,14 @@ if (isMobileUA(navigator.userAgent)) {
 
   const controls = createControls(renderer.domElement, {
     onDrag: (dx, dy) => {
-      if (mode === 'transition') return;
+      if (mode === 'transition' || fpBlend.active) return; // 1인칭(전환 포함)에는 궤도 조작을 잠가 돌아올 때 원래 시점이 그대로다
       cameraClear.touch();
       orbit = applyDrag(orbit, dx, dy, ORBIT.rotateSpeed, ORBIT);
       renderer.domElement.style.cursor = '';
       hud.hideTooltip();
     },
     onWheel: (deltaY) => {
-      if (mode === 'transition') return;
+      if (mode === 'transition' || fpBlend.active) return;
       cameraClear.touch();
       orbit = applyZoom(orbit, deltaY, ORBIT.zoomStep, ORBIT);
     },
@@ -1462,7 +1568,9 @@ if (isMobileUA(navigator.userAgent)) {
       else hud.hidePrompt();
     }
     character?.update(dt);
+    updateFirstPerson(dt);
     updateRoastProp(dt);
+    confetti.update(dt);
     if (!character) playerFx.update(dt);
     net?.update(dt, { space: spaceId, x: player.position.x, z: player.position.z, y: player.position.y, rotY: player.rotation.y, anim: character ? character.getAnim() : 'idle', outfit: outfit.state, seat: holdsSeat(mode) });
     remoteSpeech?.update(dt, net.remotes, spaceId);
@@ -1488,9 +1596,22 @@ if (isMobileUA(navigator.userAgent)) {
       allowed: spaceId === 'yard' && mode === 'free' && !transition.active && !controls.isDown(),
       target: targetPos.toArray(), orbit, boxes: clearBoxes,
     }).azimuthDeg };
-    camera.position.set(...orbitPosition(targetPos.toArray(), orbit));
-    camera.lookAt(targetPos);
-    if (spaceId === 'yard') updateTreeOcclusion(camera.position, targetPos, dt); // 나무 가림 축소는 마당에서만
+    const orbitPos = orbitPosition(targetPos.toArray(), orbit);
+    const baseFov = computeFov(ORBIT.baseFov, camera.aspect, ORBIT.minAspect);
+    const fpK = fpBlend.value;
+    if (fpK > 0 && fpEyeReady) { // 1인칭: 궤도 자세와 눈 자세를 섞는다(fpK=1 이 완전한 1인칭)
+      const pose = blendPose({ position: orbitPos, target: targetPos.toArray(), fov: baseFov }, { position: fpEye.toArray(), target: [fpEye.x + fpDir.x * 4, fpEye.y + fpDir.y * 4, fpEye.z + fpDir.z * 4], fov: FIRST_PERSON.fov }, fpK);
+      camera.position.set(...pose.position);
+      camera.lookAt(...pose.target);
+      camera.fov = pose.fov;
+      camera.updateProjectionMatrix();
+      fpFovDirty = true;
+    } else {
+      camera.position.set(...orbitPos);
+      camera.lookAt(targetPos);
+      if (fpFovDirty) { camera.fov = baseFov; camera.updateProjectionMatrix(); fpFovDirty = false; }
+    }
+    if (spaceId === 'yard') updateTreeOcclusion(fpK > 0 ? fpTmp.set(...orbitPos) : camera.position, targetPos, dt); // 나무 가림 축소는 마당에서만
     else interiorViews[spaceId].updateWalls(camera.position); // 실내: 카메라 쪽 벽을 숨긴다
   });
 }

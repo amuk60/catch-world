@@ -72,14 +72,17 @@
     #action-bar.busy button:not(.on) { opacity: 0.6; pointer-events: none; }
     #action-bar button.on { background: #e8833a; color: #fff; box-shadow: 0 0 0 2px #ffd9a8 inset; }
     #action-bar button.on .keycap { background: #fff3e0; }
-    /* 마시멜로 굽기 패널: 굽는 정도 게이지(황금 구간은 금색 띠) + 꺼내기 버튼 + 안내. 행동 막대 자리. */
+    /* 불멍 안내: 벤치에 앉아 있고 굽는 중이 아닐 때 행동 막대 위에 뜬다. */
+    #meditate { position: absolute; left: 50%; bottom: 118px; transform: translateX(-50%); padding: 8px 16px; border-radius: 999px;
+      background: rgba(18, 18, 31, 0.8); color: #fff; font-size: 15px; white-space: nowrap; pointer-events: none;
+      opacity: 0; transition: opacity 0.15s; z-index: 2; }
+    #meditate.visible { opacity: 1; }
+    /* 마시멜로 굽기 패널: 불 위에 있던 시간을 보여 주는 가는 줄(황금 구간 표시 없음) + 꺼내기 버튼 + 안내. 행동 막대 자리. */
     #roast-panel { position: absolute; left: 50%; bottom: 66px; transform: translateX(-50%); display: none; flex-direction: column; align-items: center; gap: 8px;
       padding: 10px 14px; border-radius: 18px; background: rgba(18, 18, 31, 0.82); z-index: 2; color: #fff; }
     #roast-panel.visible { display: flex; }
-    .roast-gauge { position: relative; width: 260px; height: 12px; border-radius: 6px; background: rgba(255, 255, 255, 0.16); overflow: hidden; }
-    .roast-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 6px; }
-    .roast-golden { position: absolute; top: 0; bottom: 0; border: 2px solid #ffd166; border-radius: 6px; box-sizing: border-box; background: rgba(255, 209, 102, 0.18); pointer-events: none; }
-    #roast-panel.golden .roast-golden { background: rgba(255, 209, 102, 0.42); box-shadow: 0 0 8px #ffd166; }
+    .roast-gauge { position: relative; width: 260px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.16); overflow: hidden; }
+    .roast-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 2px; opacity: 0.85; }
     .roast-row { display: flex; align-items: center; gap: 10px; }
     .roast-pull { display: flex; align-items: center; gap: 8px; padding: 6px 14px; border: 0; border-radius: 999px; background: #e8833a; color: #fff; font: inherit; font-size: 15px; white-space: nowrap; cursor: pointer; }
     .roast-pull[aria-disabled="true"] { opacity: 0.38; cursor: default; }

@@ -37,7 +37,7 @@ function rows(spaceId) {
     '<li><b>시점</b> 마우스 드래그, 휠로 확대·축소</li>',
     `<li>${k('E')} 상호작용 (앉기·들어가기)</li>`,
     `<li>${spaceId === 'interview' ? ACTION_LINE.interview : ACTION_LINE.default}</li>`,
-    ...(spaceId === 'yard' ? [`<li>${k('1')} 불 옆 벤치에 앉아 마시멜로 굽기</li>`] : []),
+    ...(spaceId === 'yard' ? [`<li>${k('1')} 불 옆 벤치에 앉아 마시멜로 굽기(1인칭) · 앉아만 있어도 불멍</li>`] : []),
     `<li>${k('M')} 소리 켜기/끄기</li>`,
   ].join('');
 }
