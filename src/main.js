@@ -34,7 +34,8 @@ import { createSpaces } from './spaces.js';
 import { buildLaundryInterior, buildInterviewInterior } from './logic/interiors.js';
 import { arrivalPoint, clampToSpace } from './logic/spaces.js';
 import { createTransition } from './logic/transition.js';
-import { createPassive } from './logic/passive.js';
+import { createRoast, canRoast, gaugeMap, colorAt, classify, stageLine, resultLine } from './logic/marshmallow.js';
+import { createRoastStick } from './marshmallowProps.js';
 import { createOnce } from './logic/once.js';
 import { shareLines, shareFilename, shareUrl, resultPlan } from './logic/cta.js';
 import { createOutfit, outfitPrompt, laundryGuide } from './logic/outfit.js';
@@ -45,7 +46,7 @@ import { renderShareCard, saveShareCard, copyText } from './share.js';
 import { easeInOut } from './logic/burn.js';
 import {
   ORBIT, CAMERA_CLEAR, TRANSITION, PLAYER, PLAYER_MODEL, FURNACE, STRESS, SPAWN, SEED, COMFORT_MESSAGES, FORTUNES,
-  INCINERATOR, ACTION_REDUCE, ACTION_EFFECT_AT, ACTION_TARGET_SECONDS, ACTION_TURN_SECONDS, AUTO_GAP, PASSIVE,
+  INCINERATOR, ACTION_REDUCE, ACTION_EFFECT_AT, ACTION_TARGET_SECONDS, ACTION_TURN_SECONDS, AUTO_GAP, MARSHMALLOW,
   FIRE_RANGE, SHREDDER_RANGE, WASHER_RANGE, CLOTHESLINE_RANGE, FIRE_ZONE_RADIUS, CATCH_URL, GA_MEASUREMENT_ID, WEAR_SECONDS, WEAR_SWAP_AT,
   INTERVIEW, INTERVIEW_ROUND, INTERVIEW_BONUS, INTERVIEW_ZONE_RADIUS, INTERVIEW_ANSWER_SECONDS, INTERVIEW_IMPROV_SECONDS, INTERVIEW_FINALE_SECONDS, SPEECH_SECONDS,
   MULTIPLAYER, SUPABASE_URL, SUPABASE_ANON_KEY, CLOTHESLINE_SLOTS, QUICK_CHAT,
@@ -191,7 +192,7 @@ if (isMobileUA(navigator.userAgent)) {
   const desired = new THREE.Vector3();
   let moveTarget = null;
   const keys = createKeyState(); // 눌린 이동 키(WASD·방향키)
-  let mode = 'free'; // 'free' | 'seated' | 'fortune' | 'result' | 'transition' | 'wearing' | 'interview-choice' | 'interview-play' | 'item-choice' (전이는 logic/playerMode.js)
+  let mode = 'free'; // 'free' | 'seated' | 'fortune' | 'result' | 'transition' | 'wearing' | 'interview-choice' | 'interview-play' | 'item-choice' | 'roasting' (전이는 logic/playerMode.js)
   const transition = createTransition(TRANSITION); // 공간 전환(차원문) 상태 기계
   const cameraClear = createCameraClear(CAMERA_CLEAR); // 마당에서 건물이 플레이어를 가리면 카메라를 천천히 돌려 피한다(config 의 CAMERA_CLEAR 로 끈다)
   const clearBoxes = buildingBoxes(layout.buildings, CAMERA_CLEAR.margin);
@@ -236,7 +237,7 @@ if (isMobileUA(navigator.userAgent)) {
     hud.popDelta(text, (popPoint.x * 0.5 + 0.5) * renderer.domElement.clientWidth, (-popPoint.y * 0.5 + 0.5) * renderer.domElement.clientHeight);
   }
 
-  // 지수를 줄이고(0 아래로는 내려가지 않는다) 막대·팝업을 갱신한다. 행동 효과 순간과 불멍이 함께 쓴다.
+  // 지수를 줄이고(0 아래로는 내려가지 않는다) 막대·팝업을 갱신한다. 행동 효과 순간·면접·마시멜로 굽기가 함께 쓴다.
   function applyReduction(amount, counts = true) {
     const before = gameState.stress.value;
     const { value, justGoal, justEmpty } = gameState.apply(amount, { counts });
@@ -295,7 +296,6 @@ if (isMobileUA(navigator.userAgent)) {
     },
   });
   const lastAuto = {}; // 자동이 행동별로 마지막에 고른 물건 id
-  const passive = createPassive(PASSIVE);
 
   // 손에 붙일 자리. 캐릭터 모델이 없으면 상자 플레이어 옆에 고정 위치.
   let handAttach;
@@ -684,6 +684,7 @@ if (isMobileUA(navigator.userAgent)) {
   // 행동 요청(막대 클릭·숫자 키). 막대가 보이는 구역 안의 자유 상태에서 쉬는 중이고 사정거리 안일 때만 시작한다.
   function requestAction(id) {
     if ((mode !== 'free' && mode !== 'seated') || runner.isBusy() || !ACTION_DEFS[id] || !currentZone || ACTION_DEFS[id].zone !== currentZone.id || !inRangeFor(id)) return false;
+    if (id === 'roast') return startRoast(); // 소각로 옆 벤치에서 마시멜로 굽기(앉은 채)
     stopWalking();
     if (id === 'interview') return interviewScene.openQuestion(); // 면접 보기: 질문 + 답변 선택 창(지수 감소는 답한 순간)
     if (id === 'improv') return interviewScene.startImprov(); // 돌발행동: 선택 없이 바로
@@ -860,7 +861,147 @@ if (isMobileUA(navigator.userAgent)) {
     }
   }
 
-  // 매 프레임: AUTO 유효성 확인 -> 러너 진행(효과/끝 처리) -> 손 소품·날아가는 종이 -> 행동 막대·불멍 안내·불멍 감소.
+  // ---- 마시멜로 굽기: 소각로 옆 벤치에 앉은 채 1번. 상태 기계(logic/marshmallow.js)가 시간을 재고, 여기서 자세·소품·게이지·멘트·지수 감소를 맡는다. ----
+  const roastProp = createRoastStick();
+  yardRoot.add(roastProp.group, roastProp.wisps);
+  let roast = null; // 진행 중인 굽기(createRoast)
+  let roastClock = 0; // 지금 단계에서 지난 시간(초): 자세·소품 보간용
+  let roastEmberAt = 0; // 다음 불씨를 띄울 시각
+  const ROAST_GRIP = 0.35; // 막대가 손 뒤로 나온 길이
+  const ROAST_FIRE = { edge: 0.45, y: 1.0 }; // 마시멜로를 대는 곳: 불 가장자리(소각로 중심에서 손 쪽으로 edge) 위 y
+  const rHand = new THREE.Vector3();
+  const rStart = new THREE.Vector3();
+  const rTip = new THREE.Vector3();
+  const rFire = new THREE.Vector3();
+  const rTake = new THREE.Vector3();
+  const rMouth = new THREE.Vector3();
+  const rDir = new THREE.Vector3();
+  const clipRate = (name, seconds) => (character ? (character.getRawClipDurations()[name] ?? seconds) / seconds : 1); // 클립을 seconds 에 맞춰 재생하는 배속
+  const roastCss = (level) => `rgb(${colorAt(level, MARSHMALLOW).map((v) => Math.round(v * 255)).join(',')})`;
+
+  function startRoast() {
+    if (roast || !canRoast({ mode, zone: currentZone }) || runner.isBusy() || !inRangeFor('roast')) return false;
+    if (!dispatch('roast:start')) return false; // seated -> roasting (이동 키를 비우고 자동·행동을 끈다)
+    stopWalking();
+    renderer.domElement.style.cursor = '';
+    hud.hideTooltip();
+    hud.clearSpeech(SPEECH_KEY);
+    roast = createRoast(MARSHMALLOW);
+    roastClock = 0;
+    roastEmberAt = 0;
+    character?.beginAction();
+    hud.showRoast({ onPull: roastPull });
+    if (once('game_start')) track('game_start');
+    for (const e of roast.start()) onRoastEvent(e);
+    return true;
+  }
+
+  // 굽기를 정리하고 앉은 상태로 돌아온다(끝났거나 취소됐을 때). 소품·게이지·자세를 모두 치운다.
+  function finishRoast() {
+    if (!roast) return;
+    roast = null;
+    roastProp.hide();
+    hud.hideRoast();
+    character?.endAction('sit');
+    if (mode === 'roasting') dispatch('roast:end');
+  }
+  function cancelRoast() {
+    if (!roast || !roast.cancel()) return false;
+    hud.clearSpeech(SPEECH_KEY);
+    finishRoast();
+    return true;
+  }
+  // 1·E·Space·꺼내기 버튼: 굽는 중이면 꺼내고 먹기 시작한다.
+  function roastPull() {
+    if (!roast || !roast.canPull) return;
+    for (const e of roast.pull()) onRoastEvent(e);
+  }
+
+  function onRoastEvent(e) {
+    if (e.type === 'phase') {
+      roastClock = 0;
+      const cfg = MARSHMALLOW;
+      if (e.phase === 'take') { character?.playClip('pick-up', clipRate('pick-up', cfg.takeSeconds)); character?.setPose({ lean: 0.05 }); }
+      else if (e.phase === 'reach') { character?.playClip('holding-right', 1); character?.setPose({ lean: 0.14 }); }
+      else if (e.phase === 'bring') { character?.playClip('interact-right', clipRate('interact-right', cfg.eat.bringSeconds)); character?.setPose({ lean: 0.03, nod: 0.05 }); }
+      else if (e.phase === 'chew') { character?.playClip('holding-right', 1); character?.setPose({ lean: 0.03 }); }
+      else if (e.phase === 'relief') { character?.playClip('emote-yes', clipRate('emote-yes', cfg.eat.reliefSeconds)); character?.setPose({}); }
+    } else if (e.type === 'stage') {
+      hud.say(SPEECH_KEY, stageLine(e.id, MARSHMALLOW), { seconds: LINE_SECONDS, silent: true });
+    } else if (e.type === 'pulled') {
+      hud.hideRoast(); // 이제 먹는다: 꺼내기·취소는 끝
+    } else if (e.type === 'reduce') {
+      applyReduction(ACTION_REDUCE); // 결과와 상관없이 한 번, 다른 행동과 같은 경로(행동 횟수에 들어간다)
+      track('marshmallow', { result: e.result });
+      hud.say(SPEECH_KEY, resultLine(e.result, MARSHMALLOW), { seconds: 3, silent: true });
+    } else if (e.type === 'done') {
+      finishRoast();
+    }
+  }
+
+  // 매 프레임(상태 진행): 앉은 자리·구역이 바뀌면 깨끗이 끝내고, 시간을 흘리고, 게이지·씹는 끄덕임·불씨를 갱신한다.
+  function updateRoast(dt) {
+    if (!roast) return;
+    if (mode !== 'roasting' || !seatItem || spaceId !== 'yard' || Math.hypot(seatItem.x - FURNACE.x, seatItem.z - FURNACE.z) > FIRE_ZONE_RADIUS) { // 자리가 바뀌었다: 감소 없이 정리
+      roast.cancel();
+      hud.clearSpeech(SPEECH_KEY);
+      const stuck = mode === 'roasting';
+      roast = null;
+      roastProp.hide();
+      hud.hideRoast();
+      character?.endAction('idle');
+      if (stuck) dispatch('roast:end');
+      return;
+    }
+    roastClock += dt;
+    for (const e of roast.update(dt)) onRoastEvent(e);
+    if (!roast) return;
+    const { phase } = roast;
+    if (phase === 'toast') {
+      character?.setPose({ lean: 0.14 + 0.01 * Math.sin(roastClock * 2.2) });
+      if (roastClock >= roastEmberAt) { fire.embers(2); roastEmberAt = roastClock + 0.7; } // 불씨가 반짝반짝
+    } else if (phase === 'chew') {
+      character?.setPose({ lean: 0.03, nod: 0.16 * Math.sin(roastClock * 11) }); // 오물오물
+    }
+    if (phase === 'take' || phase === 'reach' || phase === 'toast') {
+      const level = roast.level;
+      hud.updateRoast({
+        ...gaugeMap(level, MARSHMALLOW), color: roastCss(level), canPull: roast.canPull, inGolden: phase === 'toast' && classify(level, MARSHMALLOW) === 'perfect',
+        hint: roast.canPull ? '1·E·Space 꺼내기 / Esc 취소' : 'Esc 취소',
+      });
+    }
+  }
+
+  // 손 뼈를 따라가는 막대는 캐릭터 애니메이션이 끝난 뒤(손 위치가 정해진 뒤) 맞춘다.
+  function updateRoastProp(dt) {
+    if (!roast) return;
+    const { phase } = roast;
+    player.updateMatrixWorld(true);
+    handAttach.localToWorld(rHand.set(...PAPER_HAND.pos));
+    const fwdX = Math.sin(player.rotation.y);
+    const fwdZ = Math.cos(player.rotation.y);
+    rDir.set(rHand.x - FURNACE.x, 0, rHand.z - FURNACE.z).normalize();
+    rFire.set(FURNACE.x + rDir.x * ROAST_FIRE.edge, ROAST_FIRE.y + (phase === 'toast' ? 0.03 * Math.sin(roastClock * 3.1) : 0), FURNACE.z + rDir.z * ROAST_FIRE.edge);
+    rTake.set(rHand.x + fwdX * 0.9, rHand.y - 0.1, rHand.z + fwdZ * 0.9); // 꺼낸 직후: 앞으로 비스듬히 든다
+    if (!character || !character.headWorld(rMouth)) rMouth.set(player.position.x, player.position.y + 1.2, player.position.z);
+    rMouth.x += fwdX * 0.2; rMouth.z += fwdZ * 0.2; rMouth.y -= 0.02; // 입: 얼굴 앞
+    const cfg = MARSHMALLOW;
+    let show = 1;
+    if (phase === 'take') { rTip.copy(rTake); show = easeInOut(Math.min(1, roastClock / cfg.takeSeconds)); }
+    else if (phase === 'reach') rTip.lerpVectors(rTake, rFire, easeInOut(Math.min(1, roastClock / cfg.reachSeconds)));
+    else if (phase === 'toast') rTip.copy(rFire);
+    else if (phase === 'bring') rTip.lerpVectors(rFire, rMouth, easeInOut(Math.min(1, roastClock / cfg.eat.bringSeconds)));
+    else rTip.copy(rMouth);
+    rDir.subVectors(rTip, rHand).normalize();
+    rStart.copy(rHand).addScaledVector(rDir, -ROAST_GRIP);
+    if (phase === 'take') rTip.lerpVectors(rHand, rTip, Math.max(0.2, show)); // 꺼내며 막대가 자라난다
+    const eaten = phase === 'chew' ? easeInOut(Math.min(1, roastClock / cfg.eat.chewSeconds)) : phase === 'relief' ? 1 : 0;
+    roastProp.setLevel(roast.level, eaten);
+    roastProp.place(rStart, rTip, phase !== 'relief');
+    roastProp.update(dt);
+  }
+
+  // 매 프레임: AUTO 유효성 확인 -> 러너 진행(효과/끝 처리) -> 손 소품·날아가는 종이 -> 마시멜로 굽기 -> 행동 막대.
   function updateActions(dt) {
     washTail = Math.max(0, washTail - dt);
     // 지금 있는 행동 구역(가장 가까운 구역 안, 없으면 null). 걷는 중에도 구역이 바뀌면 행동 막대가 바뀐다.
@@ -879,11 +1020,8 @@ if (isMobileUA(navigator.userAgent)) {
     updateStage(dt);
     updatePaper(dt);
 
-    const meditating = mode === 'seated' && Boolean(seatItem) && Math.hypot(seatItem.x - FURNACE.x, seatItem.z - FURNACE.z) <= FIRE_ZONE_RADIUS;
-    const relief = passive.update(dt, meditating);
-    if (meditating && once('game_start')) track('game_start');
-    if (relief > 0) applyReduction(relief, false); // 불멍은 소각 횟수에 넣지 않는다
-    if (pending && !runner.isBusy() && !interviewScene.busy && (pending.kind === 'side' || (mode !== 'fortune' && mode !== 'transition' && mode !== 'wearing' && mode !== 'item-choice'))) {
+    updateRoast(dt);
+    if (pending && !runner.isBusy() && !interviewScene.busy && mode !== 'roasting' && (pending.kind === 'side' || (mode !== 'fortune' && mode !== 'transition' && mode !== 'wearing' && mode !== 'item-choice'))) {
       pending.wait -= dt;
       if (pending.wait <= 0) {
         const { kind, info } = pending;
@@ -907,8 +1045,6 @@ if (isMobileUA(navigator.userAgent)) {
     } else if (hud.isActionBarVisible()) {
       hud.hideActionBar();
     }
-    if (meditating) hud.showMeditate();
-    else hud.hideMeditate();
   }
 
   // 장애물 밖으로 밀어낸 목표 지점으로 이동을 시작한다.
@@ -1074,7 +1210,7 @@ if (isMobileUA(navigator.userAgent)) {
       else if (stage === 'card') dispatch('close');
       return;
     }
-    if (runner.isBusy() || mode === 'transition' || mode === 'wearing' || mode === 'interview-choice' || mode === 'interview-play' || mode === 'item-choice') return; // 행동·전환·옷 갈아입기·면접 중에는 E 동작을 하지 않는다.
+    if (runner.isBusy() || mode === 'roasting' || mode === 'transition' || mode === 'wearing' || mode === 'interview-choice' || mode === 'interview-play' || mode === 'item-choice') return; // 행동·전환·옷 갈아입기·면접 중에는 E 동작을 하지 않는다.
     if (mode === 'seated') { dispatch('interact'); return; }
     const item = nearestInRange(player.position, here().interactables);
     if (!item) return;
@@ -1110,6 +1246,16 @@ if (isMobileUA(navigator.userAgent)) {
     if (mode === 'interview-choice') { // 답변 선택 창: 1·2·3 으로 고르고 Esc 는 감소 없이 닫는다.
       if (e.code === 'Escape') interviewScene.cancel();
       else if (e.code in CHOICE_KEYS && !e.repeat) interviewScene.pick(CHOICE_KEYS[e.code]);
+      return;
+    }
+    if (mode === 'roasting') { // 마시멜로 굽는 중: 1·E·Space 로 꺼내고, Esc(굽기 전에는 E 도)로 취소한다. 그 밖의 키(이동·R·2)는 무시.
+      if (e.repeat) return;
+      if (e.code === 'Escape') cancelRoast();
+      else if (e.code === 'Digit1' || e.code === 'Numpad1' || e.code === 'KeyE' || e.code === 'Space') {
+        if (roast?.canPull) roastPull();
+        else if (e.code === 'KeyE') cancelRoast(); // 아직 굽기 전(꺼내 드는 중): E 는 취소
+      }
+      if (e.code === 'Space') e.preventDefault();
       return;
     }
     if (mode === 'result') { // 종료 화면 중에는 Esc(계속 둘러보기)만 받는다.
@@ -1168,7 +1314,7 @@ if (isMobileUA(navigator.userAgent)) {
     // 클릭하면 그 지점/오브젝트로 걸어간다(도착해도 아무 일도 일어나지 않는다. 동작은 E 키). 앉아 있으면 먼저 일어난다.
     // 행동 중에는 이동 클릭을 무시하고, 쉬는 중의 이동 클릭은 자동을 끈다.
     onClick: (ndc) => {
-      if (mode === 'fortune' || mode === 'transition' || mode === 'wearing' || mode === 'interview-choice' || mode === 'interview-play' || mode === 'item-choice' || runner.isBusy()) return;
+      if (mode === 'fortune' || mode === 'transition' || mode === 'wearing' || mode === 'interview-choice' || mode === 'interview-play' || mode === 'item-choice' || mode === 'roasting' || runner.isBusy()) return;
       const item = pickInteractable(ndc);
       let target = item && interactTarget(item);
       if (!target) {
@@ -1200,7 +1346,7 @@ if (isMobileUA(navigator.userAgent)) {
   const posOfRemote = (id) => { const r = net?.remotes.find((p) => p.id === id); return r ? { x: r.x, z: r.z } : undefined; };
   const quickChat = createQuickChat({
     container: document.getElementById('game'), hud, camera, renderer, player, list: QUICK_CHAT,
-    isBlocked: () => mode === 'interview-choice' || mode === 'interview-play' || mode === 'item-choice' || mode === 'transition' || mode === 'wearing' || mode === 'fortune' || mode === 'result',
+    isBlocked: () => mode === 'roasting' || mode === 'interview-choice' || mode === 'interview-play' || mode === 'item-choice' || mode === 'transition' || mode === 'wearing' || mode === 'fortune' || mode === 'result',
     onSend: (i) => net?.chat(i) ?? false,
     onUse: (i) => track('quick_chat', { i }),
   });
@@ -1316,6 +1462,7 @@ if (isMobileUA(navigator.userAgent)) {
       else hud.hidePrompt();
     }
     character?.update(dt);
+    updateRoastProp(dt);
     if (!character) playerFx.update(dt);
     net?.update(dt, { space: spaceId, x: player.position.x, z: player.position.z, y: player.position.y, rotY: player.rotation.y, anim: character ? character.getAnim() : 'idle', outfit: outfit.state, seat: holdsSeat(mode) });
     remoteSpeech?.update(dt, net.remotes, spaceId);

@@ -75,11 +75,10 @@ export const ZONES = { forestMaxX: -1.5, cityMinX: 2.5 };
 // 상호작용 반경(단위). 이후 단계에서 사용한다.
 export const INTERACT_RADIUS = 1.5;
 
-// 소각장 행동(태우기·파쇄)과 불멍. 거리는 월드 단위, 시간은 초.
+// 소각장 행동(태우기·파쇄)과 마시멜로 굽기. 거리는 월드 단위, 시간은 초.
 // ACTION_REDUCE: 모션 1회당 스트레스 감소량(사용자가 5로 정함).
 // AUTO_GAP: 자동 버튼이 행동을 끝낸 뒤 다음 행동(태우기 -> 파쇄 -> 태우기 ...)을 시작하기까지 쉬는 시간.
-// PASSIVE: 불멍(소각로 옆 벤치에 앉아 있기)으로 interval 초마다 amount 씩 자동으로 줄어든다(행동 하나보다 약하게).
-// FIRE_ZONE_RADIUS: 소각로 중심에서 이 거리 안에 있어야 행동 막대가 보인다.
+// FIRE_ZONE_RADIUS: 소각로 중심에서 이 거리 안에 있어야 행동 막대가 보인다(소각로 옆 벤치에 앉아 있어도 이 거리 안이면 마시멜로 굽기 막대가 뜬다).
 // FIRE_RANGE: 이 거리 안이면 태우기가 켜진다(소각로 중심 기준).
 // SHREDDER_RANGE: 파쇄기 중심에서 이 거리 안이면 파쇄가 켜진다. 소각로(태우기 전용)와 파쇄기(파쇄 전용)는 따로 떨어진 구역이고, 자동(R)은 서 있는 구역의 행동만 되풀이한다.
 // 행동 순서: 한숨(emote-no, 소각장 행동만: 세탁소 행동은 한숨 없이 바로) -> 재킷 주머니에서 종이를 꺼낸다(pick-up) -> 대상 쪽으로 돈다(ACTION_TURN_SECONDS, 유일한 회전)
@@ -89,8 +88,36 @@ export const INTERACT_RADIUS = 1.5;
 // (나머지는 원래 속도, 더 길면 늘리지 않는다).
 export const ACTION_REDUCE = 5;
 export const AUTO_GAP = 1;
-export const PASSIVE = { interval: 5, amount: 2 };
 export const FIRE_ZONE_RADIUS = 4.5;
+// 마시멜로 굽기(소각로 옆 벤치에 앉아서 1번): 막대 끝 마시멜로를 불 위에 들고 있으면 굽는 정도(level 0 -> 1)가 toastSeconds 에 걸쳐 올라간다.
+// 지수 감소는 결과와 상관없이 ACTION_REDUCE 한 번(결과는 멘트·모습만 바꾼다). 팀이 이 표로 시간·구간·멘트·색을 고친다(코드는 건드리지 않아도 된다).
+//   takeSeconds: 막대를 꺼내 드는 시간, reachSeconds: 팔을 뻗어 불 위에 대는 시간(이 둘 동안은 Esc/E 로 취소할 수 있다).
+//   toastSeconds: level 이 0 에서 1 이 되기까지(초). burntAt: 이 level 에 닿으면 꺼내지 않아도 자동으로 빼낸다(탄 결과).
+//   golden: [lo, hi] 이 구간에서 꺼내면 완벽(perfect). lo 미만은 under, hi 이상 burntAt 미만은 over.
+//   stages: level 이 from 에 닿을 때 한 줄 말한다(id 는 영문 이름). colors: [level, 색] 사이를 부드럽게 섞는다.
+//   eat: 꺼낸 뒤 입으로 가져가기·씹기·후련 자세의 길이(초). results: 결과별 멘트(20자 안팎).
+export const MARSHMALLOW = {
+  takeSeconds: 0.9,
+  reachSeconds: 0.9,
+  toastSeconds: 6,
+  burntAt: 0.92,
+  golden: [0.45, 0.7],
+  stages: [
+    { id: 'white', from: 0, line: '천천히… 천천히…' },
+    { id: 'pale', from: 0.2, line: '오, 노릇노릇해지는 중!' },
+    { id: 'golden', from: 0.45, line: '지금이다!' },
+    { id: 'dark', from: 0.7, line: '앗, 너무 익는다…!' },
+    { id: 'burnt', from: 0.92, line: '아아, 새까맣게…!' },
+  ],
+  colors: [[0, '#fffdf6'], [0.2, '#f5e4b8'], [0.45, '#e2ab5c'], [0.58, '#c8863a'], [0.7, '#7b4721'], [0.92, '#1d1511']],
+  eat: { bringSeconds: 1, chewSeconds: 1.4, reliefSeconds: 1 },
+  results: {
+    perfect: '겉바속촉~ 스트레스가 녹는다!',
+    under: '조금 덜 익었지만 맛있다',
+    over: '살짝 탔지만 이것도 매력!',
+    burnt: '앗, 숯덩이가 됐다… 그래도 후련!',
+  },
+};
 export const FIRE_RANGE = 4.0;
 export const SHREDDER_RANGE = 3.6;
 export const SHREDDER_ZONE_RADIUS = 3.6; // 파쇄기 구역(파쇄만): 파쇄기 중심에서 이 거리 안이면 [1 파쇄][R 자동] 막대가 뜬다. 소각로와 6~8단위 떨어져 있어 구역이 거의 겹치지 않는다(겹치면 중심이 더 가까운 쪽)

@@ -1,4 +1,4 @@
-// 브라우저 전용: 공간 전환 오버레이(차원문)·툴팁·말풍선·면접장 말풍선들과 답변 선택 창·E 키 안내·포춘쿠키 모달·전역 스트레스 바·행동 막대(구역마다 버튼이 바뀐다, 구역에 따라 자동 버튼 없음)·불멍 안내·감소량(-4) 팝업·측면 팝업(목표 달성)·가운데 팝업(지수 0)·캐치 칩(HTML). 컨테이너(#game) 안에 절대 위치로 놓는다.
+// 브라우저 전용: 공간 전환 오버레이(차원문)·툴팁·말풍선·면접장 말풍선들과 답변 선택 창·E 키 안내·포춘쿠키 모달·전역 스트레스 바·행동 막대(구역마다 버튼이 바뀐다, 구역에 따라 자동 버튼 없음)·마시멜로 굽기 패널(게이지)·감소량(-4) 팝업·측면 팝업(목표 달성)·가운데 팝업(지수 0)·캐치 칩(HTML). 컨테이너(#game) 안에 절대 위치로 놓는다.
 import { barRatio } from './logic/burn.js';
 import { emptyMessage, goalMessage, readyMessage } from './logic/cta.js';
 import { sfx } from './audio/sfx.js';
@@ -68,10 +68,19 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
     if (button.dataset.action === 'auto') barHandlers.onToggleAuto();
     else barHandlers.onAction(button.dataset.action);
   });
-  // 불멍 안내(벤치에 앉아 소각로를 보는 동안, 행동 막대 자리에 뜬다).
-  const meditate = document.createElement('div');
-  meditate.id = 'meditate';
-  meditate.textContent = '불멍 중… 가만히 있어도 지수가 줄어요';
+  // 마시멜로 굽기 패널(굽는 동안 행동 막대 자리에 뜬다): 굽는 정도 게이지(황금 구간 표시) + 꺼내기 버튼 + 안내 글.
+  const roastPanel = document.createElement('div');
+  roastPanel.id = 'roast-panel';
+  roastPanel.innerHTML = `
+    <div class="roast-gauge"><div class="roast-fill"></div><div class="roast-golden"></div></div>
+    <div class="roast-row"><button type="button" class="roast-pull"><span class="keycap">1</span><span class="label">꺼내기</span></button><span class="roast-hint"></span></div>`;
+  const roastFill = roastPanel.querySelector('.roast-fill');
+  const roastGolden = roastPanel.querySelector('.roast-golden');
+  const roastPull = roastPanel.querySelector('.roast-pull');
+  const roastHint = roastPanel.querySelector('.roast-hint');
+  let roastHandlers = { onPull: () => {} };
+  roastPull.addEventListener('pointerdown', (e) => e.preventDefault());
+  roastPull.addEventListener('click', () => { if (roastPull.getAttribute('aria-disabled') !== 'true') roastHandlers.onPull(); });
   // 클리어 팝업(종료 화면): 흐린 배경 + 카드. 문구는 열 때 채운다.
   const result = document.createElement('div');
   result.id = 'result';
@@ -178,7 +187,7 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
     if (button) pickerHandlers.onPick?.(Number(button.dataset.index));
     else if (!e.target.closest('.picker-card') || e.target.closest('.picker-cancel')) pickerHandlers.onCancel?.();
   });
-  container.append(tooltip, bubble, speechLayer, prompt, fortune, stress, actionBar, meditate, ctaChip, side, result, choice, picker, portal);
+  container.append(tooltip, bubble, speechLayer, prompt, fortune, stress, actionBar, roastPanel, ctaChip, side, result, choice, picker, portal);
   let stressStart = 100;
 
   cookieButton.addEventListener('click', () => onCrack());
@@ -412,12 +421,24 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
     },
     isActionBarVisible: () => actionBar.classList.contains('visible'),
     actionBarZone: () => barZone,
-    showMeditate() {
-      meditate.classList.add('visible');
+    // 마시멜로 굽기 패널. state: { fill(0..1), goldenFrom, goldenTo, color('rgb(..)'), canPull(꺼내기 버튼 켜짐), hint(안내 글), inGolden(황금 구간에 있음) }
+    showRoast(handlers = {}) {
+      roastHandlers = { onPull: () => {}, ...handlers };
+      roastPanel.classList.add('visible');
     },
-    hideMeditate() {
-      meditate.classList.remove('visible');
+    updateRoast({ fill = 0, goldenFrom = 0, goldenTo = 0, color = '#fff', canPull = false, hint = '', inGolden = false } = {}) {
+      roastFill.style.width = `${fill * 100}%`;
+      roastFill.style.background = color;
+      roastGolden.style.left = `${goldenFrom * 100}%`;
+      roastGolden.style.width = `${(goldenTo - goldenFrom) * 100}%`;
+      roastPanel.classList.toggle('golden', Boolean(inGolden));
+      roastPull.setAttribute('aria-disabled', canPull ? 'false' : 'true');
+      roastHint.textContent = hint;
     },
+    hideRoast() {
+      roastPanel.classList.remove('visible');
+    },
+    isRoastVisible: () => roastPanel.classList.contains('visible'),
     // 감소량 같은 짧은 글자를 화면 좌표에 띄운다(약 40px 올라가며 0.8초에 걸쳐 사라진다). 여러 개가 겹쳐도 된다.
     popDelta(text, screenX, screenY) {
       const el = document.createElement('div');

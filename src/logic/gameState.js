@@ -10,7 +10,7 @@ export function createGameState({ start, goal }) {
     actionsDone: 0,
 
     // 지수를 amount 만큼 줄인다(0 아래로는 내려가지 않는다). 값이 처음 목표 이하가 되는 호출에서만 justGoal, 처음 0 이 되는 호출에서만 justEmpty 가 true(한 호출에 둘 다일 수 있다).
-    // counts: false 면 행동 횟수에 넣지 않는다(불멍의 자동 감소).
+    // counts: false 면 행동 횟수에 넣지 않는다(면접 완주 보너스 같은 덤).
     apply(amount, { counts = true } = {}) {
       const value = stress.reduce(amount);
       if (counts) state.actionsDone += 1;

@@ -124,6 +124,12 @@ export function createPlayer(gltf) {
       return out;
     },
     getHandAttach: () => handHolder,
+    // 머리 뼈의 월드 위치를 out 에 담는다(마시멜로를 먹을 때 입 쪽 위치). 머리 뼈가 없으면 false.
+    headWorld(out) {
+      if (!poseBones.head) return false;
+      poseBones.head.getWorldPosition(out);
+      return true;
+    },
     beginAction() { acting = true; },
     // 월드 점 (x, z) 쪽으로 seconds 초 동안 제자리에서 몸을 돌린다(이동할 때와 같은 방향 규칙: +z 를 보는 모델의 yaw).
     // 이미 그쪽을 보고 있어도 seconds 동안 기다린 뒤 끝난다(러너의 단계 길이와 맞춘다).

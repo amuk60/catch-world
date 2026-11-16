@@ -72,10 +72,18 @@
     #action-bar.busy button:not(.on) { opacity: 0.6; pointer-events: none; }
     #action-bar button.on { background: #e8833a; color: #fff; box-shadow: 0 0 0 2px #ffd9a8 inset; }
     #action-bar button.on .keycap { background: #fff3e0; }
-    #meditate { position: absolute; left: 50%; bottom: 66px; transform: translateX(-50%); padding: 8px 16px; border-radius: 999px;
-      background: rgba(18, 18, 31, 0.8); color: #fff; font-size: 15px; white-space: nowrap; pointer-events: none;
-      opacity: 0; transition: opacity 0.15s; z-index: 2; }
-    #meditate.visible { opacity: 1; }
+    /* 마시멜로 굽기 패널: 굽는 정도 게이지(황금 구간은 금색 띠) + 꺼내기 버튼 + 안내. 행동 막대 자리. */
+    #roast-panel { position: absolute; left: 50%; bottom: 66px; transform: translateX(-50%); display: none; flex-direction: column; align-items: center; gap: 8px;
+      padding: 10px 14px; border-radius: 18px; background: rgba(18, 18, 31, 0.82); z-index: 2; color: #fff; }
+    #roast-panel.visible { display: flex; }
+    .roast-gauge { position: relative; width: 260px; height: 12px; border-radius: 6px; background: rgba(255, 255, 255, 0.16); overflow: hidden; }
+    .roast-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 6px; }
+    .roast-golden { position: absolute; top: 0; bottom: 0; border: 2px solid #ffd166; border-radius: 6px; box-sizing: border-box; background: rgba(255, 209, 102, 0.18); pointer-events: none; }
+    #roast-panel.golden .roast-golden { background: rgba(255, 209, 102, 0.42); box-shadow: 0 0 8px #ffd166; }
+    .roast-row { display: flex; align-items: center; gap: 10px; }
+    .roast-pull { display: flex; align-items: center; gap: 8px; padding: 6px 14px; border: 0; border-radius: 999px; background: #e8833a; color: #fff; font: inherit; font-size: 15px; white-space: nowrap; cursor: pointer; }
+    .roast-pull[aria-disabled="true"] { opacity: 0.38; cursor: default; }
+    .roast-hint { font-size: 13px; color: #d8d8ea; white-space: nowrap; }
     /* 감소량 팝업(-4): 머리 위에서 40px 올라가며 사라진다. */
     .delta { position: absolute; left: 0; top: 0; transform: translate(-50%, -100%); color: #ffe9a8; font-size: 22px; font-weight: 800;
       text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7); pointer-events: none; z-index: 2; animation: delta-rise 0.8s ease-out forwards; }

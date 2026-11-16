@@ -44,15 +44,18 @@ export function autoActionsOf(zone) {
   return zone && zone.auto !== false ? zoneActions(zone) : [];
 }
 
-// 이 게임의 행동 구역: 마당의 소각장(소각로 중심, 태우기만)과 파쇄기 구역(파쇄기 중심, 파쇄만; 소각로에서 6~8단위 떨어져 있다), 실내 세탁소(세탁기 줄과 빨랫줄 사이), 실내 면접장(지원자 의자 3개 중 하나에 앉아 있을 때만 켜지는 구역, 자동 버튼 없음). layout 은 마당 배치(파쇄기 위치를 구역 중심으로 쓴다).
+// 이 게임의 행동 구역: 마당의 소각장(소각로 중심, 태우기만)과 파쇄기 구역(파쇄기 중심, 파쇄만; 소각로에서 6~8단위 떨어져 있다), 실내 세탁소(세탁기 줄과 빨랫줄 사이), 실내 면접장(지원자 의자 3개 중 하나에 앉아 있을 때만 켜지는 구역, 자동 버튼 없음), 마당의 마시멜로 굽기 구역(소각로 옆 벤치에 앉아 있을 때만, 자동 버튼 없음). layout 은 마당 배치(파쇄기 위치를 구역 중심으로 쓴다).
 export function buildZones(layout, interior = buildLaundryInterior(), interviewInterior = buildInterviewInterior()) {
   const { washers, clothesline } = interior;
   const wx = washers.reduce((sum, w) => sum + w.x, 0) / washers.length;
   const wz = washers.reduce((sum, w) => sum + w.z, 0) / washers.length;
+  // 마시멜로 굽기 구역: 소각로 옆(불 구역 안) 벤치에 앉았을 때만 켜진다. 서 있을 때는 위치로 찾지 않는다(seatIds 가 있다).
+  const fireBenches = (layout.interactables ?? []).filter((i) => i.kind === 'seat' && Math.hypot(i.x - FURNACE.x, i.z - FURNACE.z) <= FIRE_ZONE_RADIUS).map((i) => i.id);
   return [
     { id: 'incinerator', space: 'yard', center: { x: FURNACE.x, z: FURNACE.z }, radius: FIRE_ZONE_RADIUS, actions: ['burn'] },
     { id: 'shredder', space: 'yard', center: { x: layout.shredder.x, z: layout.shredder.z }, radius: SHREDDER_ZONE_RADIUS, actions: ['shred'] },
     { id: 'laundry', space: 'laundry', center: { x: (wx + clothesline.centre.x) / 2, z: (wz + clothesline.centre.z) / 2 }, radius: LAUNDRY_ZONE_RADIUS, actions: ['wash', 'hang'] },
     { id: 'interview', space: 'interview', center: { ...interviewInterior.zoneCenter }, radius: INTERVIEW_ZONE_RADIUS, actions: ['interview', 'improv'], auto: false, seatIds: [...interviewInterior.seatIds] },
+    { id: 'marshmallow', space: 'yard', center: { x: FURNACE.x, z: FURNACE.z }, radius: FIRE_ZONE_RADIUS, actions: ['roast'], auto: false, seatIds: fireBenches },
   ];
 }

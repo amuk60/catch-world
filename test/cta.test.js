@@ -20,9 +20,9 @@ test('shareLines: 행동 횟수가 있으면 소각 횟수 문구', () => {
   });
 });
 
-test('shareLines: 행동이 0번(불멍으로 클리어)이면 불멍 문구', () => {
+test('shareLines: 행동이 0번이면 횟수 없는 문구', () => {
   const s = shareLines(20, 0, 100);
-  assert.equal(s.detail, '불멍으로 후련해졌어요');
+  assert.equal(s.detail, '후련해졌어요');
   assert.equal(s.delta, '스트레스 지수 100 → 20');
 });
 

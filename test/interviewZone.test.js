@@ -27,7 +27,7 @@ test('면접 구역의 행동 막대 버튼은 [1 면접 보기] [2 돌발행동
 
 test('SCENE_ACTIONS: 면접 보기(1)·돌발행동(2)은 면접 구역 소속이고 실행기로는 시작할 수 없다', () => {
   assert.deepEqual(Object.values(SCENE_ACTIONS).map((a) => `${a.key}:${a.id}:${a.zone}:${a.label}`), ['1:interview:interview:면접 보기', '2:improv:interview:돌발행동']);
-  assert.deepEqual(Object.keys(ACTION_DEFS).sort(), ['burn', 'hang', 'improv', 'interview', 'shred', 'wash']);
+  assert.deepEqual(Object.keys(ACTION_DEFS).sort(), ['burn', 'hang', 'improv', 'interview', 'roast', 'shred', 'wash']);
   assert.deepEqual(Object.keys(ACTIONS).sort(), ['burn', 'hang', 'shred', 'wash'], '실행기 행동은 그대로 넷');
   const runner = createRunner({ durations: {}, turnSeconds: 0.5, effectAt: 0.5, autoGap: 1 });
   assert.equal(runner.start('interview'), false);

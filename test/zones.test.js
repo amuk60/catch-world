@@ -41,11 +41,11 @@ test('zoneActions: 구역의 행동 id 두 개(복사본), 구역이 없으면 �
   assert.deepEqual(zoneActions(null), []);
 });
 
-test('buildZones: 마당의 소각장(소각로 중심, 태우기만)과 파쇄기 구역(파쇄기 중심, 파쇄만), 실내 세탁소(세탁·널기), 실내 면접장(면접 보기·돌발행동, 자동 없음)', () => {
+test('buildZones: 마당의 소각장(소각로 중심, 태우기만)과 파쇄기 구역(파쇄기 중심, 파쇄만), 실내 세탁소(세탁·널기), 실내 면접장(면접 보기·돌발행동, 자동 없음), 불 옆 벤치의 마시멜로 굽기(자동 없음)', () => {
   const L = buildLayout(SEED);
   const I = buildLaundryInterior();
   const zones = buildZones(L);
-  assert.deepEqual(zones.map((z) => z.id), ['incinerator', 'shredder', 'laundry', 'interview']);
+  assert.deepEqual(zones.map((z) => z.id), ['incinerator', 'shredder', 'laundry', 'interview', 'marshmallow']);
   const [inc, shr, laundry] = zones;
   assert.deepEqual(inc, { id: 'incinerator', space: 'yard', center: { x: FURNACE.x, z: FURNACE.z }, radius: FIRE_ZONE_RADIUS, actions: ['burn'] });
   assert.deepEqual(shr, { id: 'shredder', space: 'yard', center: { x: L.shredder.x, z: L.shredder.z }, radius: SHREDDER_ZONE_RADIUS, actions: ['shred'] });
@@ -83,10 +83,10 @@ test('마당 한가운데 어디서도 실내 세탁소 구역은 활성화되�
   assert.equal(activeZone(I.arrival, zones, 'laundry'), null); // 들어오자마자는 구역 밖(걸어 들어가야 행동 막대가 뜬다)
 });
 
-test('구역의 행동은 모두 ACTION_DEFS(실행기 행동과 면접 장면 행동)에 있고 그 구역 소속이며, 키 1/2 순서로 정의된다(소각장·파쇄기 구역은 행동 하나)', () => {
+test('구역의 행동은 모두 ACTION_DEFS(실행기 행동·면접 장면 행동·굽기)에 있고 그 구역 소속이며, 키 1/2 순서로 정의된다(소각장·파쇄기 구역은 행동 하나)', () => {
   for (const zone of buildZones(buildLayout(SEED))) {
     const ids = zoneActions(zone);
-    assert.equal(ids.length, zone.id === 'incinerator' || zone.id === 'shredder' ? 1 : 2, zone.id);
+    assert.equal(ids.length, zone.id === 'incinerator' || zone.id === 'shredder' || zone.id === 'marshmallow' ? 1 : 2, zone.id);
     ids.forEach((id, i) => {
       assert.equal(ACTION_DEFS[id].zone, zone.id);
       assert.equal(ACTION_DEFS[id].key, String(i + 1));

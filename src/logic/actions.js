@@ -74,8 +74,10 @@ export const SCENE_ACTIONS = {
   interview: { id: 'interview', label: '면접 보기', key: '1', zone: 'interview', target: 'desk' },
   improv: { id: 'improv', label: '돌발행동', key: '2', zone: 'interview', target: 'desk' },
 };
-// 행동 막대에 올라가는 모든 행동(실행기 행동 + 장면 행동).
-export const ACTION_DEFS = { ...ACTIONS, ...SCENE_ACTIONS };
+// 마시멜로 굽기: 소각로 옆 벤치에 앉은 채 하는 행동. 실행기가 아니라 logic/marshmallow.js 의 상태 기계가 진행한다(대상은 소각로 사정거리).
+export const ROAST_ACTION = { id: 'roast', label: '마시멜로 굽기', key: '1', zone: 'marshmallow', target: 'fire' };
+// 행동 막대에 올라가는 모든 행동(실행기 행동 + 장면 행동 + 마시멜로 굽기).
+export const ACTION_DEFS = { ...ACTIONS, ...SCENE_ACTIONS, roast: ROAST_ACTION };
 
 const EPS = 1e-9;
 const MAX_STEPS = 400; // 아주 큰 dt 에서도 무한 반복하지 않게 하는 안전장치

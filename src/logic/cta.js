@@ -28,12 +28,12 @@ export function resultPlan({ justGoal, justEmpty }) {
   return justGoal ? 'side' : 'none';
 }
 
-// 공유 이미지에 쓰는 문구. actionsDone 이 0 이면(불멍으로 클리어) 불멍 문구.
+// 공유 이미지에 쓰는 문구. actionsDone 이 0 이면 횟수 없이 짧은 문구.
 export function shareLines(stress, actionsDone, start) {
   return {
     title: '번아웃 소각 완료!',
     delta: `스트레스 지수 ${start} → ${stress}`,
-    detail: actionsDone > 0 ? `${actionsDone}번의 소각으로 후련해졌어요` : '불멍으로 후련해졌어요',
+    detail: actionsDone > 0 ? `${actionsDone}번의 소각으로 후련해졌어요` : '후련해졌어요',
     tagline: '다음 지원서는 캐치와 함께',
   };
 }

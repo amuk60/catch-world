@@ -202,8 +202,9 @@ test('면접 구역: 지원자 의자 3개 중 어디에 앉아도 켜진다(서
   }
   const seat = chairSeat();
   assert.equal(seatZone(null, zones), null);
-  assert.equal(seatZone({ id: 'seat-0' }, zones), null, '마당 벤치에는 묶인 구역이 없다');
-  assert.equal(currentZoneFor({ mode: 'seated', pos: seat.seat, seat: { id: 'seat-0' }, zones, spaceId: 'yard' }), null);
+  assert.equal(seatZone({ id: 'seat-0' }, zones).id, 'marshmallow', '소각로 옆 마당 벤치는 마시멜로 굽기 구역(면접 구역이 아니다)');
+  assert.equal(seatZone({ id: 'bench-far' }, zones), null, '불에서 먼 벤치에는 묶인 구역이 없다');
+  assert.equal(currentZoneFor({ mode: 'seated', pos: seat.seat, seat: { id: 'bench-far' }, zones, spaceId: 'yard' }), null);
 });
 
 test('장식: 칠판(서쪽 벽)·벽시계(북쪽 벽)·간판 "면접장"(북쪽 벽, 창 아래가 아니라 가운데)·화분이 방 안에 있다', () => {
