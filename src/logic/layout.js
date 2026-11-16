@@ -66,9 +66,12 @@ const BENCH_PREFERRED_ANGLE = -Math.PI / 4;
 // 소각로 곁 상시 소품. 파쇄기는 모든 배치(벤치·통나무·나무·덤불·바위·간판·위로 오브젝트)가 끝난 뒤에,
 // 선호 방향(소각로에서 atan2(z, x))과 선호 거리 순서로 훑어 PROP_CLEARANCE 이상 떨어진 첫 자리를 쓴다(없으면 가장 여유 있는 자리).
 // 기존 배치의 난수 흐름을 건드리지 않아 벤치·통나무·나무는 그대로다. 선호 방향은 기본 카메라(+x,+z 쪽)에서 볼 때 캐릭터가 서는 대각선 양옆이다.
-const SHREDDER = { radius: 0.7, angle: (5 * Math.PI) / 180, distances: [3.1, 3.2, 3.0, 2.9, 2.8, 2.7, 2.6] };
+const SHREDDER = { radius: 0.7, angle: (5 * Math.PI) / 180, distances: [3.2, 3.1, 3.0, 2.9, 2.8, 2.7, 2.6] };
 const PROP_CLEARANCE = 1.5; // 다른 배치물과의 최소 거리(중심 사이)
 const PROP_ANGLE_STEP = Math.PI / 36; // 5도
+
+// 나무토막이 놓이는 각도 호(소각로에서 atan2(z, x), 라디안): 서쪽(185~205도), 북서쪽(212~228도). 파쇄기(5도)·벤치(-45도·135도)·스폰(35도)·간판(-90도) 방향과 떨어져 있다.
+const LOG_ARCS = [[(185 * Math.PI) / 180, (205 * Math.PI) / 180], [(212 * Math.PI) / 180, (228 * Math.PI) / 180]];
 
 const nature = (name, x, z, scale, rotY) => ({ pack: 'nature', name, x, z, scale, rotY });
 
@@ -134,8 +137,9 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
 
   // 소각로 주변 (소각로 자체 장애물은 이동 코드에서 FURNACE로 처리).
   const furnaceItems = [nature('campfire_stones', FURNACE.x, FURNACE.z, 4.4, 0)];
+  // 나무토막은 길목(스폰·파쇄기·벤치·간판 쪽)을 피해 소각로 뒤쪽(서~북서) 호에만 놓는다. 난수는 예전처럼 항목당 3번 뽑아 뒤의 배치 흐름을 지키고, 각도만 호 안으로 접는다.
   for (let i = 0; i < 2; i++) {
-    const a = rand(rng, 0, Math.PI * 2);
+    const a = LOG_ARCS[i][0] + rand(rng, 0, 1) * (LOG_ARCS[i][1] - LOG_ARCS[i][0]);
     const r = rand(rng, 2.0, 2.4);
     furnaceItems.push(nature('log', FURNACE.x + Math.cos(a) * r, FURNACE.z + Math.sin(a) * r, 2.5, rand(rng, 0, Math.PI * 2)));
   }

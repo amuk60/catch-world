@@ -379,10 +379,10 @@ test('종이 더미는 없다(layout 키 목록에도, 반경 0.5 장애물에�
   assert.equal(L.obstacles.filter((o) => o.radius === 0.5 && !comfort.some((c) => c.x === o.x && c.z === o.z)).length, 0);
 });
 
-test('파쇄기: 기본 시드의 위치는 종이 더미를 없애기 전과 똑같다(고정값)', () => {
-  assert.equal(L.shredder.x, -3.409037355874981);
-  assert.equal(L.shredder.z, -0.6717790556719336);
-  assert.equal(L.shredder.rotY, -1.8325957145940461);
+test('파쇄기: 기본 시드의 위치는 나무토막을 길목 밖으로 옮긴 뒤의 고정값', () => {
+  assert.equal(L.shredder.x, -3.312176966106414);
+  assert.equal(L.shredder.z, -1.2211016232074938);
+  assert.equal(L.shredder.rotY, -1.6580627893946132);
   assert.equal(L.shredder.radius, 0.7);
 });
 
