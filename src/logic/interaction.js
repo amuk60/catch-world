@@ -39,7 +39,7 @@ const ACTIONS = {
   furnace: null,
   building: null,
   comfort: { type: 'comfort', prompt: '살펴보기' },
-  fortune: { type: 'fortune', prompt: '행운의 쿠키 고르기' },
+  fortune: { type: 'fortune', prompt: '포춘쿠키 고르기' },
   seat: { type: 'seat', prompt: '앉기' },
   clothesline: { type: 'wear', prompt: '새 셔츠 입기' }, // 실내 빨랫줄 곁. 마른 새 셔츠가 있을 때만 main 이 안내를 띄운다(logic/outfit.js).
   door: { type: 'enter', prompt: '들어가기' }, // 나가는 문(to: 'yard')은 아래 actionOf 가 exit/나가기로 바꾼다.

@@ -383,7 +383,7 @@ export const INTERVIEW_LOOK = {
   lamp: 0xeef5ff, lampIntensity: 9, lampDistance: 12, sun: 0.5, sunColor: 0xe6eeff,
   floor: { a: '#a8b1bc', b: '#9ba5b1', line: 'rgba(40, 52, 70, 0.28)', speckle: true },
   baseboard: 0x4a525d,
-  sign: { board: 0x14213d, bg: '#1d3157', border: '#c8d2e0', text: '#ffffff' },
+  sign: { board: 0x14213d, bg: '#1d3157', border: '#c8d2e0', text: '#ffffff', face: 'corp', shadow: 'rgba(5,12,30,0.5)' },
   materials: {
     '*': { wood: 0x8c97a4, woodDark: 0x6d7886, metal: 0xb9c1cb, metalMedium: 0x59636f, metalDark: 0x3a424c, _defaultMat: 0xe4e9ee },
     wall: { wood: 0x8c97a4, _defaultMat: 0xf1f4f7, metalDark: 0x3a424c },

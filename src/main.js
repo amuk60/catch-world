@@ -51,6 +51,7 @@ import { createOutfit, outfitPrompt, laundryGuide } from './logic/outfit.js';
 import { createLine } from './logic/line.js';
 import { makeId } from './logic/net.js';
 import { initAnalytics, track } from './analytics.js';
+import { loadSignFonts } from './signFont.js';
 import { renderShareCard, saveShareCard, copyText } from './share.js';
 import { easeInOut } from './logic/burn.js';
 import {
@@ -105,6 +106,7 @@ if (isMobileUA(navigator.userAgent)) {
   // 내 컴퓨터(localhost)에서 개발·시험하는 접속은 통계에 섞이지 않게 분석을 켜지 않는다.
   if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) initAnalytics(GA_MEASUREMENT_ID);
   const { scene, camera, renderer, onFrame } = createStage(document.getElementById('game'));
+  loadSignFonts(); // 간판 글꼴(구글 폰트 부분 집합)은 기다리지 않는다: 준비되면 간판이 다시 그려지고, 실패하면 시스템 글꼴 그대로
   renderer.localClippingEnabled = true; // 파쇄: 투입구로 들어간 종이의 아랫부분을 클리핑 평면으로 가린다
   const layout = buildLayout(SEED);
   const interior = buildLaundryInterior(); // 세탁소 실내 데이터(마당에서 멀리 떨어진 좌표)

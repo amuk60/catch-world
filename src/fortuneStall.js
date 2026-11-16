@@ -1,7 +1,9 @@
-// 브라우저 전용: 행운의 쿠키 노점. 줄무늬 차양 + 나무 계산대 + 쿠키 바구니 + 전구 줄 + 흔들리는 쿠키 장식 + "오늘의 행운" 간판 + 떠 있는 쿠키 표시.
+// 브라우저 전용: 행운의 쿠키 노점. 줄무늬 차양 + 나무 계산대 + 쿠키 바구니 + 전구 줄 + 흔들리는 쿠키 장식 + "포춘쿠키 상점" 간판 + 떠 있는 쿠키 표시.
 // 모두 코드로 만든 도형이고 같은 모양은 InstancedMesh 로 묶어 그린다(쿠키 18개·전구 12개·부스러기 10개가 각각 한 번의 그리기).
 // 노점 좌표계: 로컬 x 가 가로, +z 가 앞(기본 카메라 쪽), 원점은 계산대 가운데 바닥. update(시간) 을 매 프레임 부른다.
 import * as THREE from 'three';
+import { BUILDING_NAMES } from './logic/signText.js';
+import { signCanvas, liveSignTexture, drawSignText } from './signFont.js';
 
 const WOOD = 0x8a5a33;
 const WOOD_DARK = 0x6b4a2f;
@@ -42,7 +44,9 @@ function textTexture(w, h, draw) {
 }
 
 function signTexture() {
-  return textTexture(1024, 300, (g, w, h) => {
+  return liveSignTexture(() => {
+    const { canvas, g } = signCanvas(1024, 300);
+    const w = 1024; const h = 300;
     g.fillStyle = '#fff0d6';
     g.fillRect(0, 0, w, h);
     g.strokeStyle = '#d9803a';
@@ -53,11 +57,8 @@ function signTexture() {
     g.strokeStyle = '#f29a4a';
     g.strokeRect(34, 34, w - 68, h - 68);
     g.setLineDash([]);
-    g.fillStyle = '#6b3d1c';
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    g.font = 'bold 150px "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif';
-    g.fillText('오늘의 행운', w / 2, h / 2 + 6);
+    drawSignText(g, BUILDING_NAMES.fortune, { x: w / 2, y: h / 2 + 8, maxW: w - 150, size: 160, color: '#6b3d1c', face: 'stall', minPx: 20, shadow: 'rgba(242,154,74,0.5)', shadowOff: 5 });
+    return canvas;
   });
 }
 

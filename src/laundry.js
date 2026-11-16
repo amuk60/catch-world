@@ -5,6 +5,7 @@ import {
   PASTELS, slotPoint, wobbleAmount, WOBBLE_SECONDS, foamBubble, FOAM_COUNT, FOAM_SECONDS, swingAngle, SWING_SECONDS,
 } from './logic/laundry.js';
 import { buildOfficeTower, buildShop } from './buildingExterior.js';
+import { signCanvas, liveSignTexture, drawSignText } from './signFont.js';
 
 const MY_SHIRT_COLOR = 0xffffff; // 흰 "내 셔츠"(logic/line.js 의 WHITE. 파스텔 셔츠와 구별된다)
 const MY_SHIRT_GLOW = 0xb0b0b0;
@@ -25,37 +26,24 @@ function shadowAll(root, receive = true) {
 // 간판 글씨 판. 기본은 나무 간판(world.js 의 'Catch World' 팻말과 같은 밝은 나무판·어두운 글씨), style 로 다른 색(면접장 남색 판)을 쓴다.
 const SIGN_STYLE = { bg: '#d9b27c', border: '#8a5f3a', text: '#4a2f1a' };
 export function signTexture(text, style = SIGN_STYLE) {
-  const canvas = document.createElement('canvas');
-  canvas.width = 768;
-  canvas.height = 256;
-  const g = canvas.getContext('2d');
-  g.fillStyle = style.bg;
-  g.fillRect(0, 0, canvas.width, canvas.height);
-  if (style.brushed) { // 솔질한 금속: 가는 가로 결(고정 시드)
-    let seed = 5;
-    const rand = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
-    for (let i = 0; i < 260; i++) {
-      g.fillStyle = rand() < 0.5 ? 'rgba(255, 255, 255, 0.35)' : 'rgba(80, 100, 110, 0.07)';
-      g.fillRect(rand() * canvas.width, rand() * canvas.height, 60 + rand() * 260, 1);
+  return liveSignTexture(() => {
+    const { canvas, g } = signCanvas(768, 256);
+    g.fillStyle = style.bg;
+    g.fillRect(0, 0, 768, 256);
+    if (style.brushed) { // 솔질한 금속: 가는 가로 결(고정 시드)
+      let seed = 5;
+      const rand = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+      for (let i = 0; i < 260; i++) {
+        g.fillStyle = rand() < 0.5 ? 'rgba(255, 255, 255, 0.35)' : 'rgba(80, 100, 110, 0.07)';
+        g.fillRect(rand() * 768, rand() * 256, 60 + rand() * 260, 1);
+      }
     }
-  }
-  g.strokeStyle = style.border;
-  g.lineWidth = 14;
-  g.strokeRect(7, 7, canvas.width - 14, canvas.height - 14);
-  let size = 150;
-  const font = (px) => `bold ${px}px "Malgun Gothic", sans-serif`;
-  g.font = font(size);
-  while (size > 20 && g.measureText(text).width > canvas.width * 0.8) {
-    size -= 4;
-    g.font = font(size);
-  }
-  g.fillStyle = style.text;
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  g.fillText(text, canvas.width / 2, canvas.height / 2 + 6);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
+    g.strokeStyle = style.border;
+    g.lineWidth = 14;
+    g.strokeRect(7, 7, 768 - 14, 256 - 14);
+    drawSignText(g, text, { x: 384, y: 134, maxW: 768 * 0.8, size: 150, color: style.text, face: style.face, minPx: 20, shadow: style.shadow, shadowOff: style.shadow ? 4 : 0 });
+    return canvas;
+  });
 }
 
 // ---- 셔츠 ----

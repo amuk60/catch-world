@@ -5,6 +5,7 @@
 // 시간표·진행률 계산은 logic/laundry.js(순수). 스프라이트는 처음에 한꺼번에 만들어 쓰고 안 쓰는 것은 숨겨 draw call 이 없다.
 import * as THREE from 'three';
 import { LAUNDRY_FX } from './config.js';
+import { fontOf } from './signFont.js';
 import { slotPoint, washEvents, washDisplay, displayAlpha, hangEvents, dryTwinkle } from './logic/laundry.js';
 
 const canvasOf = (w, h) => {
@@ -103,8 +104,8 @@ function paintLed(g, text, percent, done) {
   g.lineWidth = 6;
   g.beginPath(); g.roundRect(7, 7, LED_W - 14, LED_H - 14, 20); g.stroke();
   let size = 54;
-  g.font = `bold ${size}px "Malgun Gothic", sans-serif`;
-  while (size > 22 && g.measureText(text).width > LED_W - 60) { size -= 3; g.font = `bold ${size}px "Malgun Gothic", sans-serif`; }
+  g.font = fontOf('friendly', size);
+  while (size > 22 && g.measureText(text).width > LED_W - 60) { size -= 3; g.font = fontOf('friendly', size); }
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   g.shadowColor = done ? '#ffe9a0' : '#7ff2d8';
@@ -117,7 +118,7 @@ function paintLed(g, text, percent, done) {
   g.beginPath(); g.roundRect(bx, by, bw, bh, 10); g.fill();
   g.fillStyle = done ? '#ffd98a' : '#6ff0d2';
   if (percent > 0) { g.beginPath(); g.roundRect(bx, by, Math.max(bh, (bw * percent) / 100), bh, 10); g.fill(); }
-  g.font = 'bold 34px "Malgun Gothic", sans-serif';
+  g.font = fontOf('friendly', 34);
   g.textAlign = 'right';
   g.fillStyle = done ? '#fff3c2' : '#b8fff0';
   g.fillText(`${percent}%`, LED_W - 36, by + 11);

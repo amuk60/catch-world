@@ -5,6 +5,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mulberry32 } from './logic/rng.js';
 import { LAUNDRY_LOOK } from './config.js';
+import { BUILDING_NAMES } from './logic/signText.js';
+import { signCanvas, liveSignTexture, drawSignText, fitSignFont } from './signFont.js';
 
 const PPM = 100; // 캔버스 한 변 1m 당 픽셀 수
 
@@ -72,19 +74,13 @@ function plane(parent, material, w, h, x, y, z, ry = 0) {
   return mesh;
 }
 
-// 간판 글씨(가운데 정렬, 폭에 맞춰 크기를 줄인다).
-function fitText(g, text, cx, cy, maxW, size, color, weight = 'bold') {
-  let s = size;
-  const font = (px) => `${weight} ${px}px "Malgun Gothic", sans-serif`;
-  g.font = font(s);
-  while (s > 14 && g.measureText(text).width > maxW) { s -= 4; g.font = font(s); }
-  g.fillStyle = color;
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  g.fillText(text, cx, cy);
+// 간판 글씨(가운데 정렬, 폭에 맞춰 크기를 줄인다). face 가 있으면 간판 웹 글꼴(signFont.js), 없으면 시스템 글꼴. style: { shadow, shadowOff, outline, outlineW }.
+function fitText(g, text, cx, cy, maxW, size, color, weight = 'bold', face, style = {}) {
+  return drawSignText(g, text, { x: cx, y: cy, maxW, size, color, weight, face, minPx: 14, ...style });
 }
 
-const signMat = (canvas) => new THREE.MeshBasicMaterial({ map: texOf(canvas), toneMapped: false });
+// make: 캔버스를 돌려주는 함수(글꼴이 늦게 준비되면 다시 그린다).
+const signMat = (make) => new THREE.MeshBasicMaterial({ map: liveSignTexture(make), toneMapped: false });
 
 // ============================================================
 // 면접장: 회사 빌딩
@@ -199,29 +195,33 @@ function officeFaceTextures(fw, seed, { cols, lobby, doorX, front }) {
 
 // 옥상 난간 간판 면(남색 바탕, 금색 테두리, 서류가방 로고와 글씨).
 function crownSignCanvas(w, h, text) {
-  const { canvas, g } = makeCanvas(w, h);
+  const { canvas, g } = signCanvas(w, h);
   g.fillStyle = NAVY; g.fillRect(0, 0, w, h);
   g.strokeStyle = GOLD; g.lineWidth = 8; g.strokeRect(10, 10, w - 20, h - 20);
-  const s = h * 0.5; // 로고(서류가방)
-  const lx = w * 0.5 - Math.min(w * 0.3, 190) - s * 0.9;
+  const s = h * 0.5; // 로고(서류가방): 로고 + 간격 + 글씨를 한 덩어리로 가운데에 놓는다
+  const logoW = s * 1.2;
+  const gap = s * 0.36;
+  const fit = fitSignFont(g, text, { maxW: w - 150 - logoW - gap, size: h * 0.66, face: 'corp', minPx: 14 });
+  const x0 = (w - (logoW + gap + fit.width)) / 2;
+  const lx = x0;
   const ly = h / 2 - s * 0.3;
   g.fillStyle = GOLD;
   roundRect(g, lx, ly, s * 1.2, s * 0.8, 8); g.fill();
   g.strokeStyle = GOLD; g.lineWidth = 7; roundRect(g, lx + s * 0.38, ly - s * 0.22, s * 0.44, s * 0.3, 6); g.stroke();
   g.fillStyle = NAVY; g.fillRect(lx, ly + s * 0.36, s * 1.2, 5);
-  fitText(g, text, w * 0.5 + s * 0.45, h / 2 + 4, w * 0.6, h * 0.66, '#f6e7c8');
+  fitText(g, text, x0 + logoW + gap + fit.width / 2, h / 2 + 4, fit.width + 2, h * 0.66, '#f6e7c8', 'bold', 'corp', { shadow: 'rgba(5,12,30,0.55)', shadowOff: 4 });
   return canvas;
 }
 
 // 입구 위 간판 띠(작은 글씨 부제 포함).
 function entranceSignCanvas(w, h) {
-  const { canvas, g } = makeCanvas(w, h);
+  const { canvas, g } = signCanvas(w, h);
   g.fillStyle = '#34465f'; g.fillRect(0, 0, w, h);
   g.strokeStyle = GOLD; g.lineWidth = 6; g.strokeRect(8, 8, w - 16, h - 16);
-  fitText(g, '면접장', w * 0.38, h / 2 + 4, w * 0.42, h * 0.62, '#f6e7c8');
-  g.fillStyle = GOLD; g.fillRect(w * 0.6, h * 0.2, 4, h * 0.6);
-  fitText(g, 'INTERVIEW', w * 0.78, h * 0.38, w * 0.28, h * 0.26, '#e9dcc0');
-  fitText(g, 'HALL  ·  2F 로비', w * 0.78, h * 0.68, w * 0.28, h * 0.22, '#b9c7d8', 'normal');
+  fitText(g, BUILDING_NAMES.interview, w * 0.34, h / 2 + 3, w * 0.5, h * 0.64, '#f6e7c8', 'bold', 'corp', { shadow: 'rgba(5,12,30,0.55)', shadowOff: 3 });
+  g.fillStyle = GOLD; g.fillRect(w * 0.62, h * 0.2, 4, h * 0.6);
+  fitText(g, 'CATCH INTERVIEW', w * 0.8, h * 0.36, w * 0.3, h * 0.26, '#e9dcc0', 'bold', 'corp');
+  fitText(g, 'HALL  ·  2F 로비', w * 0.8, h * 0.68, w * 0.3, h * 0.22, '#b9c7d8', 'normal', 'corp');
   return canvas;
 }
 
@@ -269,9 +269,9 @@ function buildOfficeTower(b) {
   batch.box(cream, W + 0.24, 0.05, t + 0.06, 0, H + OFFICE.parapetBack + 0.02, -hd - 0.07 + t / 2); // 난간 머릿돌
   batch.box(cream, t + 0.06, 0.05, D + 0.24, -hw - 0.07 + t / 2, H + OFFICE.parapetBack + 0.02, 0);
   const signH = OFFICE.parapetSign;
-  const crownFront = new THREE.Mesh(new THREE.BoxGeometry(W + 0.14, signH, t), [concrete, concrete, concrete, concrete, signMat(crownSignCanvas(1160, 200, '면접장')), concrete]);
+  const crownFront = new THREE.Mesh(new THREE.BoxGeometry(W + 0.14, signH, t), [concrete, concrete, concrete, concrete, signMat(() => crownSignCanvas(1160, 200, BUILDING_NAMES.interview)), concrete]);
   crownFront.position.set(0, H + signH / 2, hd + 0.07 - t / 2);
-  const crownSouth = new THREE.Mesh(new THREE.BoxGeometry(t, signH, D + 0.14), [signMat(crownSignCanvas(780, 200, '면접장')), concrete, concrete, concrete, concrete, concrete]);
+  const crownSouth = new THREE.Mesh(new THREE.BoxGeometry(t, signH, D + 0.14), [signMat(() => crownSignCanvas(780, 200, BUILDING_NAMES.interview)), concrete, concrete, concrete, concrete, concrete]);
   crownSouth.position.set(hw + 0.07 - t / 2, H + signH / 2, 0);
   for (const m of [crownFront, crownSouth]) { m.castShadow = true; group.add(m); }
   batch.box(cream, W + 0.24, 0.05, t + 0.06, 0, H + signH + 0.02, hd + 0.07 - t / 2);
@@ -342,7 +342,7 @@ function buildOfficeTower(b) {
     dl.position.set(dx + sx * 0.5, 2.145, hd + 0.6);
     group.add(dl);
   }
-  const entSign = new THREE.Mesh(new THREE.BoxGeometry(W - 0.5, 0.58, 0.1), [cream, cream, cream, cream, signMat(entranceSignCanvas(1100, 120)), cream]);
+  const entSign = new THREE.Mesh(new THREE.BoxGeometry(W - 0.5, 0.58, 0.1), [cream, cream, cream, cream, signMat(() => entranceSignCanvas(1100, 120)), cream]);
   entSign.position.set(0, OFFICE.lobby + OFFICE.band / 2 + 0.02, hd + 0.05);
   entSign.castShadow = true;
   group.add(entSign);
@@ -383,31 +383,31 @@ function paintShirt(g, cx, top, s, color) {
 }
 
 function shopSignCanvas(w, h) {
-  const { canvas, g } = makeCanvas(w, h);
+  const { canvas, g } = signCanvas(w, h);
   g.fillStyle = TEAL; g.fillRect(0, 0, w, h);
   g.strokeStyle = CREAM; g.lineWidth = 7; g.strokeRect(9, 9, w - 18, h - 18);
   paintWasher(g, 28, 22, h - 44);
   paintShirt(g, w - 80, 26, h - 56, '#f6f1e6');
-  fitText(g, '세탁소', w * 0.5, h / 2 + 5, w * 0.5, h * 0.7, CREAM);
+  fitText(g, BUILDING_NAMES.laundry, w * 0.5, h / 2 + 5, w * 0.52, h * 0.7, CREAM, 'bold', 'friendly', { shadow: 'rgba(10,50,58,0.55)', shadowOff: 4 });
   return canvas;
 }
 
 function bladeSignCanvas(s) {
-  const { canvas, g } = makeCanvas(s, s);
+  const { canvas, g } = signCanvas(s, s);
   g.fillStyle = '#e9d9ae'; g.fillRect(0, 0, s, s);
   g.strokeStyle = TEAL; g.lineWidth = 10; g.strokeRect(8, 8, s - 16, s - 16);
   paintShirt(g, s / 2, s * 0.12, s * 0.52, '#6fb1c8');
-  fitText(g, '세탁 · 다림질', s / 2, s * 0.84, s * 0.76, s * 0.2, '#2a4a52');
+  fitText(g, '세탁 · 다림질', s / 2, s * 0.84, s * 0.76, s * 0.2, '#2a4a52', 'bold', 'friendly');
   return canvas;
 }
 
 function aFrameCanvas() {
-  const { canvas, g } = makeCanvas(256, 360);
+  const { canvas, g } = signCanvas(256, 360);
   g.fillStyle = '#2f3a33'; g.fillRect(0, 0, 256, 360);
   g.strokeStyle = '#d9b27c'; g.lineWidth = 10; g.strokeRect(8, 8, 240, 344);
-  fitText(g, '오늘의', 128, 70, 190, 56, '#f6f1e6');
-  fitText(g, '세탁', 128, 140, 190, 70, '#ffd98a');
-  fitText(g, '접수 중', 128, 210, 190, 56, '#f6f1e6');
+  fitText(g, '오늘의', 128, 70, 190, 56, '#f6f1e6', 'bold', 'friendly');
+  fitText(g, '세탁', 128, 140, 190, 70, '#ffd98a', 'bold', 'friendly');
+  fitText(g, '접수 중', 128, 210, 190, 56, '#f6f1e6', 'bold', 'friendly');
   paintShirt(g, 128, 250, 90, '#8fc2f5');
   return canvas;
 }
@@ -573,7 +573,7 @@ function buildShop(b) {
   // 간판: 차양 위 정면 가운데(세탁기·셔츠 그림 + 글씨).
   const signW = 4.0;
   const signY = 2.95;
-  const signBoard = new THREE.Mesh(new THREE.BoxGeometry(signW, 0.66, 0.1), [cream, cream, cream, cream, signMat(shopSignCanvas(1200, 200)), cream]);
+  const signBoard = new THREE.Mesh(new THREE.BoxGeometry(signW, 0.66, 0.1), [cream, cream, cream, cream, signMat(() => shopSignCanvas(1200, 200)), cream]);
   signBoard.position.set(0, signY, hd + 0.05);
   signBoard.castShadow = true;
   group.add(signBoard);
@@ -600,14 +600,14 @@ function buildShop(b) {
   // 걸이 간판: 모서리 근처 벽에서 바깥(+x)으로 뻗은 팔에 매달린 정사각 간판.
   const bz = hd - 0.3;
   batch.box(steelM, 0.8, 0.04, 0.04, hw + 0.4, 2.88, bz);
-  const bladeMat = signMat(bladeSignCanvas(256));
+  const bladeMat = signMat(() => bladeSignCanvas(256));
   const blade = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.06), [cream, cream, cream, cream, bladeMat, bladeMat]);
   blade.position.set(hw + 0.45, 2.42, bz);
   group.add(blade);
   for (const sx of [-0.25, 0.25]) batch.box(steelM, 0.012, 0.12, 0.012, hw + 0.45 + sx, 2.83, bz);
 
   // 앞마당 소품: 에이프레임 입간판, 화분 상자.
-  const af = new THREE.MeshStandardMaterial({ map: texOf(aFrameCanvas()), roughness: 0.9 });
+  const af = new THREE.MeshStandardMaterial({ map: liveSignTexture(aFrameCanvas), roughness: 0.9 });
   const woodSide = std(0x8a5f3a);
   for (const s of [-1, 1]) {
     const board = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.82, 0.04), [woodSide, woodSide, woodSide, woodSide, s > 0 ? af : woodSide, s > 0 ? woodSide : af]);

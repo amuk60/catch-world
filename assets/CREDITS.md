@@ -22,3 +22,7 @@
 
 - 효과음 대부분은 브라우저 Web Audio API 로 코드에서 직접 합성한 것으로 외부 음원이 없습니다.
 - `audio/fire.mp3` (모닥불): 팀이 제공한 파일 `soundreality-fire-relaxing-528619.mp3`(Pixabay 음원 형식, 제작자 표기 "soundreality")의 일부(약 60초)를 잘라 쓴 것입니다. 원본(약 10분)은 저장소에 올리지 않고 `assets/reference/`에 보관합니다. **[확인 필요]** 다운로드한 페이지에서 라이선스(Pixabay Content License 등)를 한 번 확인해 주세요. 파일을 못 불러오면 코드 합성 모닥불 소리로 대체됩니다.
+
+## 간판 글꼴
+
+- 간판 글씨는 Google Fonts 의 **Do Hyeon**, **Jua**, **Black Han Sans** 를 쓰며 모두 SIL Open Font License 1.1 입니다. 간판에 쓰는 글자만 담은 부분 집합(`text=` 매개변수)을 실행 중에 내려받고, 못 받으면 시스템 글꼴로 대체됩니다.

@@ -29,7 +29,7 @@ export function createFortuneModal(container, { onPick = () => {}, onTap = () =>
   root.id = 'fortune';
   root.innerHTML = `
     <div class="fortune-stage fortune-pick">
-      <h2>행운의 쿠키를 하나 골라 보세요</h2>
+      <h2>포춘쿠키를 하나 골라 보세요</h2>
       <div class="pick-row"></div>
       <p class="fortune-hint">1 · 2 · 3 키 또는 클릭 &nbsp;·&nbsp; Esc로 닫기</p>
     </div>

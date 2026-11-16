@@ -3,6 +3,7 @@
 // 오브젝트 방향: rotY 는 three.js rotation.y 이며 모델의 앞(+z)이 (sin, cos) 방향을 본다.
 import { LAUNDRY_INTERIOR, INTERVIEW_INTERIOR, CLOTHESLINE_SLOTS } from '../config.js';
 import { assignInterviewers } from './assign.js';
+import { BUILDING_NAMES } from './signText.js';
 
 const TILE = 2; // 벽·바닥 조각 한 칸(월드 단위). Furniture Kit 벽(폭 1, 높이 1.29)을 2배로 쓴다.
 const WALL_OFFSET = 0.07; // 벽 조각 중심이 방 경계에서 바깥쪽으로 떨어진 거리(안쪽 면이 경계에 닿도록 두께의 반)
@@ -105,7 +106,7 @@ export function buildLaundryInterior() {
   // 천장 조명(눈에 보이는 램프의 위치. 같은 자리 근처에 점광을 둔다).
   const lamps = [at(-3, -1.2), at(2.2, -1.8), at(-0.5, 2.6)].map((p) => ({ x: p.x, y: wallHeight - 0.2, z: p.z }));
 
-  const sign = { x: origin.x, y: 1.8, z: bounds.minZ + 0.06, rotY: 0, width: 3.2, height: 0.64, text: '세탁소' };
+  const sign = { x: origin.x, y: 1.8, z: bounds.minZ + 0.06, rotY: 0, width: 3.2, height: 0.64, text: BUILDING_NAMES.laundry };
 
   return {
     id: 'laundry', origin: { ...origin }, bounds, wallHeight, tile: TILE, walls, exit, arrival, interactables,
@@ -220,7 +221,7 @@ export function buildInterviewInterior() {
   const arrival = { x: exit.x + ARRIVAL_DISTANCE, z: exit.z, rotY: Math.PI / 2 };
 
   const lamps = [at(-3, -0.5), at(2.8, -0.8), at(0, 2.4)].map((p) => ({ x: p.x, y: wallHeight - 0.2, z: p.z }));
-  const sign = { x: origin.x, y: 2.05, z: bounds.minZ + 0.06, rotY: 0, width: 2.4, height: 0.6, text: '면접장' };
+  const sign = { x: origin.x, y: 2.05, z: bounds.minZ + 0.06, rotY: 0, width: 2.4, height: 0.6, text: BUILDING_NAMES.interview };
   const board = { x: bounds.minX + 0.07, y: 1.5, z: origin.z - 1.9, rotY: Math.PI / 2, width: 2.2, height: 1.2 }; // 서쪽 벽 화이트보드(동쪽을 본다)
   const notice = { x: bounds.minX + 0.07, y: 1.55, z: origin.z + 0.1, rotY: Math.PI / 2, width: 0.8, height: 1.0 }; // 서쪽 벽 안내판 "면접 안내"(화이트보드와 출입문 사이, 동쪽을 본다)
   const clock = { x: origin.x - 3.4, y: 1.95, z: bounds.minZ + 0.07, rotY: 0, radius: 0.3 }; // 북쪽 벽 벽시계

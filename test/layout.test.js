@@ -211,7 +211,7 @@ test('상호작용 대상 14개: 소각로 + 위로 오브젝트 3개 + 통나�
   });
   assert.deepEqual(comfort.map((c) => [c.item?.name ?? null, c.label, c.x, c.z, c.item?.scale ?? null]), [
     ['stump_roundDetailed', '쉬어가는 그루터기', -9.0, 5.0, 3.5],
-    [null, '행운의 쿠키 노점', 0.8, -6.5, null], // 모델 대신 src/fortuneStall.js 가 만든다
+    [null, '포춘쿠키 상점', 0.8, -6.5, null], // 모델 대신 src/fortuneStall.js 가 만든다
     ['statue_head', '조용한 조각상', 6.0, 9.0, 1.3],
   ]);
 });
@@ -248,7 +248,7 @@ test('상호작용 범위는 반경 + 플레이어 반경보다 크다, 위로 �
   assert.deepEqual(comfort.map((c) => c.kind), ['comfort', 'fortune', 'comfort']);
   assert.deepEqual(comfort.filter((c) => c.kind === 'comfort').map((c) => c.messageIndex), [0, 2]);
   assert.equal(comfort[1].id, 'comfort-1');
-  assert.equal(comfort[1].label, '행운의 쿠키 노점');
+  assert.equal(comfort[1].label, '포춘쿠키 상점');
   assert.equal(comfort[1].messageIndex, undefined);
 });
 

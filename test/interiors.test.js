@@ -128,7 +128,7 @@ test('모든 장애물·가구·간판·조명이 방 안에 완전히 들어간
   }
   for (const l of I.lamps) assert.ok(inBounds(l, 0.5) && l.y > 1.5 && l.y < I.wallHeight, JSON.stringify(l));
   assert.ok(I.lamps.length >= 2 && I.lamps.length <= 4);
-  assert.equal(I.sign.text, '세탁소');
+  assert.equal(I.sign.text, '마음 세탁소');
   assert.ok(inBounds(I.sign, 0) && I.sign.y + I.sign.height / 2 <= I.wallHeight && I.sign.y - I.sign.height / 2 >= 1.4, '세탁기보다 위, 벽 안');
   assert.ok(inBounds(I.standingSpot) && inBounds(I.arrival) && inBounds(I.exit));
 });
