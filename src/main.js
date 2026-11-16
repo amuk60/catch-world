@@ -75,7 +75,7 @@ const POCKET_SCALE = 0.3;
 const CLEAR_POPUP_DELAY = 0.3; // 클리어한 행동이 끝난 뒤 팝업이 뜨기까지(초)
 const SHARE_FOOTER = 'Catch World · 학사 과제용 비공식 프로젝트';
 const CRUMPLE_FRACTION = 0.35; // 태우기: 던지기 단계 앞쪽 이만큼 동안 종이를 구긴다
-const CRUMPLE_SCALE = 0.5; // 구긴 종이의 크기
+const CRUMPLE_SCALE = 0.8; // 구긴 종이의 크기
 const CRUMPLE_SPIN = 18; // 구길 때 도는 속도(라디안/초)
 // 손에 든 소품(종이·셔츠)의 위치(손 뼈 기준, 단위는 월드 단위). 화면으로 보며 맞춘 값이다. 방향은 소품마다 userData.rot(주머니에서도 같은 방향).
 const PAPER_HAND = { pos: [-0.38, 0, 0.05] };
@@ -290,7 +290,7 @@ if (isMobileUA(navigator.userAgent)) {
   }
   // 손에 드는 소품은 행동마다 하나를 모든 단계에서 재사용한다: 주머니(player 기준) -> 손(handAttach) -> 날아가기(scene). 행동이 끝나면 항상 숨긴다.
   // 태우기·파쇄는 종이, 세탁은 구겨진 셔츠, 널기는 깨끗한 흰 셔츠. 모두 같은 오른손 자리(handAttach)에 붙는다.
-  const paper = buildPaper(0.4, 0.53);
+  const paper = buildPaper(0.7, 0.93); // 불합격 통지서: 기본 카메라에서도 읽히는 크기
   paper.userData.rot = [Math.PI / 2, 0, 0];
   const dirtyShirt = buildCrumpledShirt();
   dirtyShirt.userData.rot = [0, 0, 0];
@@ -298,6 +298,7 @@ if (isMobileUA(navigator.userAgent)) {
   cleanShirt.userData.rot = [0, 0, 0];
   const HELD_BY_ACTION = { burn: paper, shred: paper, wash: dirtyShirt, hang: cleanShirt };
   let held = paper;
+  let paperVariant = 0; // 불합격 통지서 문구 4종을 행동마다 번갈아 쓴다
   for (const item of [paper, dirtyShirt, cleanShirt]) {
     item.visible = false;
     handAttach.add(item);
@@ -308,6 +309,7 @@ if (isMobileUA(navigator.userAgent)) {
     held.position.set(...PAPER_HAND.pos);
     held.rotation.set(...held.userData.rot);
     held.scale.setScalar(1);
+    held.userData.setCrumple?.(0);
   }
   placePaperInHand();
 
@@ -395,6 +397,7 @@ if (isMobileUA(navigator.userAgent)) {
       if (once('game_start')) track('game_start');
       actionId = action;
       held = HELD_BY_ACTION[action];
+      if (held === paper) paper.userData.setVariant(paperVariant++ % paper.userData.variantCount);
       if (action === 'wash') dirtyShirt.userData.setSoiled(outfit.state === 'dirty'); // 그을음 옷을 빨 때는 어둡고 더러운 셔츠
       pocketQuat.setFromEuler(tmpEuler.set(...held.userData.rot));
       character?.beginAction();
@@ -567,6 +570,7 @@ if (isMobileUA(navigator.userAgent)) {
       const k = Math.min(1, crumple.t / crumple.dur);
       held.scale.setScalar(1 - (1 - CRUMPLE_SCALE) * easeInOut(k));
       held.rotation.y += CRUMPLE_SPIN * dt;
+      held.userData.setCrumple?.(easeInOut(k));
     }
     if (!flight) return;
     flight.t += dt;

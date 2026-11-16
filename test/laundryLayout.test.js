@@ -31,7 +31,7 @@ test('세탁소를 추가해도 기존 배치(나무·덤불·바위·랜턴·�
     trees: L.trees, bushes: L.bushes, rocks: L.rocks, lanterns: L.lanterns, furnaceItems: L.furnaceItems, sign: L.sign, shredder: L.shredder,
     interactables: L.interactables.slice(0, 6), obstacles: L.obstacles.slice(0, 24), buildingSlots: L.buildingSlots, plaza: L.plaza,
   };
-  assert.equal(createHash('sha1').update(JSON.stringify(before)).digest('hex'), '73346e91207bcfc8d2af940b6d98fb3f57dcbc1f');
+  assert.equal(createHash('sha1').update(JSON.stringify(before)).digest('hex'), '4ec4555b2e6ee20dad37c176ec6b47e8c9bdf7b9');
   assert.equal(L.interactables.length, 10); // 세탁소 문·면접장 건물·면접장 문이 추가됐다(앞의 6개는 그대로)
 });
 

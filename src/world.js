@@ -217,41 +217,8 @@ const STRIP_COUNT = 6; // 파쇄 한 번에 떨어지는 조각 수(<= STRIP_MAX
 const WIGGLE_SEC = 0.08; // 파쇄기 흔들림 시간
 const SHREDDER_BODY = { w: 1.4, h: 1.0, d: 0.8 };
 
-// 불합격 통지서 무늬(384x512, 종이 비율 3:4): 연한 빨강 바탕, 위쪽 빨간 띠, 줄, 큰 라벨.
-function noticeTexture(label) {
-  const canvas = document.createElement('canvas');
-  canvas.width = 384;
-  canvas.height = 512;
-  const g = canvas.getContext('2d');
-  g.fillStyle = '#ffdcd8';
-  g.fillRect(0, 0, canvas.width, canvas.height);
-  g.fillStyle = '#d9463b';
-  g.fillRect(0, 0, canvas.width, 64);
-  g.fillStyle = '#e0aaa4';
-  for (let i = 0; i < 8; i++) g.fillRect(40, 200 + i * 38, i % 2 ? 240 : 304, 12);
-  g.fillStyle = '#22223a';
-  g.font = 'bold 64px "Malgun Gothic", sans-serif';
-  const fit = Math.min(1, (canvas.width - 40) / g.measureText(label).width); // 긴 라벨은 종이 폭에 맞춰 줄인다
-  if (fit < 1) g.font = `bold ${Math.floor(64 * fit)}px "Malgun Gothic", sans-serif`;
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  g.fillText(label, canvas.width / 2, 128);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
-}
-
-// 손에 드는 종이 한 장(불합격 통지서). width x depth 는 월드 단위 크기, 두께는 얇게.
-export function buildPaper(width = 0.3, depth = 0.4) {
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(width, 0.015, depth),
-    [0, 1, 2, 3, 4, 5].map((i) => (i === 2
-      ? new THREE.MeshStandardMaterial({ map: noticeTexture('불합격 통지서'), emissive: 0x553333 }) // 윗면(+y)에 글씨
-      : new THREE.MeshStandardMaterial({ color: 0xffdcd8, emissive: 0x553333 }))),
-  );
-  mesh.castShadow = true;
-  return mesh;
-}
+// 손에 드는 종이(불합격 통지서)는 notice.js 에서 만든다.
+export { buildPaper } from './notice.js';
 
 // 파쇄기: 회색 상자 + 어두운 투입구. 바닥 y=0, 앞(+z)이 소각로를 향한다. wiggle() 로 흔들리고 spawnStrips() 로 조각이 떨어진다.
 // 흔들림과 조각 애니메이션은 매 프레임 update(dt) 가 진행한다.
