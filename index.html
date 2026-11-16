@@ -132,10 +132,11 @@
     @keyframes picker-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
     .picker-title { margin: 0 2px 8px; font-size: 15px; font-weight: 700; }
     .picker-list { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
-    .picker-list button { position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; width: 92px; padding: 8px 6px 7px; border: 1px solid #d8c9a4; border-radius: 12px;
+    .picker-list button { position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; width: 88px; padding: 8px 5px 7px; border: 1px solid #d8c9a4; border-radius: 12px;
       background: #fff; color: #3a2f1f; font: inherit; font-size: 13px; font-weight: 600; line-height: 1.25; word-break: keep-all; cursor: pointer; transition: background 0.12s, transform 0.12s; }
     .picker-list button:hover { background: #fff1d8; transform: translateY(-2px); }
     .picker-list .keycap { position: absolute; left: 5px; top: 5px; min-width: 18px; padding: 1px 5px; background: #3a2f1f; color: #fff; box-shadow: 0 2px 0 #1b140a; font-size: 12px; }
+    @media (max-width: 640px) { .picker-list { display: grid; grid-template-columns: repeat(3, 88px); } } /* 6종이라 좁은 창에서는 3개씩 두 줄 */
     .picker-icon { display: block; width: 54px; height: 72px; border-radius: 3px; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3); }
     .picker-cancel { display: block; margin: 6px 0 0 auto; padding: 3px 6px; border: 0; background: none; color: #6b5d44; font: inherit; font-size: 12px; cursor: pointer; }
     .picker-cancel:hover { color: #3a2f1f; }

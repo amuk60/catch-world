@@ -220,14 +220,18 @@ const PILE_MAX = 54; // 통 안에 쌓이는 조각 최대 수(많이 하면 수
 const PILE_PER_RUN = 9; // 파쇄 한 번에 더미가 늘어나는 조각 수
 const PILE_HOLD_SEC = 14; // 마지막 파쇄 뒤 이 시간이 지나면 더미가 천천히 줄기 시작한다(바닥에 흩어지지 않고 서서히 사라진다)
 const PILE_DECAY_SEC = 0.7; // 줄어드는 조각 하나당 걸리는 시간
-const BIN = { x: 1.15, w: 0.62, d: 0.95, h: 0.2, wall: 0.04 }; // 파쇄기 오른쪽 옆(+x: 기본 카메라 쪽에서 보이는 면)에 놓인 조각 통(파쇄기 기준 로컬). 틈에서 쏟아진 조각이 여기 쌓인다.
+const BIN = { x: -1.15, w: 0.62, d: 0.95, h: 0.2, wall: 0.04 }; // 파쇄기 정면 기준 왼쪽 옆(-x: 정면이 스폰 쪽이라 기본 카메라에서 보이는 면)에 놓인 조각 통(파쇄기 기준 로컬). 틈에서 쏟아진 조각이 여기 쌓인다.
 const SHREDDER_BODY = { w: 1.4, h: 1.0, d: 0.8 };
+const SLOT_Z = 0.2; // 투입구는 몸통 앞쪽(작업 자리 쪽)에 치우쳐 있어 서 있는 사람의 손이 닿는다
+const SLOT_Y = SHREDDER_BODY.h + 0.03; // 투입구 윗면 높이(월드 y): 종이는 이 아래로 들어가면 안 보인다(클리핑)
+const GRIND_STRIPS = 46; // 종이 한 장이 다 갈리는 동안 쏟아지는 조각 수
 
 // 손에 드는 종이(불합격 통지서)는 notice.js 에서 만든다.
 export { buildPaper } from './notice.js';
 
-// 파쇄기: 회색 상자 + 어두운 투입구 + 앞에 놓인 조각 통. 바닥 y=0, 앞(+z)이 소각로를 향한다.
-// shake()/wiggle() 로 덜덜 떨고, pour() 로 조각이 아래 앞쪽 틈에서 쏟아져 통에 쌓인다(조각 풀 하나 + 더미 한 덩어리 = InstancedMesh 하나, 그리기 호출 1). 통은 한 덩어리 메시다.
+// 파쇄기: 회색 상자 + 어두운 투입구(+ 켜지는 표시등) + 옆에 놓인 조각 통. 바닥 y=0, 앞(+z)이 스폰 쪽(작업 자리 쪽)이다.
+// beginGrind(palette, seconds) -> setFeed(k) -> endGrind(): 종이가 투입구로 내려가는 진행(k 0~1)에 맞춰 덜덜 떨고 그 색의 가는 조각이 아래 틈에서 쏟아져 통에 쌓인다(표시등·투입구가 켜진다).
+// shake()/wiggle() 로 덜덜 떨고, pour() 로 조각이 아래 틈에서 한꺼번에 쏟아져 통에 쌓인다(조각 풀 하나 + 더미 한 덩어리 = InstancedMesh 하나, 그리기 호출 1). 통은 한 덩어리 메시다.
 // 쏟아짐·더미·흔들림은 매 프레임 update(dt) 가 진행한다. 더미는 파쇄할수록 수북해지고 한동안 안 하면 천천히 줄어든다.
 export function buildShredder(scene, shredder) {
   const group = new THREE.Group();
@@ -238,12 +242,17 @@ export function buildShredder(scene, shredder) {
   body.position.y = SHREDDER_BODY.h / 2;
   body.castShadow = true;
   body.receiveShadow = true;
-  const slot = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.04, 0.14), new THREE.MeshStandardMaterial({ color: 0x15151f }));
-  slot.position.y = SHREDDER_BODY.h + 0.01;
+  const slotMat = new THREE.MeshStandardMaterial({ color: 0x15151f, emissive: 0x000000 });
+  const slot = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.04, 0.14), slotMat);
+  slot.position.set(0, SHREDDER_BODY.h + 0.01, SLOT_Z);
   slot.receiveShadow = true;
   // 아래 앞쪽의 조각 나오는 틈(어두운 줄).
   const outlet = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.05, 0.6), new THREE.MeshBasicMaterial({ color: 0x101018 }));
-  outlet.position.set(SHREDDER_BODY.w / 2 + 0.005, 0.22, 0);
+  outlet.position.set(-SHREDDER_BODY.w / 2 - 0.005, 0.22, 0);
+  // 표시등: 정면 윗쪽 모서리의 작은 등(평소엔 꺼진 회색, 갈 때 초록으로 켜진다).
+  const lampMat = new THREE.MeshBasicMaterial({ color: 0x3a3f46 });
+  const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.07, 0.03), lampMat);
+  lamp.position.set(0.5, SHREDDER_BODY.h - 0.12, SHREDDER_BODY.d / 2 + 0.012);
   // 조각 통: 바닥 + 벽 4개를 한 덩어리로 합친다.
   const walls = [
     [BIN.w, BIN.wall, BIN.d, 0, BIN.wall / 2, 0], // 바닥
@@ -258,14 +267,14 @@ export function buildShredder(scene, shredder) {
   bin.receiveShadow = true;
 
   // 조각: 얇고 긴 상자. 풀(0..POUR_COUNT-1: 떨어지는 조각) 뒤에 더미(PILE_MAX 개)가 이어진다.
-  const stripGeo = new THREE.BoxGeometry(0.05, 0.012, 0.3);
+  const stripGeo = new THREE.BoxGeometry(0.028, 0.012, 0.3);
   const total = POUR_COUNT + PILE_MAX;
   const strips = new THREE.InstancedMesh(stripGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }), total);
   strips.frustumCulled = false;
   const tints = [0xffffff, 0xf3efe2, 0xe4e6ee, 0xfaf4dc];
   for (let i = 0; i < total; i++) strips.setColorAt(i, new THREE.Color(tints[i % tints.length]));
   strips.instanceColor.needsUpdate = true;
-  group.add(body, slot, outlet, bin, strips);
+  group.add(body, slot, outlet, lamp, bin, strips);
   group.position.set(shredder.x, 0, shredder.z);
   group.rotation.y = shredder.rotY;
   scene.add(group);
@@ -279,10 +288,12 @@ export function buildShredder(scene, shredder) {
     return { x: (rnd() - 0.5) * (BIN.w - 0.2) * r, z: (rnd() - 0.5) * (BIN.d - 0.16) * r, y: BIN.wall + 0.008 + layer * 0.03 + rnd() * 0.012, yaw: rnd() * Math.PI, tilt: (rnd() - 0.5) * 0.35 };
   });
   const dummy = new THREE.Object3D();
-  const pour = Array.from({ length: POUR_COUNT }, () => ({ live: false, age: 0, delay: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, spin: 0, yaw: 0, land: 0 }));
+  const pour = Array.from({ length: POUR_COUNT }, () => ({ color: 0xffffff, live: false, age: 0, delay: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, spin: 0, yaw: 0, land: 0 }));
   let pileShown = 0; // 지금 보이는 더미 조각 수(실수: 쌓일 때 늘고, 줄어들 때 준다)
   let pileTarget = 0;
   let idleSince = 0;
+  let grinding = false;
+  let emitted = 0; // 이번 종이에서 내보낸 조각 수
   let emitLeft = 0; // 아직 내보낼 조각 수
   let emitClock = 0;
   let pending = 0; // 떨어진 조각이 더미에 더해질 몫
@@ -300,15 +311,21 @@ export function buildShredder(scene, shredder) {
   }
   for (let i = 0; i < total; i++) hideInstance(i);
 
+  const tint = new THREE.Color();
+  let palette = [0xffffff]; // 이번 종이 조각 색들(beginGrind 가 정한다)
+  let pileSlot = 0; // 다음에 조각 색을 입힐 더미 자리
   function emit() {
     const p = pour.find((q) => !q.live);
     if (!p) return;
+    p.color = palette[Math.floor(rnd() * palette.length)];
+    strips.setColorAt(pour.indexOf(p), tint.set(p.color));
+    strips.instanceColor.needsUpdate = true;
     p.live = true;
     p.age = 0;
-    p.x = SHREDDER_BODY.w / 2 + 0.01;
+    p.x = -SHREDDER_BODY.w / 2 - 0.01;
     p.y = 0.2;
     p.z = (rnd() - 0.5) * 0.6;
-    p.vx = 0.28 + rnd() * 0.4; // 옆(통 쪽)으로 흘러나온다
+    p.vx = -(0.28 + rnd() * 0.4); // 옆(통 쪽)으로 흘러나온다
     p.vy = -0.2 - rnd() * 0.3;
     p.vz = (rnd() - 0.5) * 0.25;
     p.spin = (rnd() - 0.5) * 8;
@@ -321,7 +338,7 @@ export function buildShredder(scene, shredder) {
     // 투입구의 월드 좌표(종이가 들어가는 곳).
     slotWorld(target = new THREE.Vector3()) {
       group.updateWorldMatrix(true, false);
-      return group.localToWorld(target.set(0, SHREDDER_BODY.h + 0.05, 0));
+      return group.localToWorld(target.set(0, SLOT_Y, SLOT_Z));
     },
     // seconds 동안 덜덜 떤다(한 번 더 부르면 처음부터).
     shake(seconds = SHAKE_SEC) {
@@ -337,6 +354,33 @@ export function buildShredder(scene, shredder) {
       pending += PILE_PER_RUN;
       idleSince = 0;
     },
+    // 종이를 가는 동안: beginGrind(palette: 조각 색 목록, seconds) 로 시작(표시등 켜짐·떨림), setFeed(k: 0~1 종이가 들어간 정도) 를 매 프레임 불러 진행에 맞춰 조각을 내보내고, endGrind() 로 끝낸다(마지막 조각이 떨어지는 동안 더미가 자리 잡는다).
+    beginGrind(colors, seconds) {
+      palette = colors?.length ? colors : [0xffffff];
+      grinding = true;
+      emitted = 0;
+      pending += PILE_PER_RUN;
+      idleSince = 0;
+      this.shake(seconds + 0.3);
+      lampMat.color.set(0x56f08a);
+      slotMat.emissive.set(0x5a1f10);
+    },
+    setFeed(k) {
+      if (!grinding) return;
+      const want = Math.floor(Math.min(1, k) * GRIND_STRIPS);
+      while (emitted < want) { emit(); emitted++; }
+      slotMat.emissive.setHex(0x5a1f10 + (Math.floor(k * 14) % 2) * 0x180800); // 투입구가 깜빡이며 빨갛게 빛난다
+    },
+    endGrind() {
+      if (!grinding) return;
+      this.setFeed(1);
+      grinding = false;
+      lampMat.color.set(0x3a3f46);
+      slotMat.emissive.set(0x000000);
+    },
+    isGrinding: () => grinding,
+    // 투입구 윗면 높이(종이가 이 아래로 내려가면 클리핑으로 안 보인다).
+    slotY: SLOT_Y,
     // 예전 이름(조각 몇 개를 떨어뜨린다).
     spawnStrips() { this.pour(); },
     update(dt) {
@@ -369,10 +413,12 @@ export function buildShredder(scene, shredder) {
         if (p.y <= p.land) { // 통 바닥(더미 위)에 닿았다: 이 조각은 사라지고 더미가 늘어난다
           p.live = false;
           hideInstance(i);
+          strips.setColorAt(POUR_COUNT + (pileSlot++ % PILE_MAX), tint.set(p.color)); // 떨어진 조각의 색이 더미에 남는다
+          strips.instanceColor.needsUpdate = true;
           dirty = true;
           continue;
         }
-        dummy.position.set(Math.min(p.x, BIN.x + BIN.w / 2 - 0.1), p.y, Math.max(-BIN.d / 2 + 0.08, Math.min(BIN.d / 2 - 0.08, p.z)));
+        dummy.position.set(Math.max(p.x, BIN.x - BIN.w / 2 + 0.1), p.y, Math.max(-BIN.d / 2 + 0.08, Math.min(BIN.d / 2 - 0.08, p.z)));
         dummy.rotation.set(Math.sin(p.age * p.spin) * 0.6, p.yaw, p.spin * 0.05 * p.age);
         dummy.scale.setScalar(1);
         dummy.updateMatrix();
@@ -380,7 +426,12 @@ export function buildShredder(scene, shredder) {
         dirty = true;
       }
       // 더미: 조각이 다 떨어졌으면(쏟아질 조각이 없고 날아가는 조각도 없을 때) 늘어날 몫을 쌓는다.
-      if (pending > 0 && emitLeft === 0 && !any) {
+      if (grinding) {
+        // 가는 동안 조각이 나온 만큼 더미가 조금씩 쌓인다.
+        const share = Math.min(pending, dt * (PILE_PER_RUN / 2.6));
+        pileTarget = Math.min(PILE_MAX, pileTarget + share);
+        pending -= share;
+      } else if (pending > 0 && emitLeft === 0 && !any) {
         pileTarget = Math.min(PILE_MAX, pileTarget + pending);
         pending = 0;
       } else if (pending > 0 && emitLeft > 0) {
@@ -389,7 +440,7 @@ export function buildShredder(scene, shredder) {
         pileTarget = Math.min(PILE_MAX, pileTarget + share);
         pending -= share;
       }
-      if (!any && emitLeft === 0 && pending === 0 && pileTarget > 0) {
+      if (!any && emitLeft === 0 && pending === 0 && pileTarget > 0 && !grinding) {
         idleSince += dt;
         if (idleSince > PILE_HOLD_SEC) pileTarget = Math.max(0, pileTarget - dt / PILE_DECAY_SEC);
       }
@@ -413,6 +464,6 @@ export function buildShredder(scene, shredder) {
     },
     stripCount: () => pour.filter((p) => p.live).length,
     pileCount: () => Math.floor(pileShown + 1e-6),
-    meshes: [body, slot, outlet, bin, strips],
+    meshes: [body, slot, outlet, lamp, bin, strips],
   };
 }

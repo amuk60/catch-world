@@ -81,7 +81,7 @@ export const INTERACT_RADIUS = 1.5;
 // PASSIVE: 불멍(소각로 옆 벤치에 앉아 있기)으로 interval 초마다 amount 씩 자동으로 줄어든다(행동 하나보다 약하게).
 // FIRE_ZONE_RADIUS: 소각로 중심에서 이 거리 안에 있어야 행동 막대가 보인다.
 // FIRE_RANGE: 이 거리 안이면 태우기가 켜진다(소각로 중심 기준).
-// SHREDDER_RANGE: 파쇄기 중심에서 이 거리 안이면 파쇄가 켜진다. 두 범위가 겹치는 자리(소각로와 파쇄기 사이)에서 자동이 두 행동을 번갈아 한다.
+// SHREDDER_RANGE: 파쇄기 중심에서 이 거리 안이면 파쇄가 켜진다. 소각로(태우기 전용)와 파쇄기(파쇄 전용)는 따로 떨어진 구역이고, 자동(R)은 서 있는 구역의 행동만 되풀이한다.
 // 행동 순서: 한숨(emote-no, 소각장 행동만: 세탁소 행동은 한숨 없이 바로) -> 재킷 주머니에서 종이를 꺼낸다(pick-up) -> 대상 쪽으로 돈다(ACTION_TURN_SECONDS, 유일한 회전)
 // -> 던지기/치기 -> 후련(emote-yes). 캐릭터는 걷지 않고 제자리에서 돈다.
 // ACTION_EFFECT_AT: 던지기/치기 단계 길이 중 효과(종이가 불에 닿는 순간 등)가 일어나는 비율.
@@ -92,7 +92,8 @@ export const AUTO_GAP = 1;
 export const PASSIVE = { interval: 5, amount: 2 };
 export const FIRE_ZONE_RADIUS = 4.5;
 export const FIRE_RANGE = 4.0;
-export const SHREDDER_RANGE = 4.0;
+export const SHREDDER_RANGE = 3.6;
+export const SHREDDER_ZONE_RADIUS = 3.6; // 파쇄기 구역(파쇄만): 파쇄기 중심에서 이 거리 안이면 [1 파쇄][R 자동] 막대가 뜬다. 소각로와 6~8단위 떨어져 있어 구역이 거의 겹치지 않는다(겹치면 중심이 더 가까운 쪽)
 // 세탁소 구역(세탁·널기): 구역 중심은 layout 의 세탁기 줄과 빨랫줄 사이(logic/zones.js)이고 이 반경 안에서 행동 막대가 보인다.
 // WASHER_RANGE: 가장 가까운 세탁기 중심에서 이 거리 안이면 세탁이 켜진다. CLOTHESLINE_RANGE: 빨랫줄 중심에서 이 거리 안이면 널기가 켜진다.
 export const LAUNDRY_ZONE_RADIUS = 4.5; // 구역 중심은 실내 세탁기 줄과 빨랫줄 사이(logic/zones.js)
@@ -126,20 +127,16 @@ export const ACTION_TARGET_SECONDS = 5;
 //   prop: 손에 드는 물건의 겉모습. kind('letter' 자소서 | 'resume' 이력서 | 'notice' 불합격 통지서 | 'mail' 탈락 메일 | 'pouch' 가루 주머니), title(머리글), accent(색), ball(구긴 공에 남는 표식 색).
 //   flame: 불 색 효과 { tint: 'aurora', seconds } (오로라 가루: 불꽃이 오로라 빛으로 바뀌었다가 seconds 뒤 돌아온다).
 export const INCINERATOR = {
-  targetSeconds: 6.8,
+  targetSeconds: 7.4,
   auroraChance: 0.12,
+  // 물건 6종(선택 창의 1~6번 순서). 물건 하나: id, label(선택 창 이름), burn/shred(있는 행동만 한다: lines = 멘트 3~5개, 20자 이하), prop(손에 드는 그림: kind·제목·색, solid 가 true 면 두툼해서 구기지 않고 통째로 던진다), flame(태울 때 불꽃 색을 잠깐 바꾼다).
+  // shred 가 없는 물건은 파쇄 목록에 나오지 않는다(두꺼운 교재·단어장·주머니).
   items: [
     {
-      id: 'cover', label: '자소서',
-      burn: { lines: ['지긋지긋했던 자소서는 태워버려!', '성장과정? 이제 재가 되었다!', '지원동기: 불타오르고 싶어서', '자소서야, 잘 가라~'] },
-      shred: { lines: ['이 자소서는 잘게 잘게!', '문장아, 이제 가루가 되렴', '자소서 쓰다 늙겠다, 갈자!'] },
-      prop: { kind: 'letter', title: '자기소개서', accent: '#3f6d5a', ball: '#3f6d5a' },
-    },
-    {
-      id: 'resume', label: '이력서',
-      burn: { lines: ['이력서야, 그동안 고생했다… 안녕!', '경력은 연기로 사라진다~', '증명사진도 같이 활활!', '빈칸 채우던 밤이여, 안녕'] },
-      shred: { lines: ['이제 이력서는 갈아버리자…', '이력서, 국수가 되어라!', '사진 속 나, 잘게 안녕~'] },
-      prop: { kind: 'resume', title: '이 력 서', accent: '#2f5fa8', ball: '#2f5fa8' },
+      id: 'resume', label: '자소서·이력서 뭉치',
+      burn: { lines: ['또 처음부터 다시 쓰라고? 태워!', '자소설 쓰느라 고생했다, 안녕!', '수정하고 또 수정… 이제 끝이야!', '다시 쓰기 싫어서 태워 버린다!', '내 새벽을 갈아 넣은 자소설, 안녕~'] },
+      shred: { lines: ['이 문서는 이제 가루가 된다!', '또 고치라고? 잘게 갈아 줄게!', '퇴고는 여기서 끝이다!', '빨간 펜 첨삭도 같이 갈린다~', '자소설 시리즈, 종영이다!'] },
+      prop: { kind: 'stack', title: '자소서·이력서', accent: '#2f5fa8', ball: '#d3221c', solid: true },
     },
     {
       id: 'notice', label: '불합격 통지서',
@@ -148,15 +145,25 @@ export const INCINERATOR = {
       prop: { kind: 'notice', title: '불합격 통지서', accent: '#2b3a67', ball: '#d3221c' },
     },
     {
-      id: 'mail', label: '면접 탈락 메일',
-      burn: { lines: ['탈락 메일, 연기가 되어라~', 'Re: 불합격… 재가 되어라', '메일함도 이렇게 비우고 싶다'] },
-      shred: { lines: ['탈락 메일은 파쇄가 답이지', '인쇄한 보람이 있었네, 갈자', '메일아, 먼지가 되어버려'] },
-      prop: { kind: 'mail', title: 'Re: 면접 결과 안내', accent: '#4a5a78', ball: '#d3221c' },
+      id: 'workbook', label: '인적성 검사 교재',
+      burn: { lines: ['문제집은 불쏘시개가 제맛!', '풀다 지친 교재, 이제 연료야!', '정답이 뭐든 재가 된다!', '언어·수리·추리? 전부 활활!'] },
+      prop: { kind: 'workbook', title: '인적성 검사 완벽 대비', accent: '#1f6f8b', ball: '#1f6f8b', solid: true },
+    },
+    {
+      id: 'nag', label: '취업 잔소리 쪽지',
+      burn: { lines: ['잔소리는 불에 던져 버리자!', '취업은 언제 하니? 안 들려~', '옆집 아들도 같이 타 버려라!', '걱정은 고맙다, 연기가 돼라~'] },
+      shred: { lines: ['잔소리는 잘게 갈아 줄게!', '못 들은 걸로 할게, 가루로~', '옆집 아들 얘기도 파쇄다!'] },
+      prop: { kind: 'nag', title: '취업 잔소리', accent: '#f2d64b', ball: '#f2d64b' },
+    },
+    {
+      id: 'toeic', label: '토익 단어장',
+      burn: { lines: ['단어장아, 외우다 졌다… 안녕', '어휘력 대신 불꽃을 얻었다!', 'abandon? 그래, 포기하자!', '토익 점수도 같이 활활~'] },
+      prop: { kind: 'booklet', title: 'TOEIC VOCA', accent: '#c4552b', ball: '#c4552b', solid: true },
     },
     {
       id: 'aurora', label: '오로라 가루',
-      burn: { lines: ['근심아, 오로라로 날아가라~', '반짝반짝 오로라 한 줌!', '스트레스야, 빛이 되어라~', '오로라 가루, 출동!'] },
-      prop: { kind: 'pouch', title: '오로라 가루', accent: '#7a5cc8', ball: '#7a5cc8' },
+      burn: { lines: ['근심아, 오로라로 날아가라~', '반짝반짝 오로라 한 줌!', '스트레스야, 빛이 되어라~', '통째로 던진다, 오로라 주머니!'] },
+      prop: { kind: 'pouch', title: '오로라 가루', accent: '#7a5cc8', ball: '#7a5cc8', solid: true },
       flame: { tint: 'aurora', seconds: 4.5 },
     },
   ],

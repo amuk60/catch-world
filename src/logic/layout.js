@@ -63,10 +63,10 @@ const BENCH_CLEARANCE = 1.7; // 통나무·간판과의 선호 최소 거리(규
 // 카메라(+x,+z 쪽)에서 볼 때 소각로 양옆이 되는 방향(각도: atan2(z, x)).
 const BENCH_PREFERRED_ANGLE = -Math.PI / 4;
 
-// 소각로 곁 상시 소품. 파쇄기는 모든 배치(벤치·통나무·나무·덤불·바위·간판·위로 오브젝트)가 끝난 뒤에,
-// 선호 방향(소각로에서 atan2(z, x))과 선호 거리 순서로 훑어 PROP_CLEARANCE 이상 떨어진 첫 자리를 쓴다(없으면 가장 여유 있는 자리).
-// 기존 배치의 난수 흐름을 건드리지 않아 벤치·통나무·나무는 그대로다. 선호 방향은 기본 카메라(+x,+z 쪽)에서 볼 때 캐릭터가 서는 대각선 양옆이다.
-const SHREDDER = { radius: 0.7, angle: (5 * Math.PI) / 180, distances: [3.2, 3.1, 3.0, 2.9, 2.8, 2.7, 2.6] };
+// 파쇄기: 소각로와 따로, 6~8단위 떨어진 숲 남쪽 자리(기본 카메라에서 잘 보이고 스폰 쪽 길목에 있다). 모든 배치(벤치·통나무·나무·덤불·바위·간판·위로 오브젝트)가 끝난 뒤에,
+// 선호 방향(소각로에서 atan2(z, x), 남쪽이 +z)과 선호 거리 순서로 훑어, 파쇄기 자리와 그 앞 작업 자리(stand)가 모두 다른 배치물에서 PROP_CLEARANCE 이상 떨어진 첫 자리를 쓴다(없으면 가장 여유 있는 자리).
+// 기존 배치의 난수 흐름을 건드리지 않아 벤치·통나무·나무는 그대로다. 정면(+z)은 스폰 쪽이고, 작업 자리는 정면으로 standDistance 만큼 나온 곳(투입구 바로 앞)이다. 조각 통은 정면 기준 왼쪽(-x)에 붙는다.
+const SHREDDER = { radius: 0.7, angle: (78 * Math.PI) / 180, distances: [6.8, 6.4, 7.2, 6.0, 7.6, 7.9], standDistance: 1.1 };
 const PROP_CLEARANCE = 1.5; // 다른 배치물과의 최소 거리(중심 사이)
 const PROP_ANGLE_STEP = Math.PI / 36; // 5도
 
@@ -231,10 +231,11 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
   const rocks = [];
   scatterForest({ count: params.rocks, names: SMALL_ROCKS, smin: 2.5, smax: 3, xmin: -walk, obstacleRadius: 0.4, minFurnace: 3.2, gap: 1.2, into: rocks });
 
-  // 파쇄기.
+  // 파쇄기(소각로와 따로 떨어진 자리) + 그 앞 작업 자리.
   const fixed = [
     ...interactables.filter((i) => i.kind !== 'furnace'), ...furnaceItems.slice(1), ...trees, ...bushes, ...rocks, ...signCircles,
   ];
+  const inBounds = (p) => Math.min(walk - Math.abs(p.x), walkZ - Math.abs(p.z));
   function placeProp(spec) {
     let best = null;
     let bestClearance = -Infinity;
@@ -242,16 +243,19 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
       const angle = spec.angle + Math.ceil(k / 2) * PROP_ANGLE_STEP * (k % 2 ? 1 : -1); // 0, +5, -5, +10, ... 도
       for (const dist of spec.distances) {
         const p = { x: FURNACE.x + Math.cos(angle) * dist, z: FURNACE.z + Math.sin(angle) * dist };
+        const rotY = headingY(p, SPAWN); // 정면은 스폰 쪽
+        const stand = { x: p.x + Math.sin(rotY) * spec.standDistance, z: p.z + Math.cos(rotY) * spec.standDistance, rotY: rotY + Math.PI };
         const clearance = Math.min(
           ...fixed.map((o) => Math.hypot(p.x - o.x, p.z - o.z) - PROP_CLEARANCE),
-          Math.hypot(p.x - SPAWN.x, p.z - SPAWN.z) - (spec.radius + PLAYER.radius),
-          walk - Math.abs(p.x), walkZ - Math.abs(p.z), ZONES.forestMaxX - p.x,
+          ...fixed.map((o) => Math.hypot(stand.x - o.x, stand.z - o.z) - PROP_CLEARANCE + 0.3),
+          Math.hypot(p.x - SPAWN.x, p.z - SPAWN.z) - 4,
+          inBounds(p), inBounds(stand), ZONES.forestMaxX - p.x,
         );
-        if (clearance > bestClearance) { bestClearance = clearance; best = p; }
+        if (clearance > bestClearance) { bestClearance = clearance; best = { p, rotY, stand }; }
         if (clearance >= 0) break;
       }
     }
-    return { x: best.x, z: best.z, rotY: headingY(best, FURNACE), radius: spec.radius };
+    return { x: best.p.x, z: best.p.z, rotY: best.rotY, radius: spec.radius, stand: best.stand };
   }
   const shredder = placeProp(SHREDDER);
   obstacles.push({ x: shredder.x, z: shredder.z, radius: shredder.radius });

@@ -12,7 +12,7 @@ import {
 import { createPlayer } from './player.js';
 import { createFire } from './fire.js';
 import { buildItemProp, buildItemIcon, createGlitter } from './incineratorProps.js';
-import { itemsFor, pickIndexFromCode, variantOf, lineFor, pickRandomItem, poseFor } from './logic/incinerator.js';
+import { itemsFor, pickIndexFromCode, variantOf, isFlameItem, lineFor, pickRandomItem, poseFor } from './logic/incinerator.js';
 import { createHud } from './hud.js';
 import { interactTarget, hoverLabel, nearestInRange, actionOf, standPoint } from './logic/interaction.js';
 import { nextMode, holdsSeat, showPrompt as promptAllowed } from './logic/playerMode.js';
@@ -63,7 +63,9 @@ import { createGuideHud } from './guideHud.js';
 
 const MAX_DT = 0.1; // 한 프레임에 진행하는 최대 시간(초). 탭이 멈췄다 돌아와도 행동·애니메이션이 한꺼번에 튀지 않게 한다.
 const FALLBACK_RAW_DURATIONS = { 'emote-no': 0.667, 'pick-up': 0.333, 'attack-melee-right': 0.417, 'interact-right': 0.667, 'interact-left': 0.667, 'emote-yes': 0.667, 'holding-right': 0.167, 'holding-both': 0.167 }; // 캐릭터 모델이 없을 때(모델의 실제 클립 길이)
-const SHRED_ARC = 0.5; // 파쇄기 투입구로 미끄러져 갈 때 포물선 높이
+const SHRED_SCALE = 1.1; // 투입구 위에 세운 종이의 크기 배율
+const SHRED_PALETTE = ['#fffefa', '#f2f1ec', '#e8e6dc']; // 조각 색의 바탕(종이 흰색). 물건의 표식 색이 여기에 섞인다
+const STAND_HOLD = 0.35; // 걸어가는 단계의 끝부분(비율): 이때 파쇄기 쪽으로 몸을 돌려 선다
 const SPEECH_KEY = 'line-self'; // 소각장 멘트 말풍선 id
 const LINE_SECONDS = 2.2; // 멘트가 떠 있는 시간(초)
 const SHOW_SCALE = 1.5; // 물건을 들여다볼 때 종이를 키우는 배율(멀리서도 읽히게)
@@ -91,6 +93,7 @@ if (isMobileUA(navigator.userAgent)) {
 } else {
   initAnalytics(GA_MEASUREMENT_ID);
   const { scene, camera, renderer, onFrame } = createStage(document.getElementById('game'));
+  renderer.localClippingEnabled = true; // 파쇄: 투입구로 들어간 종이의 아랫부분을 클리핑 평면으로 가린다
   const layout = buildLayout(SEED);
   const interior = buildLaundryInterior(); // 세탁소 실내 데이터(마당에서 멀리 떨어진 좌표)
   const interviewData = buildInterviewInterior(); // 면접장 실내 데이터
@@ -304,7 +307,8 @@ if (isMobileUA(navigator.userAgent)) {
   }
   // 손에 드는 소품은 행동마다 하나를 모든 단계에서 재사용한다: 주머니(player 기준) -> 손(handAttach) -> 날아가기(scene). 행동이 끝나면 항상 숨긴다.
   // 태우기·파쇄는 종이, 세탁은 구겨진 셔츠, 널기는 깨끗한 흰 셔츠. 모두 같은 오른손 자리(handAttach)에 붙는다.
-  const itemProps = new Map(INCINERATOR.items.map((item) => [item.id, buildItemProp(item, 0.7, 0.93)])); // 소각장 물건 5종(불합격 통지서 크기: 기본 카메라에서도 읽힌다)
+  const shredClip = new THREE.Plane(new THREE.Vector3(0, 1, 0), 1000); // 월드 y 가 -constant 아래인 부분을 숨긴다(평소엔 아무것도 안 가린다)
+  const itemProps = new Map(INCINERATOR.items.map((item) => [item.id, buildItemProp(item, 0.7, 0.93, shredClip)])); // 소각장 물건 6종(불합격 통지서 크기: 기본 카메라에서도 읽힌다)
   const glitter = createGlitter(yardRoot); // 오로라 가루 반짝이
   const dirtyShirt = buildCrumpledShirt();
   dirtyShirt.userData.rot = [0, 0, 0];
@@ -330,9 +334,10 @@ if (isMobileUA(navigator.userAgent)) {
   }
   placePaperInHand();
 
-  let flight = null; // 날아가는 소품 { kind: 'burn' | 'glide' | 'slide' | 'wash', from, to, t, dur, startScale, washer }
+  let flight = null; // 움직이는 소품 { kind: 'burn' | 'place' | 'feed' | 'wash', from, to, t, dur, startScale, washer } (place: 파쇄기 투입구 위에 세우기, feed: 투입구로 내려가며 갈리기)
   let stage = null; // 지금 소각장 단계 { phase, t, dur }(세탁소 행동에는 없다)
   let showBlend = 0; // 들여다보는 중 종이를 카메라 쪽으로 돌린 정도(0..1)
+  let approach = null; // 파쇄기 앞 작업 자리로 걸어가는 중 { from, t, dur }
   let pull = null; // 주머니에서 꺼내는 중 { t, dur }
   let crumple = null; // 태우기에서 종이를 구기는 중 { t, dur }
   const tmpV = new THREE.Vector3();
@@ -413,8 +418,10 @@ if (isMobileUA(navigator.userAgent)) {
     stage = null;
     showBlend = 0;
     placePaperInHand();
-    held.userData.setOpen?.(0);
     held.visible = false;
+    shredder.endGrind();
+    shredClip.constant = 1000;
+    approach = null;
     hud.clearSpeech(SPEECH_KEY);
     glitter.clear();
   }
@@ -494,7 +501,7 @@ if (isMobileUA(navigator.userAgent)) {
       if (step.name === 'idle') character.idleInPlace();
       else character.playClip(step.name, speedFor(step));
     }
-    if (phase !== 'look' && phase !== 'mutter' && phase !== 'open') { // 들여다보는 자세가 끝났다: 손에 쥔 원래 방향으로
+    if (phase !== 'look' && phase !== 'mutter') { // 들여다보는 자세가 끝났다: 손에 쥔 원래 방향으로
       if (showBlend > 0) { showBlend = 0; if (!flight && !pull) placePaperInHand(); held.visible = true; }
     }
     if (phase === 'pull') {
@@ -505,16 +512,15 @@ if (isMobileUA(navigator.userAgent)) {
       updatePaper(0);
     } else if (phase === 'crumple') {
       crumple = { t: 0, dur: step.seconds * 0.85 };
-    } else if (phase === 'glide') {
-      startShredFlight('glide', step.seconds);
-    } else if (phase === 'slide') {
-      startShredFlight('slide', step.seconds);
-    } else if (phase === 'grind') {
-      flight = null;
-      held.visible = false;
+    } else if (phase === 'approach') {
+      approach = { from: { x: player.position.x, z: player.position.z }, t: 0, dur: step.seconds };
+      if (character && Math.hypot(player.position.x - layout.shredder.stand.x, player.position.z - layout.shredder.stand.z) > 0.15) character.walkInPlace();
+    } else if (phase === 'place') {
+      startPlace(step.seconds);
+    } else if (phase === 'feed') {
+      startFeed(step.seconds);
     } else if (phase === 'watch') {
       if (actionId === 'burn') { for (const at of EMBER_AT) setTimeoutGame(at, () => fire.embers(3)); }
-      if (held.userData.pour) held.visible = false; // 빈 주머니는 다시 주머니로
     }
   }
 
@@ -530,7 +536,7 @@ if (isMobileUA(navigator.userAgent)) {
   }
 
   // 효과 순간: 지수 -ACTION_REDUCE, 그리고 행동별 연출(소품이 손을 떠난다 / 빨래가 줄에 걸린다).
-  // 소각장: 태우기는 종이(가루)가 불에 닿는 순간, 파쇄는 조각이 쏟아지기 시작하는 순간이다.
+  // 소각장: 태우기는 물건이 불에 닿는 순간(주머니는 터지는 순간), 파쇄는 종이가 다 갈린 순간이다.
   function onItemEffect(id) {
     track('action_done', { action: id });
     track(id === 'burn' ? 'burn_item' : 'shred_item', { id: chosen.id });
@@ -542,11 +548,12 @@ if (isMobileUA(navigator.userAgent)) {
       fire.flare();
       sfx.play('whoof'); // 소리는 불길이 확 솟는 순간 하나
       if (chosen.flame) fire.setTint(chosen.flame.tint, chosen.flame.seconds);
-    } else {
-      shredder.shake();
-      sfx.play('shredder');
-      shredder.pour();
+      if (isFlameItem(chosen) || chosen.prop.kind === 'pouch') { // 주머니가 터진다: 반짝이 구름 + 불티
+        glitter.cloud(tmpV.set(FURNACE.x, PAPER_FIRE_Y, FURNACE.z), 1.5);
+        fire.embers(6);
+      }
     }
+    // 파쇄의 감소는 종이가 다 갈린 순간(feed 의 끝)이고, 떨림·조각은 feed 동안 이미 진행됐다.
   }
 
   function onEffect(id) {
@@ -575,32 +582,36 @@ if (isMobileUA(navigator.userAgent)) {
     net?.sendRoom({ k: 'fx', i: washIndex }); // 같은 세탁소의 다른 방문자 화면에서도 그 세탁기가 흔들린다
   }
 
-  // 던지기의 놓는 순간(release): 종이가 손을 떠나 불까지 날아간다(날아가기 단계 길이만큼). 가루 주머니는 손에 쥔 채 반짝이 가루를 뿌린다.
+  // 던지기의 놓는 순간(release): 물건이 손을 떠나 불까지 날아간다(날아가기 단계 길이만큼). 주머니도 통째로 던진다.
   function onRelease() {
     const fly = runner.stepsOf(actionId, chosen && variantOf(chosen)).find((st) => st.phase === 'fly');
     const dur = (fly?.seconds ?? 0.5) * 0.98;
     held.getWorldPosition(tmpFrom);
-    if (held.userData.pour) {
-      held.localToWorld(tmpV.copy(held.userData.pour));
-      glitter.burst(tmpV, new THREE.Vector3(FURNACE.x, PAPER_FIRE_Y, FURNACE.z), dur);
-      return;
-    }
     const startScale = held.scale.x;
     scene.attach(held);
     flight = { kind: 'burn', from: tmpFrom.clone(), to: new THREE.Vector3(FURNACE.x, PAPER_FIRE_Y, FURNACE.z), t: 0, dur, startScale };
   }
 
-  // 파쇄: 종이가 팔 끝에서 투입구까지 미끄러져 간다(glide), 투입구로 빨려 들어간다(slide).
-  function startShredFlight(kind, seconds) {
+  // 파쇄: 종이를 투입구 위에 똑바로 세워 얹는다(place). 아랫변이 투입구에 닿고 앞면이 작업 자리(파쇄기 정면)를 향한다.
+  const placeQuat = new THREE.Quaternion();
+  const shredBase = new THREE.Vector3();
+  const heldHeight = () => (held.userData.height ?? 0.93) * SHRED_SCALE;
+  function startPlace(seconds) {
     held.visible = true;
-    if (kind === 'glide') {
-      held.getWorldPosition(tmpFrom);
-      const startScale = held.scale.x;
-      scene.attach(held);
-      flight = { kind, from: tmpFrom.clone(), to: shredder.slotWorld(new THREE.Vector3()).add(new THREE.Vector3(0, 0.22, 0)), t: 0, dur: seconds, startScale };
-    } else {
-      flight = { kind, from: held.position.clone(), to: shredder.slotWorld(new THREE.Vector3()).add(new THREE.Vector3(0, -0.12, 0)), t: 0, dur: seconds, startScale: held.scale.x };
-    }
+    held.getWorldPosition(tmpFrom);
+    const startScale = held.scale.x;
+    scene.attach(held);
+    placeQuat.setFromEuler(tmpEuler.set(0, layout.shredder.rotY, 0)).multiply(heldQuat.setFromEuler(tmpEuler.set(...held.userData.rot)));
+    shredder.slotWorld(shredBase).y += heldHeight() / 2 + 0.004; // 아랫변이 투입구 윗면에 닿는 높이의 종이 중심
+    flight = { kind: 'place', from: tmpFrom.clone(), fromQuat: held.quaternion.clone(), to: shredBase.clone(), t: 0, dur: seconds * 0.8, startScale };
+  }
+  // 파쇄: 종이가 일정한 속도로 곧게 내려가고, 투입구 아래로 들어간 부분은 클리핑으로 사라진다. 진행에 맞춰 조각이 쏟아지고 파쇄기가 덜덜 떤다.
+  function startFeed(seconds) {
+    if (!flight || flight.kind !== 'place') { startPlace(0.01); updatePaper(1); }
+    flight = { kind: 'feed', base: flight.to.clone(), quat: placeQuat.clone(), scale: SHRED_SCALE, t: 0, dur: seconds * 0.97 };
+    const accent = chosen.prop.accent;
+    shredder.beginGrind([...SHRED_PALETTE, ...SHRED_PALETTE, ...SHRED_PALETTE, accent, chosen.prop.ball, '#d3221c'].map((c) => new THREE.Color(c).getHex()), seconds);
+    shredClip.constant = -shredder.slotY;
   }
 
   // 옷 상태가 바뀌었으면(newState) 캐릭터 겉모습을 맞추고 분석 이벤트를 보낸다.
@@ -727,6 +738,29 @@ if (isMobileUA(navigator.userAgent)) {
     if (mode === 'free' && next && inRangeFor(next)) runner.setAuto(true);
   }
 
+  // 파쇄기 앞 작업 자리로 걸어가는 단계(같은 걷기 동작·충돌 처리): 남은 시간에 맞춰 일정하게 걷고, 끝부분에 파쇄기 쪽으로 몸을 돌려 선다. 이미 가까우면 그 자리에서 몸만 돌린다.
+  function updateApproach(dt, k) {
+    if (!approach) return;
+    const stand = layout.shredder.stand;
+    const cur = { x: player.position.x, z: player.position.z };
+    const dist = Math.hypot(stand.x - cur.x, stand.z - cur.z);
+    if (dist > 0.02) {
+      const left = Math.max(1e-3, approach.dur * (1 - k));
+      const next = stepToward(cur, stand, Math.min(dist / left, PLAYER.speed * 1.4), dt);
+      const pushed = pushOut(next);
+      if (k >= 0.999) { player.position.x = stand.x; player.position.z = stand.z; } // 끝: 정확히 작업 자리(막혔어도)
+      else { player.position.x = pushed.x; player.position.z = pushed.z; }
+      if (dist > 0.15 && k < 1 - STAND_HOLD) player.rotation.y = headingY(cur, stand);
+      if (stepper.advance(Math.hypot(player.position.x - cur.x, player.position.z - cur.z))) sfx.play(STEP_SOUND[surfaceAt(spaceId, player.position.x, player.position.z, layout.plaza)], { pan: stepper.foot ? 0.18 : -0.18 });
+    }
+    if (k >= 1 - STAND_HOLD) { // 파쇄기 쪽을 보고 선다
+      const to = stand.rotY;
+      const turn = Math.atan2(Math.sin(to - player.rotation.y), Math.cos(to - player.rotation.y));
+      player.rotation.y += turn * Math.min(1, 0.25 + (k - (1 - STAND_HOLD)) / STAND_HOLD);
+    }
+    if (k >= 1) { player.rotation.y = stand.rotY; character?.idleInPlace(); approach = null; }
+  }
+
   // 소각장 단계의 매 프레임 장면: 절차적 몸짓, 들여다보는 종이, 가루 주머니 열기·기울이기, 예약 실행, 말풍선 위치.
   function updateStage(dt) {
     for (let i = timers.length - 1; i >= 0; i--) {
@@ -744,19 +778,12 @@ if (isMobileUA(navigator.userAgent)) {
     const k = Math.min(1, stage.t / stage.dur);
     character?.setPose(poseFor(stage.phase, k, stage.t));
     const { phase } = stage;
+    if (phase === 'approach') updateApproach(dt, k);
     if (!held.visible || flight) return;
-    if ((phase === 'look' || phase === 'mutter' || phase === 'open') && !pull) {
+    if ((phase === 'look' || phase === 'mutter') && !pull) {
       showBlend = Math.min(1, showBlend + dt * 4);
-      if (held.userData.sheet && phase !== 'open') faceCamera(easeInOut(showBlend));
-      else if (held.userData.pour) held.scale.setScalar(1 + 0.8 * easeInOut(showBlend)); // 가루 주머니도 크게 들어 보인다
-    }
-    if (held.userData.pour) { // 가루 주머니: 열기(주둥이가 벌어진다) -> 던지기에서 기울인다
-      if (phase === 'open') held.userData.setOpen(easeInOut(k));
-      if (phase === 'throw') {
-        held.userData.setOpen(1);
-        held.rotation.set(...held.userData.rot);
-        held.rotation.z = -1.1 * easeInOut(Math.min(1, k * 1.6)); // 주둥이를 불 쪽으로 기울인다
-      }
+      if (held.userData.sheet) faceCamera(easeInOut(showBlend));
+      else held.scale.setScalar(1 + 0.35 * easeInOut(showBlend)); // 주머니도 조금 크게 들어 보인다
     }
   }
 
@@ -788,19 +815,23 @@ if (isMobileUA(navigator.userAgent)) {
     if (!flight) return;
     flight.t += dt;
     const k = Math.min(1, flight.t / flight.dur);
-    held.position.lerpVectors(flight.from, flight.to, k);
+    if (flight.from) held.position.lerpVectors(flight.from, flight.to, k);
     if (flight.kind === 'burn') {
       held.position.y += PAPER_ARC * Math.sin(Math.PI * k);
       held.rotation.x += 14 * dt;
       held.rotation.z += 9 * dt;
       held.scale.setScalar(flight.startScale * (1 - 0.5 * easeInOut(k)));
-    } else if (flight.kind === 'glide') {
-      held.position.y += SHRED_ARC * Math.sin(Math.PI * k);
-      held.rotation.x += (Math.PI / 2 - held.rotation.x) * Math.min(1, dt * 8); // 납작하게 눕혀 투입구로 들어갈 준비
-      held.rotation.z += (0 - held.rotation.z) * Math.min(1, dt * 8);
-      held.scale.setScalar(flight.startScale * (1 - 0.3 * easeInOut(k)));
-    } else if (flight.kind === 'slide') {
-      held.scale.setScalar(flight.startScale * (1 - 0.92 * easeInOut(k)));
+    } else if (flight.kind === 'place') {
+      held.position.lerpVectors(flight.from, flight.to, easeInOut(k)); // 던지지 않고 곧게 옮긴다
+      held.quaternion.slerpQuaternions(flight.fromQuat, placeQuat, easeInOut(k));
+      held.scale.setScalar(flight.startScale + (SHRED_SCALE - flight.startScale) * easeInOut(k));
+    } else if (flight.kind === 'feed') {
+      held.position.copy(flight.base);
+      held.position.y -= heldHeight() * k; // 일정한 속도(선형)로 내려간다: 다 내려가면 윗변이 투입구에 닿아 모두 사라진다
+      held.position.x += (Math.random() - 0.5) * 0.012; // 기계 진동
+      held.quaternion.copy(flight.quat);
+      held.scale.setScalar(flight.scale);
+      shredder.setFeed(k);
     } else if (flight.kind === 'wash') {
       held.position.y += SHIRT_ARC * Math.sin(Math.PI * k); // 포물선으로 세탁기 투입구에 들어간다
       held.rotation.x += 10 * dt;
@@ -810,8 +841,9 @@ if (isMobileUA(navigator.userAgent)) {
       held.scale.setScalar(flight.startScale * (1 - 0.9 * easeInOut(k)));
     }
     if (k >= 1) {
-      if (flight.kind === 'glide') { flight.t = flight.dur; return; } // 투입구 위에 머문다(다음 단계 slide 가 이어받는다)
-      if (flight.kind === 'burn' || flight.kind === 'slide') { flight = null; held.visible = false; return; } // 불·투입구에 들어갔다(불길은 효과 순간에 나온다)
+      if (flight.kind === 'place') { flight.t = flight.dur; return; } // 투입구 위에 머문다(다음 단계 feed 가 이어받는다)
+      if (flight.kind === 'feed') { flight = null; held.visible = false; shredder.endGrind(); shredClip.constant = 1000; return; } // 종이가 모두 갈렸다
+      if (flight.kind === 'burn') { flight = null; held.visible = false; return; } // 불에 들어갔다(불길은 효과 순간에 나온다)
       if (flight.kind === 'wash') { // 셔츠가 들어간 순간 세탁기가 흔들리고 거품이 올라온다
         laundry.washers.splash(flight.washer);
         sfx.play('washSplash');
@@ -834,6 +866,7 @@ if (isMobileUA(navigator.userAgent)) {
       else if (e.type === 'paperOut') onPaperOut();
       else if (e.type === 'say') { if (chosenLine) hud.say(SPEECH_KEY, chosenLine, { seconds: LINE_SECONDS, silent: true }); } // 한마디: 머리 위 말풍선(소리 없음)
       else if (e.type === 'release') onRelease();
+      else if (e.type === 'grind') sfx.play('shredder'); // 갈기 시작: 파쇄기 소리 하나
       else if (e.type === 'effect') onEffect(e.action);
       else onDone();
     }

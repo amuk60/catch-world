@@ -360,9 +360,9 @@ function assertShredderRules(l, seed) {
   const { shredder } = l;
   const tag = `seed ${seed}`;
   assert.equal(shredder.radius, 0.7, tag);
-  assert.deepEqual(Object.keys(shredder).sort(), ['radius', 'rotY', 'x', 'z'], tag);
-  assert.ok(d(shredder, FURNACE) >= 2.6 - 1e-9 && d(shredder, FURNACE) <= 3.2 + 1e-9, `${tag} shredder-furnace ${d(shredder, FURNACE)}`);
-  assert.ok(d(shredder, FURNACE) >= FURNACE.radius + shredder.radius - 1e-9, `${tag} shredder overlaps furnace`);
+  assert.deepEqual(Object.keys(shredder).sort(), ['radius', 'rotY', 'stand', 'x', 'z'], tag);
+  const df = d(shredder, FURNACE);
+  assert.ok(df >= 6.0 - 1e-9 && df <= 8.0 + 1e-9, `${tag} shredder-furnace ${df}`); // 소각로와 따로 떨어져 있다(6~8단위)
   const walkable = (t) => Math.abs(t.x) <= YARD.width / 2 - (PLAYER.radius + 0.5) && Math.abs(t.z) <= YARD.depth / 2 - (PLAYER.radius + 0.5);
   assert.ok(walkable(shredder), `${tag} walkable`);
   assert.ok(shredder.x <= ZONES.forestMaxX, `${tag} forest zone`);
@@ -372,21 +372,28 @@ function assertShredderRules(l, seed) {
   for (const t of l.trees) assert.ok(d(shredder, t) >= 1.5, `${tag} tree`);
   for (const o of [...l.bushes, ...l.rocks]) assert.ok(d(shredder, o) >= 1.5, `${tag} bush/rock`);
   for (const c of signCircles(l)) assert.ok(d(shredder, c) >= 1.5, `${tag} sign`);
-  assert.ok(Math.abs(shredder.rotY - headingY(shredder, FURNACE)) < 1e-9, `${tag} rotY`); // 소각로를 바라본다(벤치와 같은 +z 앞 규칙)
+  assert.ok(Math.abs(shredder.rotY - headingY(shredder, SPAWN)) < 1e-9, `${tag} rotY`); // 정면(+z)이 스폰 쪽(플레이어가 오는 길)
+  // 작업 자리: 정면으로 1.1 나온 곳, 파쇄기를 바라보고 서며(rotY + π), 마당 안이고 파쇄기 구역 안이다.
+  const { stand } = shredder;
+  assert.ok(Math.abs(d(stand, shredder) - 1.1) < 1e-9, `${tag} stand distance`);
+  assert.ok(Math.abs(Math.sin(stand.rotY) - (shredder.x - stand.x) / 1.1) < 1e-9 && Math.abs(Math.cos(stand.rotY) - (shredder.z - stand.z) / 1.1) < 1e-9, `${tag} stand faces shredder`);
+  assert.ok(walkable(stand), `${tag} stand walkable`);
+  assert.ok(d(stand, shredder) >= shredder.radius + PLAYER.radius - 1e-9, `${tag} stand outside shredder`);
 }
 
 test('종이 더미는 없다(layout 키 목록에도, 반경 0.5 장애물에도 위로 오브젝트 말고는 없다)', () => {
   assert.equal(L.obstacles.filter((o) => o.radius === 0.5 && !comfort.some((c) => c.x === o.x && c.z === o.z)).length, 0);
 });
 
-test('파쇄기: 기본 시드의 위치는 나무토막을 길목 밖으로 옮긴 뒤의 고정값', () => {
-  assert.equal(L.shredder.x, -3.312176966106414);
-  assert.equal(L.shredder.z, -1.2211016232074938);
-  assert.equal(L.shredder.rotY, -1.6580627893946132);
+test('파쇄기: 기본 시드의 위치는 소각로에서 6~8단위 떨어진 남쪽 숲 자리의 고정값(정면은 스폰 쪽)', () => {
+  assert.equal(L.shredder.x, -4.8574976425397);
+  assert.equal(L.shredder.z, 6.227366045797065);
+  assert.equal(L.shredder.rotY, 2.1572344290438976);
   assert.equal(L.shredder.radius, 0.7);
+  assert.deepEqual(L.shredder.stand, { x: -3.941288827181128, z: 5.618628494253509, rotY: 5.298827082633691 });
 });
 
-test('파쇄기: 값, 거리, 걸을 수 있는 영역, 소각로를 향함', () => {
+test('파쇄기: 값, 소각로와의 거리, 걸을 수 있는 영역, 스폰 쪽 정면과 작업 자리', () => {
   assertShredderRules(L, SEED);
 });
 
@@ -410,19 +417,21 @@ test('벤치 위치는 파쇄기를 추가하기 전과 같다(고정값)', () =
   assert.ok(near(seats[1].x, -8.762741699796951) && near(seats[1].z, 0.7627416997969525), JSON.stringify(seats[1]));
 });
 
-test('서 있을 수 있는 자리: 장애물 밖에서 소각로와 파쇄기 사정거리를 모두 만족하는 점이 있다', () => {
+test('서 있을 수 있는 자리: 파쇄기 구역 안에서 장애물 밖에 설 수 있는 점이 충분하고 작업 자리는 소각로(태우기) 범위 밖이다', () => {
   const all = [FURNACE, ...L.obstacles];
   const free = (p) => all.every((o) => d(p, o) >= o.radius + PLAYER.radius) && inWalk(p);
-  let both = 0;
-  let shredderOnly = 0;
-  for (let x = -12; x <= 0; x += 0.1) {
-    for (let z = -8; z <= 6; z += 0.1) {
+  let shredderZone = 0;
+  let overlap = 0;
+  for (let x = -12; x <= 2; x += 0.1) {
+    for (let z = -8; z <= 10; z += 0.1) {
       const p = { x, z };
-      if (!free(p) || d(p, FURNACE) > FIRE_ZONE_RADIUS || d(p, L.shredder) > SHREDDER_RANGE) continue;
-      shredderOnly++;
-      if (d(p, FURNACE) <= FIRE_RANGE) both++; // 태우기와 파쇄를 모두 할 수 있는 자리
+      if (!free(p) || d(p, L.shredder) > SHREDDER_RANGE) continue;
+      shredderZone++;
+      if (d(p, FURNACE) <= FIRE_RANGE) overlap++; // 태우기 범위와 겹치는 자리
     }
   }
-  assert.ok(shredderOnly > 20, `shredder reachable ${shredderOnly}`);
-  assert.ok(both > 5, `both ranges ${both}`);
+  assert.ok(shredderZone > 20, `shredder reachable ${shredderZone}`);
+  assert.equal(overlap, 0, '소각로와 파쇄기는 서로 범위가 겹치지 않을 만큼 떨어져 있다');
+  assert.ok(d(L.shredder.stand, L.shredder) <= SHREDDER_RANGE && d(L.shredder.stand, FURNACE) > FIRE_ZONE_RADIUS);
+  assert.ok(free(L.shredder.stand), '작업 자리에 설 수 있다');
 });

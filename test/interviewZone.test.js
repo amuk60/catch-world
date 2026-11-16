@@ -8,8 +8,9 @@ import { SEED } from '../src/config.js';
 const zones = buildZones(buildLayout(SEED));
 const by = (id) => zones.find((z) => z.id === id);
 
-test('autoActionsOf: 자동(R)이 번갈아 할 행동 — 소각장·세탁소는 구역의 두 행동, 면접장(auto false)과 구역 없음은 비어 있다', () => {
-  assert.deepEqual(autoActionsOf(by('incinerator')), ['burn', 'shred']);
+test('autoActionsOf: 자동(R)이 되풀이할 행동 — 소각장은 태우기, 파쇄기 구역은 파쇄, 세탁소는 두 행동, 면접장(auto false)과 구역 없음은 비어 있다', () => {
+  assert.deepEqual(autoActionsOf(by('incinerator')), ['burn']);
+  assert.deepEqual(autoActionsOf(by('shredder')), ['shred']);
   assert.deepEqual(autoActionsOf(by('laundry')), ['wash', 'hang']);
   assert.deepEqual(autoActionsOf(by('interview')), []);
   assert.deepEqual(autoActionsOf(null), []);

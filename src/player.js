@@ -133,6 +133,11 @@ export function createPlayer(gltf) {
       if (seconds <= 0) { group.rotation.y += delta; turn = null; return; }
       turn = { from: group.rotation.y, delta, t: 0, dur: seconds };
     },
+    // 행동 중 걷는 동작으로 크로스페이드한다(파쇄기 앞 작업 자리로 걸어갈 때: 위치는 main 이 옮기고 다른 방문자에게도 걷기로 보인다).
+    walkInPlace() {
+      const to = actions.walk;
+      if (to && playing !== to) crossTo(to, FADE_SECONDS);
+    },
     // 행동 중 제자리 대기 자세로 크로스페이드한다(회전 단계).
     idleInPlace() {
       const to = actions.idle;

@@ -4,7 +4,7 @@ import { INCINERATOR } from '../config.js';
 // 소각장 행동(태우기·파쇄)은 단계를 잘게 쪼갠 긴 동작이다(아래 BURN_PAPER 등). 세탁소 행동은 아래 옛 단계를 그대로 쓴다.
 // 단계: 한숨(emote-no, 소각장 행동만. 세탁소 행동은 한숨 없이 바로 주머니부터) -> 재킷 주머니에서 소품(종이·셔츠)을 꺼낸다(pick-up, 60% 에 paperOut) -> 대상 쪽으로 돈다(유일한 회전)
 //       -> 던진다/친다/팔을 든다(effect 표식: 효과 순간) -> 후련(emote-yes). 캐릭터는 걷지 않고 제자리에서 돈다.
-// 행동의 zone 은 그 행동이 속한 행동 구역(logic/zones.js)의 id 이고, 같은 구역 안에서 key 1 과 2 가 첫째·둘째 행동이다.
+// 행동의 zone 은 그 행동이 속한 행동 구역(logic/zones.js)의 id 이고, 같은 구역 안에서 key 1 과 2 가 첫째·둘째 행동이다(소각장은 태우기만, 파쇄기 구역은 파쇄만: 둘 다 key 1).
 // 단계 표식: event/eventAt = 그 단계의 eventAt(0~1) 지점에서 { type: event } 이벤트, effect = 이 단계의 effectAt 지점이 효과 순간.
 const SIGH = { kind: 'clip', name: 'emote-no' };
 const POCKET_PULL = { kind: 'clip', name: 'pick-up', event: 'paperOut', eventAt: 0.6 };
@@ -34,34 +34,37 @@ const BURN_PAPER = [
   POSE('watch', 'idle', 0.9), // 타는 걸 지켜본다(만족 끄덕임)
   POSE('relief', 'emote-yes', 0.9),
 ];
-const BURN_AURORA = [
+const BURN_SOLID = [ // 두툼한 물건(뭉치·교재·단어장·주머니): 구기지 않고 두 손으로 들어 올렸다가 통째로 던진다
   ...intro('fire'),
-  POSE('open', 'holding-both', 0.6), // 가루 주머니 입구를 연다
+  POSE('heft', 'holding-both', 0.6),
   POSE('throw', 'attack-melee-right', 0.9, { marks: [{ at: 0.5, name: 'release' }] }),
-  POSE('fly', 'idle', 0.45, { effect: true, effectAt: 0.98 }), // 뿌린 가루가 불에 닿는 순간 = 감소·오로라 불꽃
+  POSE('fly', 'idle', 0.45, { effect: true, effectAt: 0.98 }), // 불에 닿는 순간 = 감소·불길(주머니는 오로라 가루가 터진다)
   POSE('watch', 'idle', 1.0),
   POSE('relief', 'emote-yes', 0.9),
 ];
+// 파쇄는 던지지 않는다: 파쇄기 앞 작업 자리로 걸어가서(approach, 길이 고정) 꺼내 들고 보여 준 뒤, 종이를 투입구 위에 똑바로 얹고(place), 아래로 밀어 넣어(feed: 일정한 속도로 내려가며 아래쪽부터 갈린다) 갈아 낸다.
+// feed 시작의 grind 표식에서 소리·떨림·조각이 시작되고, 종이가 다 갈린 순간(effect)에 감소한다.
 const SHRED_PAPER = [
-  ...intro('shredder'),
-  POSE('lift', 'interact-right', 0.5), // 투입구 쪽으로 팔을 든다(걷지 않는다)
-  POSE('glide', 'holding-right', 0.6), // 종이가 포물선으로 투입구까지 미끄러져 간다
-  POSE('slide', 'holding-right', 0.35), // 투입구로 빨려 들어가며 작아진다
-  POSE('grind', 'idle', 1.3, { effect: true, effectAt: 0.2 }), // 파쇄기가 덜덜 떨고 조각이 아래로 쏟아진다 = 감소
+  { kind: 'move', phase: 'approach', name: 'walk', seconds: 1.3 },
+  ...intro('shredder').slice(1), // 걸어서 이미 파쇄기를 보고 있어 돌아보기는 없다
+  POSE('place', 'interact-right', 0.6),
+  POSE('feed', 'holding-right', 2.6, { effect: true, effectAt: 0.97, marks: [{ at: 0, name: 'grind' }] }),
+  POSE('settle', 'idle', 0.7),
   POSE('relief', 'emote-yes', 0.9),
 ];
 
-// 소각장 단계의 길이를 비율로 늘이고 줄여 총 길이를 target 초로 맞춘다(회전 단계는 그대로).
+// 소각장 단계의 길이를 비율로 늘이고 줄여 총 길이를 target 초로 맞춘다(회전·걷기 단계는 그대로).
+const isFixed = (s) => s.kind === 'turn' || s.kind === 'move';
 export function scaleTo(steps, target) {
-  const fixed = steps.filter((s) => s.kind === 'turn').reduce((sum, s) => sum + s.seconds, 0);
-  const flex = steps.filter((s) => s.kind !== 'turn').reduce((sum, s) => sum + s.seconds, 0);
+  const fixed = steps.filter(isFixed).reduce((sum, s) => sum + s.seconds, 0);
+  const flex = steps.filter((s) => !isFixed(s)).reduce((sum, s) => sum + s.seconds, 0);
   const k = flex > 0 ? Math.max(0.1, (target - fixed) / flex) : 1;
-  return steps.map((s) => (s.kind === 'turn' ? { ...s } : { ...s, seconds: Math.round(s.seconds * k * 1000) / 1000 }));
+  return steps.map((s) => (isFixed(s) ? { ...s } : { ...s, seconds: Math.round(s.seconds * k * 1000) / 1000 }));
 }
 const T = INCINERATOR.targetSeconds;
 export const ACTIONS = {
-  burn: { id: 'burn', label: '태우기', key: '1', zone: 'incinerator', target: 'fire', steps: scaleTo(BURN_PAPER, T), variants: { aurora: scaleTo(BURN_AURORA, T) } },
-  shred: { id: 'shred', label: '파쇄', key: '2', zone: 'incinerator', target: 'shredder', steps: scaleTo(SHRED_PAPER, T) },
+  burn: { id: 'burn', label: '태우기', key: '1', zone: 'incinerator', target: 'fire', steps: scaleTo(BURN_PAPER, T), variants: { solid: scaleTo(BURN_SOLID, T) } },
+  shred: { id: 'shred', label: '파쇄', key: '1', zone: 'shredder', target: 'shredder', steps: scaleTo(SHRED_PAPER, T) },
   wash: { id: 'wash', label: '세탁', key: '1', zone: 'laundry', target: 'washer', steps: sequence('washer', hit('attack-melee-right'), false) },
   hang: { id: 'hang', label: '널기', key: '2', zone: 'laundry', target: 'clothesline', steps: sequence('clothesline', hit('interact-right'), false) },
 };
@@ -112,9 +115,9 @@ export function canPerform(actionId, dist, ranges) {
 // autoGap: 자동 반복에서 행동이 끝난 뒤 다음 행동을 시작하기까지 쉬는 시간(초).
 // canStart(actionId): 자동이 다음 행동을 시작해도 되는지(사정거리 등). false 면 자동이 꺼진다. 수동 start 에는 쓰지 않는다.
 // variantFor(actionId): start 가 변형을 못 받았을 때(자동) 쓸 단계 변형 이름(예: 태우기의 'aurora', 모르면 기본 단계). 자동이 시작할 때마다 불리므로 거기서 물건을 고른다.
-// autoActions(): 지금 자동이 번갈아 할 구역의 행동 id [첫째, 둘째](호출할 때마다 현재 구역을 돌려준다). 구역이 없으면 [] 이고 자동은 꺼진다.
+// autoActions(): 지금 자동이 되풀이할 구역의 행동 id [첫째, (둘째)](호출할 때마다 현재 구역을 돌려준다). 구역이 없으면 [] 이고 자동은 꺼진다.
 export function createRunner({
-  durations, byAction = {}, turnSeconds = 0, effectAt, autoGap, canStart = () => true, autoActions = () => ['burn', 'shred'], variantFor = () => undefined,
+  durations, byAction = {}, turnSeconds = 0, effectAt, autoGap, canStart = () => true, autoActions = () => ['burn'], variantFor = () => undefined,
 }) {
   // 행동의 단계(초 포함)와 이벤트 시간표를 만든다. 시간표: [{ t, type, index? }] 를 시각 -> 종류 순으로 정렬.
   function plan(id, variant) {

@@ -16,8 +16,10 @@ export function itemsFor(actionId, items = INCINERATOR.items) {
   return items.filter((item) => item[actionId]?.lines?.length > 0);
 }
 
-// 손동작 종류: 가루 주머니는 뿌리기('aurora'), 나머지는 종이('paper').
-export const variantOf = (item) => (item?.prop?.kind === 'pouch' ? 'aurora' : 'paper');
+// 손동작 종류: 두툼한 물건(prop.solid: 뭉치·책·주머니)은 구기지 않고 통째로 던진다('solid'), 나머지 종이는 구겨서 던진다('paper').
+export const variantOf = (item) => (item?.prop?.solid ? 'solid' : 'paper');
+// 불꽃 색을 바꾸는 물건(오로라 가루)인가.
+export const isFlameItem = (item) => Boolean(item?.flame?.tint);
 
 // 그 행동의 멘트 한 줄(rng: 0 이상 1 미만). 없으면 빈 글자.
 export function lineFor(item, actionId, rng = Math.random) {
@@ -25,17 +27,17 @@ export function lineFor(item, actionId, rng = Math.random) {
   return lines.length ? lines[Math.min(lines.length - 1, Math.floor(rng() * lines.length))] : '';
 }
 
-// 자동(R)이 고르는 물건. 태우기에서는 auroraChance 의 확률로 오로라 가루(variantOf 가 'aurora'), 아니면 종이 중 하나. 직전 물건(lastId)은 가능하면 피한다.
+// 자동(R)이 고르는 물건. 태우기에서는 auroraChance 의 확률로 불꽃 색을 바꾸는 물건(오로라 가루), 아니면 나머지 중 하나. 직전 물건(lastId)은 가능하면 피한다.
 export function pickRandomItem(actionId, rng = Math.random, { items = INCINERATOR.items, auroraChance = INCINERATOR.auroraChance, lastId = null } = {}) {
   const all = itemsFor(actionId, items);
-  const aurora = all.filter((i) => variantOf(i) === 'aurora');
-  const paper = all.filter((i) => variantOf(i) === 'paper');
-  if (aurora.length && (rng() < auroraChance || !paper.length)) return aurora[Math.min(aurora.length - 1, Math.floor(rng() * aurora.length))];
-  const pool = paper.length > 1 ? paper.filter((i) => i.id !== lastId) : paper;
+  const flame = all.filter(isFlameItem);
+  const plain = all.filter((i) => !isFlameItem(i));
+  if (flame.length && (rng() < auroraChance || !plain.length)) return flame[Math.min(flame.length - 1, Math.floor(rng() * flame.length))];
+  const pool = plain.length > 1 ? plain.filter((i) => i.id !== lastId) : plain;
   return pool[Math.min(pool.length - 1, Math.floor(rng() * pool.length))] ?? null;
 }
 
-// 표 검사: 문제 목록(빈 배열이면 이상 없음). id 중복·없음, 이름 없음, 멘트 없음·길이 초과, 오로라 가루(pouch)의 파쇄, 행동이 하나도 없는 물건.
+// 표 검사: 문제 목록(빈 배열이면 이상 없음). id 중복·없음, 이름 없음, 멘트 없음·길이 초과, 주머니(pouch)·교재·단어장의 파쇄, 행동이 하나도 없는 물건.
 export function validateItems(items = INCINERATOR.items) {
   const problems = [];
   const seen = new Set();
@@ -56,7 +58,7 @@ export function validateItems(items = INCINERATOR.items) {
         else if ([...line].length > MAX_LINE_LENGTH) problems.push(`${name}.${action}: 멘트가 ${MAX_LINE_LENGTH}자를 넘는다 (${line})`);
       }
     }
-    if (item?.prop?.kind === 'pouch' && item.shred) problems.push(`${name}: 가루 주머니는 파쇄할 수 없다`);
+    if (['pouch', 'workbook', 'booklet'].includes(item?.prop?.kind) && item.shred) problems.push(`${name}: 주머니·교재·단어장은 파쇄할 수 없다(태우기 전용)`);
   }
   return problems;
 }
@@ -70,15 +72,14 @@ export function poseFor(phase, k = 0, t = 0) {
     case 'pull': return { lean: 0.05, nod: 0.2 };
     case 'look': return { nod: 0.3 * Math.min(1, k * 2) };
     case 'mutter': return { nod: 0.2, tilt: 0.07 * sin(t * 6) };
-    case 'open': return { nod: 0.3, lean: 0.06 };
+    case 'heft': return { nod: 0.25, lean: 0.1 };
     case 'crumple': return { nod: 0.3, lean: 0.12 };
     case 'throw': return k < 0.5 ? { lean: -0.2 * (k / 0.5), nod: -0.1 } : { lean: -0.2 + 0.5 * ((k - 0.5) / 0.5), nod: 0.1 };
     case 'fly': return { lean: 0.14, nod: 0.05 };
-    case 'watch': case 'grind': return { nod: 0.06 + 0.08 * sin(t * 3.4), tilt: 0.04 * sin(t * 1.7) };
+    case 'watch': case 'settle': return { nod: 0.06 + 0.08 * sin(t * 3.4), tilt: 0.04 * sin(t * 1.7) };
     case 'relief': return { nod: -0.1 * Math.min(1, k * 3), lean: -0.05 };
-    case 'lift': return { lean: 0.08, nod: 0.1 };
-    case 'glide': return { lean: 0.1, nod: 0.08 };
-    case 'slide': return { lean: 0.12, nod: 0.15 };
+    case 'place': return { lean: 0.1, nod: 0.12 };
+    case 'feed': return { lean: 0.13, nod: 0.18 + 0.03 * sin(t * 30) };
     default: return {};
   }
 }

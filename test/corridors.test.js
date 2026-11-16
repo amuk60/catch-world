@@ -36,7 +36,7 @@ for (const seed of [SEED]) {
     const spawn = { x: SPAWN.x, z: SPAWN.z };
     const stands = {
       불: toward(FURNACE, spawn, FURNACE.radius + PLAYER.radius + 0.6), // 불 가장자리에서 바로 서는 자리(스폰 쪽)
-      파쇄기: toward(l.shredder, spawn, l.shredder.radius + PLAYER.radius + 0.4),
+      파쇄기: l.shredder.stand, // 파쇄기 앞 작업 자리(투입구 바로 앞)
     };
     l.interactables.filter((i) => i.kind === 'seat').forEach((s, i) => { stands[`벤치${i}`] = toward(s, spawn, s.radius + PLAYER.radius + 0.4); });
     const signFront = { x: l.sign.x + 1.6 * Math.sin(l.sign.rotY), z: l.sign.z + 1.6 * Math.cos(l.sign.rotY) }; // 간판 앞(기본 카메라 쪽 정면): 불 가장자리에서 간판 앞으로 가는 길

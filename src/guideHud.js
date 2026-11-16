@@ -27,7 +27,7 @@ const CSS = `
 
 const k = (t) => `<span class="keycap">${t}</span>`;
 const ACTION_LINE = {
-  default: `${k('1')}${k('2')} 행동 <span class="guide-sep">·</span> ${k('R')} 자동`,
+  default: `${k('1')} 행동 <span class="guide-sep">·</span> ${k('R')} 자동`,
   interview: `${k('1')}${k('2')} 면접 보기·돌발행동 (의자에 앉아서)`,
 };
 

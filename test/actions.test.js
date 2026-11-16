@@ -23,29 +23,29 @@ function simulate(r, seconds, step = 0.01) {
   return log;
 }
 
-const KNOWN_CLIPS = ['idle', 'pick-up', 'emote-yes', 'interact-left', 'interact-right', 'attack-melee-right', 'holding-right', 'holding-both']; // 캐릭터 모델에 있는 클립(멀티플레이 net ANIMS 에도 있다)
+const KNOWN_CLIPS = ['idle', 'walk', 'pick-up', 'emote-yes', 'interact-left', 'interact-right', 'attack-melee-right', 'holding-right', 'holding-both']; // 캐릭터 모델에 있는 클립(멀티플레이 net ANIMS 에도 있다)
 const PHASES = {
   burn: ['turn', 'pocket', 'pull', 'look', 'mutter', 'crumple', 'throw', 'fly', 'watch', 'relief'],
-  aurora: ['turn', 'pocket', 'pull', 'look', 'mutter', 'open', 'throw', 'fly', 'watch', 'relief'],
-  shred: ['turn', 'pocket', 'pull', 'look', 'mutter', 'lift', 'glide', 'slide', 'grind', 'relief'],
+  solid: ['turn', 'pocket', 'pull', 'look', 'mutter', 'heft', 'throw', 'fly', 'watch', 'relief'],
+  shred: ['approach', 'pocket', 'pull', 'look', 'mutter', 'place', 'feed', 'settle', 'relief'],
 };
-const sequencesOf = () => [['burn', ACTIONS.burn.steps, PHASES.burn], ['aurora', ACTIONS.burn.variants.aurora, PHASES.aurora], ['shred', ACTIONS.shred.steps, PHASES.shred]];
+const sequencesOf = () => [['burn', ACTIONS.burn.steps, PHASES.burn], ['solid', ACTIONS.burn.variants.solid, PHASES.solid], ['shred', ACTIONS.shred.steps, PHASES.shred]];
 
 test('ACTIONS: 네 행동(태우기·파쇄·세탁·널기), 구역·키·대상', () => {
   const brief = Object.values(ACTIONS).map((a) => [a.id, a.label, a.key, a.zone, a.target]);
   assert.deepEqual(brief, [
     ['burn', '태우기', '1', 'incinerator', 'fire'],
-    ['shred', '파쇄', '2', 'incinerator', 'shredder'],
+    ['shred', '파쇄', '1', 'shredder', 'shredder'],
     ['wash', '세탁', '1', 'laundry', 'washer'],
     ['hang', '널기', '2', 'laundry', 'clothesline'],
   ]);
   assert.equal(ACTIONS.poke, undefined);
 });
 
-test('구역마다 행동 둘: 소각장은 태우기·파쇄(키 1·2), 세탁소는 세탁·널기(키 1·2)', () => {
+test('구역마다 행동: 소각장은 태우기만, 파쇄기 구역은 파쇄만(둘 다 키 1), 세탁소는 세탁·널기(키 1·2)', () => {
   const byZone = {};
   for (const a of Object.values(ACTIONS)) (byZone[a.zone] ??= []).push(`${a.key}:${a.id}`);
-  assert.deepEqual(byZone, { incinerator: ['1:burn', '2:shred'], laundry: ['1:wash', '2:hang'] });
+  assert.deepEqual(byZone, { incinerator: ['1:burn'], shredder: ['1:shred'], laundry: ['1:wash', '2:hang'] });
 });
 
 test('세탁소 단계는 그대로: 한숨 없이 주머니 -> 회전 -> 치기/팔 들기(효과) -> 후련, 클립 길이는 모델에서 온다(seconds 없음)', () => {
@@ -55,22 +55,26 @@ test('세탁소 단계는 그대로: 한숨 없이 주머니 -> 회전 -> 치기
   assert.deepEqual(ACTIONS.hang.steps, [PULL, { kind: 'turn', target: 'clothesline' }, { kind: 'clip', name: 'interact-right', effect: true }, RELIEF]);
 });
 
-test('소각장 단계: 모든 단계에 클립(또는 회전)·길이·phase 가 있고 알려진 클립만 쓴다(걷기 없음)', () => {
+test('소각장 단계: 모든 단계에 클립(또는 회전·걷기)·길이·phase 가 있고 알려진 클립만 쓴다(걷기는 파쇄의 approach 뿐)', () => {
   for (const [name, steps, phases] of sequencesOf()) {
     assert.deepEqual(steps.map((s) => s.phase), phases, name);
     for (const s of steps) {
       assert.ok(s.seconds > 0, `${name}:${s.phase} 길이`);
       if (s.kind === 'turn') assert.ok(s.target, `${name} 회전 대상`);
+      else if (s.kind === 'move') { assert.equal(s.phase, 'approach'); assert.equal(s.name, 'walk'); }
       else { assert.equal(s.kind, 'clip'); assert.ok(KNOWN_CLIPS.includes(s.name), `${name}:${s.phase} 클립 ${s.name}`); }
-      assert.ok(!/walk|sprint/.test(s.name ?? ''), `${name}: 걷지 않는다`);
+      if (s.kind !== 'move') assert.ok(!/walk|sprint/.test(s.name ?? ''), `${name}: 걷지 않는다`);
     }
-    assert.equal(steps.filter((s) => s.kind === 'turn').length, 1, `${name}: 회전은 대상 쪽으로 한 번뿐`);
+    if (name === 'shred') {
+      assert.equal(steps.filter((s) => s.kind === 'turn').length, 0, '파쇄: 걸어가서 서므로 따로 돌지 않는다');
+      assert.equal(steps.filter((s) => s.kind === 'move').length, 1);
+    } else assert.equal(steps.filter((s) => s.kind === 'turn').length, 1, `${name}: 회전은 대상 쪽으로 한 번뿐`);
   }
 });
 
 test('소각장 단계: 옛 한숨(emote-no)은 없고 주머니에 손을 넣는 동작으로 시작한다(회전 다음)', () => {
   for (const [name, steps] of sequencesOf()) {
-    assert.equal(steps[0].kind, 'turn', name);
+    assert.equal(steps[0].kind, name === 'shred' ? 'move' : 'turn', name);
     assert.equal(steps[1].phase, 'pocket', name);
     assert.ok(!steps.some((s) => s.name === 'emote-no'), name);
     assert.equal(steps.at(-1).name, 'emote-yes', `${name}: 후련으로 끝난다`);
@@ -78,39 +82,40 @@ test('소각장 단계: 옛 한숨(emote-no)은 없고 주머니에 손을 넣�
 });
 
 test('소각장 단계: 총 길이는 config 의 INCINERATOR.targetSeconds(6~7초대)에 맞는다', () => {
-  assert.ok(INCINERATOR.targetSeconds >= 6 && INCINERATOR.targetSeconds <= 7.5);
+  assert.ok(INCINERATOR.targetSeconds >= 6 && INCINERATOR.targetSeconds <= 8);
   for (const [name, steps] of sequencesOf()) assert.ok(Math.abs(total(steps) - INCINERATOR.targetSeconds) < 0.02, `${name}: ${total(steps)}`);
 });
 
-test('scaleTo: 회전 단계는 그대로 두고 나머지를 비율로 늘이고 줄여 총 길이를 맞춘다', () => {
-  const steps = [{ kind: 'turn', seconds: 0.4 }, { kind: 'clip', seconds: 1 }, { kind: 'clip', seconds: 3 }];
-  const out = scaleTo(steps, 8.4);
+test('scaleTo: 회전·걷기 단계는 그대로 두고 나머지를 비율로 늘이고 줄여 총 길이를 맞춘다', () => {
+  const steps = [{ kind: 'turn', seconds: 0.4 }, { kind: 'move', seconds: 1.3 }, { kind: 'clip', seconds: 1 }, { kind: 'clip', seconds: 3 }];
+  const out = scaleTo(steps, 9.7);
   assert.equal(out[0].seconds, 0.4);
-  assert.ok(close(total(out), 8.4, 0.002));
-  assert.ok(close(out[2].seconds / out[1].seconds, 3, 0.01));
+  assert.equal(out[1].seconds, 1.3);
+  assert.ok(close(total(out), 9.7, 0.002));
+  assert.ok(close(out[3].seconds / out[2].seconds, 3, 0.01));
 });
 
-test('물건 종류: 태우기에만 오로라 가루 변형이 있고(파쇄에는 없다), 모두 효과 표식이 정확히 하나', () => {
+test('물건 종류: 태우기에만 두툼한 물건(solid) 변형이 있고(파쇄에는 없다), 모두 효과 표식이 정확히 하나', () => {
   assert.equal(ACTIONS.shred.variants, undefined);
-  assert.deepEqual(Object.keys(ACTIONS.burn.variants), ['aurora']);
+  assert.deepEqual(Object.keys(ACTIONS.burn.variants), ['solid']);
   for (const [name, steps] of sequencesOf()) assert.equal(steps.filter((s) => s.effect).length, 1, name);
 });
 
-test('효과 순간: 태우기·가루는 날아가기 단계 끝(종이가 불에 닿는 순간), 파쇄는 조각이 쏟아지는 단계 앞쪽이고 후련 단계 전이다', () => {
+test('효과 순간: 태우기는 날아가기 단계 끝(불에 닿는 순간), 파쇄는 밀어 넣는 단계 끝(종이가 다 갈린 순간)이고 후련 단계 전이다', () => {
   for (const [name, steps] of sequencesOf()) {
     const i = steps.findIndex((s) => s.effect);
-    assert.equal(steps[i].phase, name === 'shred' ? 'grind' : 'fly', name);
+    assert.equal(steps[i].phase, name === 'shred' ? 'feed' : 'fly', name);
     assert.ok(i < steps.length - 1, `${name}: 마지막(후련) 단계가 아니다`);
   }
   assert.ok(ACTIONS.burn.steps.find((s) => s.effect).effectAt >= 0.95); // 닿는 순간
-  assert.ok(ACTIONS.shred.steps.find((s) => s.effect).effectAt <= 0.5); // 조각이 나오는 순간
+  assert.ok(ACTIONS.shred.steps.find((s) => s.effect).effectAt >= 0.9); // 다 갈린 순간
 });
 
 test('소각장 표식: say(멘트) 는 한마디 단계 시작, release(놓기) 는 던지기 단계에 있고 날아가기보다 앞선다', () => {
   for (const [name, steps, phases] of sequencesOf()) {
     const mutter = steps.find((s) => s.phase === 'mutter');
     assert.deepEqual(mutter.marks, [{ at: 0, name: 'say' }], name);
-    if (name === 'shred') continue;
+    if (name === 'shred') { assert.deepEqual(steps.find((s) => s.phase === 'feed').marks, [{ at: 0, name: 'grind' }]); continue; }
     const throwStep = steps.find((s) => s.phase === 'throw');
     assert.ok(throwStep.marks.some((m) => m.name === 'release'), name);
     assert.ok(phases.indexOf('throw') < phases.indexOf('fly'), name);
@@ -136,11 +141,11 @@ test('소각장 러너: 사건 순서(태우기) = 단계 시작들 + paperOut +
   assert.deepEqual(r.update(10), []);
 });
 
-test('소각장 러너: 가루 변형(start 의 두 번째 인자)은 가루 단계로, 모르는 변형은 기본 단계로 간다', () => {
+test('소각장 러너: 두툼한 물건 변형(start 의 두 번째 인자)은 구기지 않고 들어 올리는 단계로, 모르는 변형은 기본 단계로 간다', () => {
   const r = make();
-  r.start('burn', 'aurora');
+  r.start('burn', 'solid');
   const phases = r.update(INCINERATOR.targetSeconds + 1).filter((e) => e.type === 'step').map((e) => e.step.phase);
-  assert.ok(phases.includes('open') && !phases.includes('crumple'));
+  assert.ok(phases.includes('heft') && !phases.includes('crumple'));
   const r2 = make();
   r2.start('burn', 'nope');
   const p2 = r2.update(20).filter((e) => e.type === 'step').map((e) => e.step.phase);
@@ -148,7 +153,7 @@ test('소각장 러너: 가루 변형(start 의 두 번째 인자)은 가루 단
 });
 
 test('소각장 러너: 스트레스는 효과 순간에 한 번 — 어떤 dt 로 돌려도 effect 는 정확히 한 번', () => {
-  for (const [id, variant] of [['burn'], ['burn', 'aurora'], ['shred']]) {
+  for (const [id, variant] of [['burn'], ['burn', 'solid'], ['shred']]) {
     for (const dt of [0.001, 0.016, 0.1, 1, 1000]) {
       const r = make();
       r.start(id, variant);
@@ -162,7 +167,7 @@ test('소각장 러너: 스트레스는 효과 순간에 한 번 — 어떤 dt �
 
 test('자동의 변형 선택: variantFor 는 자동이 시작할 때마다 불리고, 직접 start 에 변형을 주면 불리지 않는다', () => {
   const asked = [];
-  const r = make({ variantFor: (id) => { asked.push(id); return id === 'burn' ? 'aurora' : undefined; } });
+  const r = make({ variantFor: (id) => { asked.push(id); return id === 'burn' ? 'solid' : undefined; } });
   r.setAuto(true);
   const first = r.update(0.1);
   assert.deepEqual(asked, ['burn']);
@@ -180,7 +185,7 @@ test('stepsOf: 길이가 정해진 단계는 그대로, 세탁 단계의 회전�
     { kind: 'clip', name: 'emote-yes', seconds: 1 },
   ]);
   assert.deepEqual(r.stepsOf('burn').map((s) => s.seconds), ACTIONS.burn.steps.map((s) => s.seconds));
-  assert.deepEqual(r.stepsOf('burn', 'aurora').map((s) => s.phase), PHASES.aurora);
+  assert.deepEqual(r.stepsOf('burn', 'solid').map((s) => s.phase), PHASES.solid);
 });
 
 test('start: 처음에는 true 이고 바쁨 상태가 된다', () => {
@@ -278,35 +283,47 @@ test('abort: 진행 중인 행동을 이벤트 없이 끊고, 자동도 끈다(�
   assert.equal(r.start('shred'), true); // 다시 시작할 수 있다
 });
 
-test('nextAutoAction: 기록이 없으면 태우기, 그 뒤로는 마지막의 반대', () => {
+test('nextAutoAction: 지금 구역의 행동을 되풀이한다(소각장은 태우기, 파쇄기 구역은 파쇄, 두 행동 구역은 번갈아)', () => {
   const r = make();
   assert.equal(r.nextAutoAction(), 'burn');
   r.start('burn');
-  assert.equal(r.nextAutoAction(), 'shred');
-  r.update(20);
-  r.start('shred');
   assert.equal(r.nextAutoAction(), 'burn');
+  const s = make({ autoActions: () => ['shred'] });
+  s.start('shred');
+  assert.equal(s.nextAutoAction(), 'shred');
+  const w = make({ autoActions: () => ['wash', 'hang'] });
+  assert.equal(w.nextAutoAction(), 'wash');
+  w.start('wash');
+  assert.equal(w.nextAutoAction(), 'hang');
+  assert.equal(make({ autoActions: () => [] }).nextAutoAction(), null);
 });
 
 const T = INCINERATOR.targetSeconds;
-test('자동: 켜자마자 태우기를 시작하고, 끝나면 1초 쉰 뒤 파쇄, 다시 태우기 ... 번갈아 한다', () => {
+test('자동: 켜자마자 구역의 행동(소각장은 태우기)을 시작하고, 끝나면 1초 쉰 뒤 같은 행동을 되풀이한다', () => {
   const r = make();
   r.setAuto(true);
   assert.equal(r.autoOn, true);
   const log = simulate(r, T * 3 + 4).filter((l) => /^(effect|done)/.test(l[1]));
-  assert.deepEqual(log.map((l) => l[1]).slice(0, 6), ['effect:burn', 'done:burn', 'effect:shred', 'done:shred', 'effect:burn', 'done:burn']);
+  assert.deepEqual(log.map((l) => l[1]).slice(0, 6), ['effect:burn', 'done:burn', 'effect:burn', 'done:burn', 'effect:burn', 'done:burn']);
   assert.ok(close(log[1][0], T));
   assert.ok(close(log[3][0], T + 1 + T)); // 쉬는 시간 1초
   assert.ok(close(log[5][0], 2 * (T + 1) + T));
 });
 
-test('자동: 이미 한 행동이 있으면 그 반대로 시작한다', () => {
+test('자동(파쇄기 구역): 파쇄만 되풀이한다(태우기로 넘어가지 않는다)', () => {
+  const r = make({ autoActions: () => ['shred'] });
+  r.setAuto(true);
+  const log = simulate(r, T * 2 + 3).filter((l) => /^(effect|done)/.test(l[1])).map((l) => l[1]);
+  assert.deepEqual(log.slice(0, 4), ['effect:shred', 'done:shred', 'effect:shred', 'done:shred']);
+});
+
+test('자동: 이미 한 행동이 있어도 구역의 행동을 이어서 하고, 끝난 뒤 쉬는 시간을 채운 다음 시작한다', () => {
   const r = make();
   r.start('burn');
   r.update(T + 0.5); // 끝남(끝난 뒤 0.5초가 쉬는 시간으로 센다)
   r.setAuto(true);
   const log = simulate(r, T + 2);
-  const step0 = log.find((l) => l[1] === 'step:shred:0');
+  const step0 = log.find((l) => l[1] === 'step:burn:0');
   assert.ok(step0, JSON.stringify(log));
   assert.ok(close(step0[0], 0.5, 0.03), JSON.stringify(step0)); // 0.5초 더 기다린 뒤 시작
 });
@@ -324,7 +341,7 @@ test('자동 쉬는 시간은 끝난 시점부터 잰다(시작 간격이 아니
   r.setAuto(true);
   const log = simulate(r, T * 2 + 4);
   const done = log.find((l) => l[1] === 'done:burn')[0];
-  const nextStep = log.find((l) => l[1] === 'step:shred:0')[0];
+  const nextStep = log.find((l) => l[1] === 'step:burn:0' && l[0] > done)[0];
   assert.ok(close(nextStep, done + 3), JSON.stringify(log));
 });
 
@@ -350,16 +367,16 @@ test('자동을 껐을 때 진행 중인 행동은 끝까지 가고 다음은 �
 });
 
 test('canStart: 다음 행동을 시작할 수 없으면(사정거리 밖 등) 자동이 꺼진다', () => {
-  let allowShred = true;
+  let allowNext = true;
   const asked = [];
-  const r = make({ canStart: (id) => { asked.push(id); return id !== 'shred' || allowShred; } });
+  const r = make({ canStart: (id) => { asked.push(id); return allowNext; } });
   r.setAuto(true);
   r.update(0.1); // 태우기 시작
-  allowShred = false;
+  allowNext = false;
   const log = simulate(r, T * 2 + 3).filter((l) => /^(effect|done)/.test(l[1]));
-  assert.deepEqual(log.map((l) => l[1]), ['effect:burn', 'done:burn']); // 파쇄는 시작되지 않는다
+  assert.deepEqual(log.map((l) => l[1]), ['effect:burn', 'done:burn']); // 다음 태우기는 시작되지 않는다
   assert.equal(r.autoOn, false);
-  assert.deepEqual(asked, ['burn', 'shred']);
+  assert.deepEqual(asked, ['burn', 'burn']);
   assert.equal(r.isBusy(), false);
 });
 
