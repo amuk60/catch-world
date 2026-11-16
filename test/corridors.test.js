@@ -49,6 +49,9 @@ for (const seed of [SEED]) {
       const bl = blockers(l, a, b);
       assert.equal(bl.length, 0, `${name}: ${JSON.stringify(bl)}`);
     }
+    const stallFront = { x: l.stall.x + 1.6 * Math.sin(l.stall.rotY), z: l.stall.z + 1.6 * Math.cos(l.stall.rotY) }; // 쿠키 노점 앞: 스폰에서 곧장 갈 수 있다
+    assert.equal(blockers(l, spawn, stallFront).length, 0, '스폰-쿠키 노점 앞');
+    assert.equal(blockers(l, stallFront, stallFront).length, 0, '쿠키 노점 앞 자리');
     const bl = blockers(l, toward(FURNACE, signFront, FURNACE.radius + PLAYER.radius + 0.6), signFront);
     assert.equal(bl.length, 0, `불-간판 앞: ${JSON.stringify(bl)}`);
     assert.equal(blockers(l, signFront, signFront).length, 0, '간판 앞 자리');

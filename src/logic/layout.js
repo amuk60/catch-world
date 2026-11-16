@@ -45,13 +45,15 @@ const SIGN_KEEP_OUT = 2.8; // 숲 내부 장식과의 최소 거리
 const SIGN_OBSTACLE_RADIUS = 0.7; // 간판 충돌 원 반경(가운데 + 양 끝 3개)
 
 // 위로 문구 오브젝트(구역마다 1개). 위치는 고정이다. messageIndex 는 COMFORT_MESSAGES 의 순서이고,
-// kind 가 'fortune' 인 작은 푯말은 문구 대신 포춘쿠키를 연다.
+// kind 가 'fortune' 인 행운의 쿠키 노점(모델 대신 src/fortuneStall.js 가 만든다)은 문구 대신 포춘쿠키를 연다.
+// 노점은 로컬 x축을 따라 가로 2.0, 앞(+z)이 기본 카메라 쪽이다. 충돌은 계산대 가운데(위로 오브젝트 원)와 양 끝 원 2개.
 const COMFORT_RADIUS = 0.5;
 const COMFORT_KEEP_OUT = 2.0; // 숲 내부 장식과의 최소 거리
+const STALL = { width: 2.0, depth: 0.9, endOffset: 0.8, endRadius: 0.55, interactRange: 2.3 }; // 쿠키 노점 크기·양 끝 충돌 원
 const INTERACT_MARGIN = 0.8; // 반경 + 플레이어 반경 위에 더하는 상호작용 여유
 const COMFORT_OBJECTS = [
   { name: 'stump_roundDetailed', label: '쉬어가는 그루터기', kind: 'comfort', messageIndex: 0, x: -9.0, z: 5.0, scale: 3.5, rotY: 0.6 },
-  { name: 'sign', label: '작은 푯말', kind: 'fortune', x: 0.8, z: -6.5, scale: 3.4, rotY: Math.PI / 4 },
+  { stall: true, label: '행운의 쿠키 노점', kind: 'fortune', x: 0.8, z: -6.5, rotY: Math.PI / 4 },
   { name: 'statue_head', label: '조용한 조각상', kind: 'comfort', messageIndex: 2, x: 6.0, z: 9.0, scale: 1.3, rotY: Math.PI / 4 },
 ];
 
@@ -178,14 +180,22 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
     id: 'furnace', label: '소각로', kind: 'furnace', x: FURNACE.x, z: FURNACE.z, radius: FURNACE.radius,
     interactRange: FURNACE.radius + PLAYER.radius + INTERACT_MARGIN,
   }];
+  let stall = null;
   COMFORT_OBJECTS.forEach((c, index) => {
     interactables.push({
       id: `comfort-${index}`, label: c.label, kind: c.kind, ...(c.messageIndex === undefined ? {} : { messageIndex: c.messageIndex }),
       x: c.x, z: c.z, radius: COMFORT_RADIUS,
-      interactRange: COMFORT_RADIUS + PLAYER.radius + INTERACT_MARGIN,
-      item: nature(c.name, c.x, c.z, c.scale, c.rotY),
+      interactRange: c.stall ? STALL.interactRange : COMFORT_RADIUS + PLAYER.radius + INTERACT_MARGIN,
+      ...(c.stall ? { pickRadius: 1.1, pickHeight: 2.6 } : {}),
+      ...(c.stall ? {} : { item: nature(c.name, c.x, c.z, c.scale, c.rotY) }),
     });
     obstacles.push({ x: c.x, z: c.z, radius: COMFORT_RADIUS });
+    if (c.stall) {
+      stall = { x: c.x, z: c.z, rotY: c.rotY, width: STALL.width, depth: STALL.depth };
+      for (const a of [-STALL.endOffset, STALL.endOffset]) { // 계산대 양 끝(판의 로컬 x축 방향)
+        obstacles.push({ x: c.x + a * Math.cos(c.rotY), z: c.z - a * Math.sin(c.rotY), radius: STALL.endRadius });
+      }
+    }
   });
   benchSpots(benchAngle).forEach((s, index) => {
     const rotY = headingY(s, FURNACE); // 소각로를 바라본다(+z 가 앞).
@@ -295,7 +305,7 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
   }
 
   return {
-    trees, bushes, rocks, lanterns, furnaceItems, sign, interactables, shredder,
+    trees, bushes, rocks, lanterns, furnaceItems, sign, stall, interactables, shredder,
     buildingSlots: BUILDING_SLOTS.map((b) => ({ ...b })), plaza: { ...PLAZA }, obstacles,
     buildings,
   };

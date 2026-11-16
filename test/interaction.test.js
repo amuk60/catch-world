@@ -58,7 +58,7 @@ test('nearestInRange: 거리가 같으면 먼저 나온 대상, y 는 무시', (
 test('actionOf: 종류별 동작과 안내 문구', () => {
   assert.equal(actionOf({ kind: 'furnace' }), null); // 소각로는 E 동작이 없다(행동 막대로 한다).
   assert.deepEqual(actionOf({ kind: 'comfort' }), { type: 'comfort', prompt: '살펴보기' });
-  assert.deepEqual(actionOf({ kind: 'fortune' }), { type: 'fortune', prompt: '포춘쿠키 열기' });
+  assert.deepEqual(actionOf({ kind: 'fortune' }), { type: 'fortune', prompt: '행운의 쿠키 고르기' });
   assert.deepEqual(actionOf({ kind: 'seat' }), { type: 'seat', prompt: '앉기' });
 });
 

@@ -88,7 +88,7 @@ test('마당으로 나왔을 때 도착 지점: 문 앞, 건물을 등지고 서
 
 test('면접장 외곽 원은 랜턴·위로 오브젝트·스폰·소각장과 겹치지 않고 마당 안에 있다', () => {
   const others = L.obstacles.filter((o) => !circles.includes(o) && o.radius !== laundry.obstacleRadius);
-  assert.equal(others.length, 24);
+  assert.equal(others.length, 26); // 쿠키 노점 양 끝 원 2개 포함
   for (const m of circles) {
     for (const o of others) assert.ok(d(m, o) >= m.radius + o.radius + 0.2, `${JSON.stringify(m)} vs ${JSON.stringify(o)}`);
     assert.ok(d(m, SPAWN) >= m.radius + PLAYER.radius);

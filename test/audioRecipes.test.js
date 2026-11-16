@@ -139,7 +139,7 @@ test('반복음은 소각로 모닥불 하나뿐이고(배경음·앰비언스 �
 test('빼기로 한 소리는 레시피에 없고, 남기기로 한 소리만 있다', () => {
   const removed = ['crumple', 'paperOut', 'sigh', 'tick', 'swish', 'wearRustle', 'sit', 'stand', 'marker', 'relief', 'toss', 'firePop', 'bird', 'hover', 'scrape', 'hop', 'stomp', 'ambYard', 'ambLaundry', 'ambInterview'];
   for (const name of removed) assert.equal(SOUND_NAMES.includes(name) || LOOP_NAMES.includes(name), false, `${name} 가 남아 있음`);
-  const kept = ['stepGrass', 'stepTile', 'portal', 'whoof', 'shredder', 'washSplash', 'washerRattle', 'flap', 'tada', 'ding', 'confirm', 'speech', 'applause', 'ohno', 'laugh', 'fanfare', 'click', 'popupSide', 'popupModal', 'jingle', 'crack', 'fortune'];
+  const kept = ['stepGrass', 'stepTile', 'portal', 'whoof', 'shredder', 'washSplash', 'washerRattle', 'flap', 'tada', 'ding', 'confirm', 'speech', 'applause', 'ohno', 'laugh', 'fanfare', 'click', 'popupSide', 'popupModal', 'jingle', 'crackTap', 'crackBreak'];
   assert.deepEqual([...SOUND_NAMES].sort(), [...kept].sort());
 });
 
@@ -466,4 +466,40 @@ test('마스터 체인: 효과음 버스 -> 압축기 -> 마스터 -> 소프트 
   assert.ok(g.comp._out.includes(g.master));
   assert.ok(g.master._out.includes(g.clip));
   assert.ok(g.clip._out.includes(ctx.destination));
+});
+
+// ---- 포춘쿠키 소리: 딩동댕(운세 차임) 없이 바삭한 잡음 알갱이만 ----
+test('포춘쿠키 소리: 운세 차임(fortune)과 옛 crack 은 없고, crackTap·crackBreak 에는 음높이 있는 소리(진동음)가 없다', () => {
+  assert.equal(RECIPES.fortune, undefined);
+  assert.equal(RECIPES.crack, undefined);
+  for (const name of ['crackTap', 'crackBreak']) {
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const { nodes, log } = runRecipe(name, RECIPES[name], seeded(seed));
+      assert.equal(nodes.filter((n) => n.kind === 'osc').length, 0, `${name}: 진동음이 있다`);
+      assert.ok(log.starts.length >= (name === 'crackTap' ? 2 : 10), `${name}: 알갱이 ${log.starts.length}개`);
+    }
+  }
+});
+
+test('crackTap: 알갱이 2~3개로 아주 짧고(0.1초 안), 연타를 위해 50ms 간격이다', () => {
+  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    const { log, built } = runRecipe('crackTap', RECIPES.crackTap, seeded(seed));
+    assert.ok(log.starts.length >= 2 && log.starts.length <= 3, `알갱이 ${log.starts.length}`);
+    assert.ok(built.duration <= 0.1);
+    assert.ok(Math.max(...log.stops) - 0.5 <= 0.15);
+  }
+  assert.equal(RECIPES.crackTap.minInterval, 0.05);
+});
+
+test('crackBreak: 첫 갈라짐 + 몸통 + 알갱이 8개 + 부스러기 3개, 알갱이는 약 12~190ms 에 퍼지고 끝은 0.4초 안', () => {
+  for (const seed of [1, 2, 3]) {
+    const { log, built } = runRecipe('crackBreak', RECIPES.crackBreak, seeded(seed));
+    assert.equal(log.starts.length, 13);
+    assert.ok(built.duration <= 0.4);
+    const rate = 1.1; // runRecipe 의 음높이 배율은 거르개에만 쓰이고 시각에는 영향이 없다
+    const times = log.starts.map((t) => t - 0.5);
+    assert.ok(Math.min(...times) >= 0 && Math.max(...times) <= 0.34 + rate * 0, `시각 ${Math.max(...times)}`);
+    assert.ok(times.filter((t) => t >= 0.004 && t <= 0.2).length >= 8);
+  }
+  assert.equal(RECIPES.crackBreak.minInterval, 0.3);
 });

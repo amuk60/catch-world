@@ -25,7 +25,7 @@ test('없앤 항목은 결과에 없다', () => {
   }
   assert.deepEqual(
     Object.keys(L).sort(),
-    ['buildingSlots', 'buildings', 'bushes', 'furnaceItems', 'interactables', 'lanterns', 'obstacles', 'plaza', 'rocks', 'shredder', 'sign', 'trees'],
+    ['buildingSlots', 'buildings', 'bushes', 'furnaceItems', 'interactables', 'lanterns', 'obstacles', 'plaza', 'rocks', 'shredder', 'sign', 'stall', 'trees'],
   );
 });
 
@@ -125,11 +125,12 @@ test('개수와 장애물', () => {
   assert.equal(L.obstacles.filter((o) => o.radius === 0.4).length, interiorTrees.length + L.rocks.length); // 나무·바위
   assert.equal(L.obstacles.filter((o) => o.radius === 0.7).length, 3 + 2 + 1); // 간판 + 벤치 2개 + 파쇄기
   assert.equal(L.obstacles.filter((o) => o.radius === 0.5).length, 3); // 위로 오브젝트
+  assert.equal(L.obstacles.filter((o) => o.radius === 0.55).length, 2); // 쿠키 노점 양 끝
   // 세탁소 건물 외곽 원의 장애물은 따로 센다(laundryLayout.test.js). 세탁기·빨랫줄은 실내(interiors.test.js)로 옮겼다.
   const laundryR = L.buildings.map((b) => b.obstacleRadius); // 세탁소 + 면접장 외곽 원
   const laundryCount = L.obstacles.filter((o) => laundryR.includes(o.radius)).length;
   assert.ok(laundryCount >= 8);
-  assert.equal(L.obstacles.length - laundryCount, interiorTrees.length + L.rocks.length + 4 + 3 + 3 + 2 + 1);
+  assert.equal(L.obstacles.length - laundryCount, interiorTrees.length + L.rocks.length + 4 + 3 + 3 + 2 + 2 + 1);
   // 소각로 원은 obstacles 에 들어가지 않는다(이동 코드가 따로 처리).
   assert.ok(!L.obstacles.some((o) => o.x === FURNACE.x && o.z === FURNACE.z));
 });
@@ -211,9 +212,9 @@ test('상호작용 대상 10개: 소각로 + 위로 오브젝트 3개 + 벤치 2
     id: 'furnace', label: '소각로', kind: 'furnace', x: FURNACE.x, z: FURNACE.z, radius: FURNACE.radius,
     interactRange: FURNACE.radius + PLAYER.radius + 0.8,
   });
-  assert.deepEqual(comfort.map((c) => [c.item.name, c.label, c.x, c.z, c.item.scale]), [
+  assert.deepEqual(comfort.map((c) => [c.item?.name ?? null, c.label, c.x, c.z, c.item?.scale ?? null]), [
     ['stump_roundDetailed', '쉬어가는 그루터기', -9.0, 5.0, 3.5],
-    ['sign', '작은 푯말', 0.8, -6.5, 3.4],
+    [null, '행운의 쿠키 노점', 0.8, -6.5, null], // 모델 대신 src/fortuneStall.js 가 만든다
     ['statue_head', '조용한 조각상', 6.0, 9.0, 1.3],
   ]);
 });
@@ -228,6 +229,7 @@ test('위로 오브젝트: 구역, 걸을 수 있는 영역, 소각로·큰 간�
     assert.ok(d(c, FURNACE) >= 3, `${c.id} furnace`);
     assert.ok(d(c, L.sign) >= 2.8, `${c.id} sign`);
     assert.ok(d(c, SPAWN) >= 2.5, `${c.id} spawn`);
+    if (c.kind === 'fortune') { assert.equal(c.item, undefined); continue; }
     assert.equal(c.item.pack, 'nature');
     assert.deepEqual([c.item.x, c.item.z], [c.x, c.z]);
     assert.ok(Number.isFinite(c.item.rotY));
@@ -241,7 +243,7 @@ test('위로 오브젝트는 모두 장애물로 등록되어 있다', () => {
   }
 });
 
-test('상호작용 범위는 반경 + 플레이어 반경보다 크다, 위로 문구는 0,2 · 작은 푯말은 포춘쿠키', () => {
+test('상호작용 범위는 반경 + 플레이어 반경보다 크다, 위로 문구는 0,2 · 쿠키 노점은 포춘쿠키', () => {
   for (const i of L.interactables) {
     assert.ok(i.interactRange > i.radius + PLAYER.radius, i.id);
     assert.ok(i.interactRange >= i.radius + PLAYER.radius + 0.8 - 1e-9, i.id);
@@ -249,7 +251,7 @@ test('상호작용 범위는 반경 + 플레이어 반경보다 크다, 위로 �
   assert.deepEqual(comfort.map((c) => c.kind), ['comfort', 'fortune', 'comfort']);
   assert.deepEqual(comfort.filter((c) => c.kind === 'comfort').map((c) => c.messageIndex), [0, 2]);
   assert.equal(comfort[1].id, 'comfort-1');
-  assert.equal(comfort[1].label, '작은 푯말');
+  assert.equal(comfort[1].label, '행운의 쿠키 노점');
   assert.equal(comfort[1].messageIndex, undefined);
 });
 
@@ -434,4 +436,23 @@ test('서 있을 수 있는 자리: 파쇄기 구역 안에서 장애물 밖에 
   assert.equal(overlap, 0, '소각로와 파쇄기는 서로 범위가 겹치지 않을 만큼 떨어져 있다');
   assert.ok(d(L.shredder.stand, L.shredder) <= SHREDDER_RANGE && d(L.shredder.stand, FURNACE) > FIRE_ZONE_RADIUS);
   assert.ok(free(L.shredder.stand), '작업 자리에 설 수 있다');
+});
+
+// ---- 행운의 쿠키 노점 ----
+test('쿠키 노점: 완충 구역, 스폰에서 보이는 거리, 양 끝 원 2개가 계산대 양 끝(판의 x축)에 있다', () => {
+  const st = L.stall;
+  const fortuneI = L.interactables.find((i) => i.kind === 'fortune');
+  assert.deepEqual([st.x, st.z, st.rotY], [fortuneI.x, fortuneI.z, Math.PI / 4]);
+  assert.ok(st.x > ZONES.forestMaxX && st.x < ZONES.cityMinX, 'buffer');
+  assert.ok(inWalk(st));
+  assert.ok(d(st, SPAWN) >= 6 && d(st, SPAWN) <= 14);
+  assert.ok(d(st, L.sign) >= 3 && d(st, FURNACE) >= 5);
+  const ends = L.obstacles.filter((o) => o.radius === 0.55);
+  assert.equal(ends.length, 2);
+  for (const e of ends) assert.ok(Math.abs(d(e, st) - 0.8) < 1e-9);
+  assert.ok(fortuneI.interactRange > 2 && fortuneI.interactRange <= 2.5);
+  // 앞(+z 로컬) 1.6 지점은 비어 있어 플레이어가 설 수 있다.
+  const front = { x: st.x + 1.6 * Math.sin(st.rotY), z: st.z + 1.6 * Math.cos(st.rotY) };
+  for (const o of L.obstacles) assert.ok(d(front, o) >= o.radius + PLAYER.radius, JSON.stringify(o));
+  assert.ok(d(front, fortuneI) <= fortuneI.interactRange, '앞에 서면 E 범위 안');
 });
