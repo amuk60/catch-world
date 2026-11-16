@@ -1,7 +1,7 @@
 // 소각장 물건 고르기 (순수). 물건 표는 config.js 의 INCINERATOR.items 이고, 여기서는 행동별 목록·숫자 키·멘트·자동 선택·표 검사를 한다.
 import { INCINERATOR } from '../config.js';
 
-export const MAX_LINE_LENGTH = 20; // 말풍선이 읽기 좋도록 멘트 한 줄의 최대 글자 수
+export const MAX_LINE_LENGTH = 32; // 말풍선이 읽기 좋도록 멘트 한 줄의 최대 글자 수
 export const PICKER_ACTIONS = ['burn', 'shred']; // 선택 창을 여는 행동(세탁소 행동은 물건이 없다)
 
 // 숫자 키(윗줄·숫자패드) -> 0 부터의 번호. 목록 길이 밖이거나 숫자 키가 아니면 -1.
