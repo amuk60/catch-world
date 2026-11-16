@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { YARD, FURNACE, SPAWN, COLORS } from './config.js';
+import { signCanvas, liveSignTexture, drawSignText } from './signFont.js';
 
 const GROUND_SIZE = 140;
 // 납작한 면은 높이를 달리하고 polygonOffset 을 더해 지면(y=0)과 깊이가 겹쳐 깜빡이지 않게 한다.
@@ -95,29 +96,16 @@ export function buildPlayer(scene) {
 
 // 나무 팻말 글씨 텍스처. 글씨가 85% 폭에 들어가도록 글꼴을 줄인다.
 function signTexture(text) {
-  const canvas = document.createElement('canvas');
-  canvas.width = 1024;
-  canvas.height = 384;
-  const g = canvas.getContext('2d');
-  g.fillStyle = '#d9b27c';
-  g.fillRect(0, 0, canvas.width, canvas.height);
-  g.strokeStyle = '#8a5f3a';
-  g.lineWidth = 14;
-  g.strokeRect(7, 7, canvas.width - 14, canvas.height - 14);
-  let size = 150;
-  const font = (px) => `bold ${px}px "Georgia", "Times New Roman", serif`;
-  g.font = font(size);
-  while (size > 20 && g.measureText(text).width > canvas.width * 0.85) {
-    size -= 4;
-    g.font = font(size);
-  }
-  g.fillStyle = '#4a2f1a';
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  g.fillText(text, canvas.width / 2, canvas.height / 2);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
+  return liveSignTexture(() => {
+    const { canvas, g } = signCanvas(1024, 384);
+    g.fillStyle = '#d9b27c';
+    g.fillRect(0, 0, 1024, 384);
+    g.strokeStyle = '#8a5f3a';
+    g.lineWidth = 14;
+    g.strokeRect(7, 7, 1024 - 14, 384 - 14);
+    drawSignText(g, text, { x: 512, y: 196, maxW: 1024 * 0.85, size: 190, color: '#4a2f1a', face: 'yard', minPx: 20, shadow: 'rgba(255,240,205,0.55)', shadowOff: 4 });
+    return canvas;
+  });
 }
 
 // 나무 팻말: 기둥 2개 + 밝은 나무 판자 + 글씨 면. 글씨는 판자의 +z 면(로컬)에 붙는다.

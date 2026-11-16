@@ -208,7 +208,7 @@ test('면접 구역: 지원자 의자 3개 중 어디에 앉아도 켜진다(서
 });
 
 test('장식: 칠판(서쪽 벽)·벽시계(북쪽 벽)·간판 "면접장"(북쪽 벽, 창 아래가 아니라 가운데)·화분이 방 안에 있다', () => {
-  assert.equal(I.sign.text, '면접장');
+  assert.equal(I.sign.text, '캐치 면접장');
   assert.ok(inBounds(I.sign, 0) && I.sign.y + I.sign.height / 2 <= I.wallHeight && I.sign.y - I.sign.height / 2 >= 1.4);
   assert.ok(Math.abs(I.board.x - B.minX) < 0.3 && I.board.y > 1 && I.board.width > 1.5 && I.board.height > 0.8);
   assert.ok(Math.abs(Math.sin(I.board.rotY) - 1) < 1e-9, '동쪽(방 안쪽)을 본다');

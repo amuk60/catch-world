@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { INTERIOR_LOOK } from './config.js';
 import { laundrySignCanvas, stripeCanvas, valanceCanvas } from './buildingExterior.js';
+import { liveSignTexture } from './signFont.js';
 import { createLaundryFx } from './laundryFx.js';
 import { hiddenWalls } from './logic/wallVisibility.js';
 import { buildWashers, buildClothesline } from './laundry.js';
@@ -19,9 +20,7 @@ export const INTERIOR_MODEL_ITEMS = [
 
 // 북쪽 벽 안쪽 면의 간판: 외관 간판과 같은 캔버스 그림(청록 판 + 크림 테두리 + 세탁기·셔츠 + "세탁소"). 벽 그룹에 넣어 벽과 함께 숨는다.
 function addShopSign(wallGroups, sign) {
-  const texture = new THREE.CanvasTexture(laundrySignCanvas(1000, 200));
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 8;
+  const texture = liveSignTexture(() => laundrySignCanvas(1000, 200));
   const cream = new THREE.MeshStandardMaterial({ color: INTERIOR_LOOK.sign.board, roughness: 0.8 });
   const board = new THREE.Mesh(new THREE.BoxGeometry(sign.width, sign.height, 0.08), cream);
   const face = new THREE.Mesh(

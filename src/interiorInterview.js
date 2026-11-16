@@ -1,8 +1,9 @@
 // 브라우저 전용: 면접장 실내 공간. 세탁소 실내(interiorLaundry.js)와 같은 방식(공용 조각은 interiorKit.js)이고 데이터는 logic/interiors.js 의 buildInterviewInterior 에서 온다.
 // 차갑고 딱딱한 사무실 모양(config 의 INTERVIEW_LOOK: 쿨 화이트·회색 벽, 카펫 타일 바닥, 남색 포인트, 흰 조명, 가구는 재질 색을 덮어쓴 사무용).
-// 긴 면접관 책상 + 책상 뒤 의자 3개(면접관은 interviewers.js 가 앉힌다), 지원자 의자, 서쪽 벽 화이트보드·안내판·유리 출입문, 북쪽 벽 벽시계·간판 "면접장"·블라인드 창, 서류함·정수기·쓰레기통·화분과 낮은 책장.
+// 긴 면접관 책상 + 책상 뒤 의자 3개(면접관은 interviewers.js 가 앉힌다), 지원자 의자, 서쪽 벽 화이트보드·안내판·유리 출입문, 북쪽 벽 벽시계·간판 "캐치 면접장"·블라인드 창, 서류함·정수기·쓰레기통·화분과 낮은 책장.
 import * as THREE from 'three';
 import { INTERVIEW_LOOK } from './config.js';
+import { signCanvas, liveSignTexture, fontOf } from './signFont.js';
 import { hiddenWalls } from './logic/wallVisibility.js';
 import { buildPickables } from './world.js';
 import { placed, buildFloor, buildWallGroups, addSign, addLights } from './interiorKit.js';
@@ -14,16 +15,14 @@ export const INTERVIEW_MODEL_ITEMS = [
 
 // 캔버스 판 하나(글씨 판 공통 뼈대).
 function canvasTexture(width, height, draw) {
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  draw(canvas.getContext('2d'), width, height);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
+  return liveSignTexture(() => {
+    const { canvas, g } = signCanvas(width, height);
+    draw(g, width, height);
+    return canvas;
+  });
 }
 
-const FONT = (px, bold = false) => `${bold ? 'bold ' : ''}${px}px "Malgun Gothic", sans-serif`;
+const FONT = (px, bold = false) => fontOf('corp', px, bold ? 'bold' : 'normal');
 
 // 화이트보드 글씨 판(흰 바탕 + 남색 글씨 평가표).
 function boardTexture() {
@@ -208,7 +207,7 @@ export function buildInteriorInterview(scene, interior, models, look = INTERVIEW
     root.add(chairs[seat.id]);
   }
 
-  // 간판 "면접장"(북쪽 벽), 벽시계(북쪽 벽), 화이트보드와 안내판(서쪽 벽).
+  // 간판 "캐치 면접장"(북쪽 벽), 벽시계(북쪽 벽), 화이트보드와 안내판(서쪽 벽).
   addSign(wallGroups, interior.sign, look);
   const { clock, board, notice } = interior;
   const clockMesh = new THREE.Group();

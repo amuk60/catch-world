@@ -21,8 +21,8 @@ const laundryCircles = L.obstacles.filter((o) => o.radius === laundry.obstacleRa
 
 test('면접장 건물: 면접장 터(6x6) 안에 완전히 들어가고 세탁소와 같은 크기·방향(정면 서쪽)이다', () => {
   assert.equal(interview.id, 'interview');
-  assert.equal(interview.label, '면접장');
-  assert.equal(laundry.label, '세탁소');
+  assert.equal(interview.label, '캐치 면접장');
+  assert.equal(laundry.label, '마음 세탁소');
   assert.equal(interview.z, slot.z);
   assert.ok(interview.x >= slot.x && interview.x <= slot.x + 1.0);
   assert.deepEqual([interview.width, interview.depth, interview.tile, interview.rotY], [laundry.width, laundry.depth, laundry.tile, laundry.rotY]);
@@ -44,7 +44,7 @@ test('두 건물의 외곽 원은 서로 겹치지 않고, 문은 건물 정면�
 test('면접장 건물 상호작용: kind building, 라벨 면접장, E 동작 없음, 반경·범위 규칙', () => {
   const b = L.interactables.find((i) => i.id === 'interview');
   assert.equal(b.kind, 'building');
-  assert.equal(b.label, '면접장');
+  assert.equal(b.label, '캐치 면접장');
   assert.ok(b.radius > 0 && b.interactRange >= b.radius + PLAYER.radius + 0.8 - 1e-9);
   assert.ok(Math.hypot(b.x - interview.x, b.z - interview.z) < 1.5);
   assert.equal(actionOf(b), null);
@@ -56,7 +56,7 @@ test('면접장 문: kind door, to interview, 문 앞(건물 밖)에 있고 E �
   assert.ok(door);
   assert.equal(door.kind, 'door');
   assert.equal(door.to, 'interview');
-  assert.equal(door.label, '면접장 문');
+  assert.equal(door.label, '캐치 면접장 문');
   const n = front(interview.rotY);
   const along = (door.x - interview.door.x) * n.x + (door.z - interview.door.z) * n.z;
   assert.ok(along > 0.3 && along < 1.5);

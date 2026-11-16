@@ -31,7 +31,7 @@ test('세탁소를 추가해도 기존 배치(나무·덤불·바위·랜턴·�
     trees: L.trees, bushes: L.bushes, rocks: L.rocks, lanterns: L.lanterns, furnaceItems: L.furnaceItems, sign: L.sign, shredder: L.shredder,
     interactables: L.interactables.slice(0, 10), obstacles: L.obstacles.slice(0, 34), buildingSlots: L.buildingSlots, plaza: L.plaza,
   };
-  assert.equal(createHash('sha1').update(JSON.stringify(before)).digest('hex'), '6b30dc2d41be33554ba94a65fb5cf545470650a9');
+  assert.equal(createHash('sha1').update(JSON.stringify(before)).digest('hex'), 'f429f00553a4e125b14d16a0c1065867a00a216a');
   assert.equal(L.interactables.length, 14); // 세탁소 건물·문과 면접장 건물·문이 추가됐다(앞의 10개 = 소각로·위로 3·통나무 자리 6은 그대로)
 });
 
@@ -105,7 +105,7 @@ test('건물 상호작용: kind building, 라벨 세탁소, 반경·범위 규�
   const b = L.interactables.find((i) => i.id === 'laundry');
   assert.ok(b);
   assert.equal(b.kind, 'building');
-  assert.equal(b.label, '세탁소');
+  assert.equal(b.label, '마음 세탁소');
   assert.ok(b.radius > 0 && b.interactRange >= b.radius + PLAYER.radius + 0.8 - 1e-9);
   assert.equal(b.item, undefined); // 모델 배치는 건물 조립 코드가 한다(상호작용 모델 목록에 넣지 않는다)
   assert.ok(Math.hypot(b.x - laundry.x, b.z - laundry.z) < 1.5, 'near building centre');
