@@ -4,7 +4,7 @@ import { validateNick } from './nick.js';
 
 export const SPACE_IDS = Object.keys(SPACES);
 // 다른 방문자가 보낼 수 있는 동작 이름(플레이어 모델의 기본 상태 + 행동 클립). 이 밖의 값은 idle 로 본다.
-export const ANIMS = ['idle', 'walk', 'sit', 'emote-no', 'pick-up', 'attack-melee-right', 'interact-right', 'emote-yes', 'interact-left', 'jump'];
+export const ANIMS = ['idle', 'walk', 'sit', 'emote-no', 'pick-up', 'attack-melee-right', 'interact-right', 'emote-yes', 'interact-left', 'jump', 'holding-right', 'holding-both'];
 export const OUTFITS = ['clean', 'dirty', 'tank', 'drying', 'dry'];
 
 const ID_RE = /^[A-Za-z0-9_-]{4,24}$/;

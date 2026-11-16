@@ -159,7 +159,26 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
     if (button) choiceHandlers.onPick?.(Number(button.dataset.index));
   });
   choiceCancel.addEventListener('click', () => choiceHandlers.onCancel?.());
-  container.append(tooltip, bubble, speechLayer, prompt, fortune, stress, actionBar, meditate, ctaChip, side, result, choice, portal);
+  // 소각장 물건 고르기 창: 행동 막대 위에 뜬다. 배경(창 밖)을 누르거나 Esc 로 닫는다.
+  const picker = document.createElement('div');
+  picker.id = 'picker';
+  picker.setAttribute('role', 'dialog');
+  picker.innerHTML = `
+    <div class="picker-card">
+      <p class="picker-title"></p>
+      <div class="picker-list"></div>
+      <button type="button" class="picker-cancel"><span class="picker-cancel-label">취소</span><span class="keycap">Esc</span></button>
+    </div>`;
+  const pickerTitle = picker.querySelector('.picker-title');
+  const pickerList = picker.querySelector('.picker-list');
+  let pickerHandlers = {};
+  picker.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); }); // 아래 게임 화면으로 클릭이 새지 않게(이동·드래그 방지)
+  picker.addEventListener('click', (e) => {
+    const button = e.target.closest('button[data-index]');
+    if (button) pickerHandlers.onPick?.(Number(button.dataset.index));
+    else if (!e.target.closest('.picker-card') || e.target.closest('.picker-cancel')) pickerHandlers.onCancel?.();
+  });
+  container.append(tooltip, bubble, speechLayer, prompt, fortune, stress, actionBar, meditate, ctaChip, side, result, choice, picker, portal);
   let stressStart = 100;
 
   cookieButton.addEventListener('click', () => onCrack());
@@ -265,6 +284,34 @@ export function createHud(container, { onCrack = () => {}, onClose = () => {} } 
       choiceHandlers = {};
     },
     isChoiceOpen: () => choice.classList.contains('open'),
+    // 소각장 물건 고르기 창. items: [{ key, label, icon(캔버스) }]. onPick(번호 0~), onCancel().
+    openPicker({ title, items, onPick, onCancel }) {
+      pickerTitle.textContent = title;
+      pickerList.replaceChildren(...items.map((it, i) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.dataset.index = String(i);
+        const keycap = document.createElement('span');
+        keycap.className = 'keycap';
+        keycap.textContent = it.key;
+        const icon = document.createElement('canvas');
+        icon.className = 'picker-icon';
+        icon.width = it.icon.width;
+        icon.height = it.icon.height;
+        icon.getContext('2d').drawImage(it.icon, 0, 0);
+        const label = document.createElement('span');
+        label.textContent = it.label;
+        button.append(keycap, icon, label);
+        return button;
+      }));
+      pickerHandlers = { onPick, onCancel };
+      picker.classList.add('open');
+    },
+    closePicker() {
+      picker.classList.remove('open');
+      pickerHandlers = {};
+    },
+    isPickerOpen: () => picker.classList.contains('open'),
     // 전환 오버레이: radius 1 = 활짝(보이지 않음), 0 = 화면 전체가 덮임. 전환 중에만 켜진다.
     setPortal(radius) {
       const open = radius >= 1;

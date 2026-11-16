@@ -6,7 +6,7 @@ import { clipNameForState, findClip, FADE_SECONDS } from './logic/animation.js';
 import { createOutfitLook } from './outfitLook.js';
 import { createFx } from './actor.js';
 
-const ACTION_CLIPS = ['emote-no', 'pick-up', 'attack-melee-right', 'interact-right', 'emote-yes', 'interact-left', 'jump']; // 구역 행동(소각장·세탁소·면접장)에 쓰는 클립
+const ACTION_CLIPS = ['emote-no', 'pick-up', 'attack-melee-right', 'interact-right', 'emote-yes', 'interact-left', 'jump', 'holding-right', 'holding-both']; // 구역 행동(소각장·세탁소·면접장)에 쓰는 클립
 const ACTION_FADE = 0.15; // 행동 클립으로 넘어갈 때 크로스페이드(초)
 const HAND_BONE = /arm[-_ ]?right|right[-_ ]?(hand|arm)|hand[-_ ]?r/i;
 
@@ -71,6 +71,27 @@ export function createPlayer(gltf) {
     if (from) from.crossFadeTo(to, FADE_SECONDS, false);
   }
 
+  // 절차적 몸짓(클립 위에 얹는 작은 기울임): 머리 끄덕임(nod, x축)·갸웃(tilt, z축)·상체 숙임(lean, x축). 라디안, 목표값으로 부드럽게 따라간다.
+  // 클립이 매 프레임 덮어쓰는 뼈는 덮이고, 안 쓰는 뼈는 직전에 얹은 만큼을 먼저 되돌린 뒤 다시 얹어 누적되지 않는다. 내 캐릭터만 쓴다(다른 방문자에게는 클립만 보인다).
+  const poseBones = { head: null, torso: null };
+  model.traverse((o) => { if (o.isBone && o.name === 'head') poseBones.head = o; else if (o.isBone && o.name === 'torso') poseBones.torso = o; });
+  const poseGoal = { nod: 0, tilt: 0, lean: 0 };
+  const poseNow = { nod: 0, tilt: 0, lean: 0 };
+  const poseApplied = { head: new THREE.Quaternion(), torso: new THREE.Quaternion() };
+  const poseQ = new THREE.Quaternion();
+  const poseE = new THREE.Euler();
+  function undoPose() {
+    for (const key of ['head', 'torso']) {
+      const bone = poseBones[key];
+      if (bone) bone.quaternion.multiply(poseQ.copy(poseApplied[key]).invert());
+      poseApplied[key].identity();
+    }
+  }
+  function applyPose() {
+    if (poseBones.head) { poseApplied.head.setFromEuler(poseE.set(poseNow.nod, 0, poseNow.tilt)); poseBones.head.quaternion.multiply(poseApplied.head); }
+    if (poseBones.torso) { poseApplied.torso.setFromEuler(poseE.set(poseNow.lean, 0, 0)); poseBones.torso.quaternion.multiply(poseApplied.torso); }
+  }
+
   // 오른손(팔 끝)에 소품을 붙일 자리. 뼈의 스케일(모델 스케일)을 상쇄해 자식의 단위가 월드 단위와 같다.
   // 오른손 뼈를 못 찾으면 group 에 고정 위치로 붙인다.
   let handBone = null;
@@ -130,6 +151,7 @@ export function createPlayer(gltf) {
       if (!acting) return;
       acting = false;
       turn = null;
+      poseGoal.nod = 0; poseGoal.tilt = 0; poseGoal.lean = 0;
       const to = actions[state] ?? actions.idle;
       current = actions[state] ? state : 'idle';
       if (to && playing !== to) crossTo(to, FADE_SECONDS);
@@ -139,6 +161,8 @@ export function createPlayer(gltf) {
       const to = actions.sit;
       if (to && playing !== to) crossTo(to, FADE_SECONDS);
     },
+    // 절차적 몸짓 목표(생략한 값은 0). 행동이 끝나면 endAction 이 모두 0 으로 되돌린다.
+    setPose({ nod = 0, tilt = 0, lean = 0 } = {}) { poseGoal.nod = nod; poseGoal.tilt = tilt; poseGoal.lean = lean; },
     isActing: () => acting,
     // 지금 재생 중(크로스페이드 중이면 가는 쪽)인 클립 이름. 'idle' | 'walk' | 'sit' | 행동 클립 이름.
     getAnim: () => animNames.get(playing) ?? 'idle',
@@ -149,7 +173,11 @@ export function createPlayer(gltf) {
         group.rotation.y = turn.from + turn.delta * (k * k * (3 - 2 * k)); // smoothstep
         if (k >= 1) turn = null;
       }
+      undoPose();
       mixer.update(dt);
+      const k = 1 - Math.exp(-14 * dt);
+      for (const key of ['nod', 'tilt', 'lean']) poseNow[key] += (poseGoal[key] - poseNow[key]) * k;
+      applyPose();
       fx.update(dt);
     },
   };

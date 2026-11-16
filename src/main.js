@@ -7,10 +7,12 @@ import { buildDecor } from './decor.js';
 import { buildLayout } from './logic/layout.js';
 import {
   buildGround, buildCity, buildBoundary, buildFurnace, buildPlayer, buildSign, buildMarker, buildPickables,
-  buildShredder, buildPaper, MARKER_Y,
+  buildShredder, MARKER_Y,
 } from './world.js';
 import { createPlayer } from './player.js';
 import { createFire } from './fire.js';
+import { buildItemProp, buildItemIcon, createGlitter } from './incineratorProps.js';
+import { itemsFor, pickIndexFromCode, variantOf, lineFor, pickRandomItem, poseFor } from './logic/incinerator.js';
 import { createHud } from './hud.js';
 import { interactTarget, hoverLabel, nearestInRange, actionOf, standPoint } from './logic/interaction.js';
 import { nextMode, holdsSeat, showPrompt as promptAllowed } from './logic/playerMode.js';
@@ -43,7 +45,7 @@ import { renderShareCard, saveShareCard, copyText } from './share.js';
 import { easeInOut } from './logic/burn.js';
 import {
   ORBIT, CAMERA_CLEAR, TRANSITION, PLAYER, PLAYER_MODEL, FURNACE, STRESS, SPAWN, SEED, COMFORT_MESSAGES, FORTUNES,
-  ACTION_REDUCE, ACTION_EFFECT_AT, ACTION_TARGET_SECONDS, ACTION_TURN_SECONDS, AUTO_GAP, PASSIVE,
+  INCINERATOR, ACTION_REDUCE, ACTION_EFFECT_AT, ACTION_TARGET_SECONDS, ACTION_TURN_SECONDS, AUTO_GAP, PASSIVE,
   FIRE_RANGE, SHREDDER_RANGE, WASHER_RANGE, CLOTHESLINE_RANGE, FIRE_ZONE_RADIUS, CATCH_URL, GA_MEASUREMENT_ID, WEAR_SECONDS, WEAR_SWAP_AT,
   INTERVIEW, INTERVIEW_ROUND, INTERVIEW_BONUS, INTERVIEW_ZONE_RADIUS, INTERVIEW_ANSWER_SECONDS, INTERVIEW_IMPROV_SECONDS, INTERVIEW_FINALE_SECONDS, SPEECH_SECONDS,
   MULTIPLAYER, SUPABASE_URL, SUPABASE_ANON_KEY, CLOTHESLINE_SLOTS, QUICK_CHAT,
@@ -60,9 +62,14 @@ import { createKeyState, isMoveKey, isArrowKey, shouldIgnoreKey } from './logic/
 import { createGuideHud } from './guideHud.js';
 
 const MAX_DT = 0.1; // 한 프레임에 진행하는 최대 시간(초). 탭이 멈췄다 돌아와도 행동·애니메이션이 한꺼번에 튀지 않게 한다.
-const FALLBACK_RAW_DURATIONS = { 'emote-no': 0.667, 'pick-up': 0.333, 'attack-melee-right': 0.417, 'interact-right': 0.667, 'emote-yes': 0.667 }; // 캐릭터 모델이 없을 때(모델의 실제 클립 길이)
-const PAPER_FLIGHT_SEC = 0.35; // 던진 종이가 불까지 날아가는 시간
-const PAPER_SLIDE_SEC = 0.2; // 파쇄기 투입구로 들어가는 시간
+const FALLBACK_RAW_DURATIONS = { 'emote-no': 0.667, 'pick-up': 0.333, 'attack-melee-right': 0.417, 'interact-right': 0.667, 'interact-left': 0.667, 'emote-yes': 0.667, 'holding-right': 0.167, 'holding-both': 0.167 }; // 캐릭터 모델이 없을 때(모델의 실제 클립 길이)
+const SHRED_ARC = 0.5; // 파쇄기 투입구로 미끄러져 갈 때 포물선 높이
+const SPEECH_KEY = 'line-self'; // 소각장 멘트 말풍선 id
+const LINE_SECONDS = 2.2; // 멘트가 떠 있는 시간(초)
+const SHOW_SCALE = 1.5; // 물건을 들여다볼 때 종이를 키우는 배율(멀리서도 읽히게)
+const SHOW_LIFT = 0.45; // 들여다볼 때 종이를 올리는 높이(월드 단위)
+const SHOW_FORWARD = 0.35; // 들여다볼 때 종이를 카메라 쪽으로 내미는 거리
+const EMBER_AT = [0.0, 0.45]; // 지켜보는 단계에서 불씨를 띄우는 시각(초)
 const PAPER_ARC = 0.6; // 던질 때 포물선이 올라가는 높이
 const PAPER_FIRE_Y = 0.9; // 종이가 도착하는 불 위 높이
 const WASH_GUIDE_TAIL = 1.6; // 셔츠가 세탁기에 들어간 뒤 "세탁 중" 안내를 더 보이는 시간(초: 덜컹거림이 끝날 때까지)
@@ -74,7 +81,6 @@ const POCKET = { pos: [0.13, 0.6, 0.2] };
 const POCKET_SCALE = 0.3;
 const CLEAR_POPUP_DELAY = 0.3; // 클리어한 행동이 끝난 뒤 팝업이 뜨기까지(초)
 const SHARE_FOOTER = 'Catch World · 학사 과제용 비공식 프로젝트';
-const CRUMPLE_FRACTION = 0.35; // 태우기: 던지기 단계 앞쪽 이만큼 동안 종이를 구긴다
 const CRUMPLE_SCALE = 0.8; // 구긴 종이의 크기
 const CRUMPLE_SPIN = 18; // 구길 때 도는 속도(라디안/초)
 // 손에 든 소품(종이·셔츠)의 위치(손 뼈 기준, 단위는 월드 단위). 화면으로 보며 맞춘 값이다. 방향은 소품마다 userData.rot(주머니에서도 같은 방향).
@@ -181,7 +187,7 @@ if (isMobileUA(navigator.userAgent)) {
   const desired = new THREE.Vector3();
   let moveTarget = null;
   const keys = createKeyState(); // 눌린 이동 키(WASD·방향키)
-  let mode = 'free'; // 'free' | 'seated' | 'fortune' | 'result' | 'transition' | 'wearing' | 'interview-choice' | 'interview-play' (전이는 logic/playerMode.js)
+  let mode = 'free'; // 'free' | 'seated' | 'fortune' | 'result' | 'transition' | 'wearing' | 'interview-choice' | 'interview-play' | 'item-choice' (전이는 logic/playerMode.js)
   const transition = createTransition(TRANSITION); // 공간 전환(차원문) 상태 기계
   const cameraClear = createCameraClear(CAMERA_CLEAR); // 마당에서 건물이 플레이어를 가리면 카메라를 천천히 돌려 피한다(config 의 CAMERA_CLEAR 로 끈다)
   const clearBoxes = buildingBoxes(layout.buildings, CAMERA_CLEAR.margin);
@@ -276,7 +282,15 @@ if (isMobileUA(navigator.userAgent)) {
   const runner = createRunner({
     durations, byAction, turnSeconds: ACTION_TURN_SECONDS, effectAt: ACTION_EFFECT_AT, autoGap: AUTO_GAP,
     canStart: (id) => inRangeFor(id), autoActions: () => autoActionsOf(currentZone),
+    // 자동이 태우기·파쇄를 시작할 때마다 물건을 무작위로 고른다(태우기는 드물게 오로라 가루). 직접 고른 행동은 start 가 변형을 같이 넘긴다.
+    variantFor: (id) => {
+      if (!isItemAction(id)) return undefined;
+      chosen = pickRandomItem(id, Math.random, { lastId: lastAuto[id] }) ?? chosen;
+      lastAuto[id] = chosen.id; // 같은 행동에서 같은 물건이 연달아 나오지 않게
+      return variantOf(chosen);
+    },
   });
+  const lastAuto = {}; // 자동이 행동별로 마지막에 고른 물건 id
   const passive = createPassive(PASSIVE);
 
   // 손에 붙일 자리. 캐릭터 모델이 없으면 상자 플레이어 옆에 고정 위치.
@@ -290,16 +304,19 @@ if (isMobileUA(navigator.userAgent)) {
   }
   // 손에 드는 소품은 행동마다 하나를 모든 단계에서 재사용한다: 주머니(player 기준) -> 손(handAttach) -> 날아가기(scene). 행동이 끝나면 항상 숨긴다.
   // 태우기·파쇄는 종이, 세탁은 구겨진 셔츠, 널기는 깨끗한 흰 셔츠. 모두 같은 오른손 자리(handAttach)에 붙는다.
-  const paper = buildPaper(0.7, 0.93); // 불합격 통지서: 기본 카메라에서도 읽히는 크기
-  paper.userData.rot = [Math.PI / 2, 0, 0];
+  const itemProps = new Map(INCINERATOR.items.map((item) => [item.id, buildItemProp(item, 0.7, 0.93)])); // 소각장 물건 5종(불합격 통지서 크기: 기본 카메라에서도 읽힌다)
+  const glitter = createGlitter(yardRoot); // 오로라 가루 반짝이
   const dirtyShirt = buildCrumpledShirt();
   dirtyShirt.userData.rot = [0, 0, 0];
   const cleanShirt = buildCleanShirt();
   cleanShirt.userData.rot = [0, 0, 0];
-  const HELD_BY_ACTION = { burn: paper, shred: paper, wash: dirtyShirt, hang: cleanShirt };
-  let held = paper;
+  const HELD_BY_ACTION = { wash: dirtyShirt, hang: cleanShirt }; // 소각장 행동의 소품은 고른 물건(itemProps)
+  const isItemAction = (id) => id === 'burn' || id === 'shred';
+  let chosen = INCINERATOR.items[0]; // 이번 행동의 물건(선택 창이나 자동이 정한다)
+  let chosenLine = ''; // 그 물건의 멘트(행동을 시작할 때 한 줄 고른다)
   let paperVariant = 0; // 불합격 통지서 문구 4종을 행동마다 번갈아 쓴다
-  for (const item of [paper, dirtyShirt, cleanShirt]) {
+  let held = itemProps.get(chosen.id);
+  for (const item of [...itemProps.values(), dirtyShirt, cleanShirt]) {
     item.visible = false;
     handAttach.add(item);
   }
@@ -313,9 +330,15 @@ if (isMobileUA(navigator.userAgent)) {
   }
   placePaperInHand();
 
-  let flight = null; // 날아가는 소품 { kind: 'burn' | 'shred' | 'wash', from, to, t, dur, startScale, washer }
+  let flight = null; // 날아가는 소품 { kind: 'burn' | 'glide' | 'slide' | 'wash', from, to, t, dur, startScale, washer }
+  let stage = null; // 지금 소각장 단계 { phase, t, dur }(세탁소 행동에는 없다)
+  let showBlend = 0; // 들여다보는 중 종이를 카메라 쪽으로 돌린 정도(0..1)
   let pull = null; // 주머니에서 꺼내는 중 { t, dur }
   let crumple = null; // 태우기에서 종이를 구기는 중 { t, dur }
+  const tmpV = new THREE.Vector3();
+  const tmpV2 = new THREE.Vector3();
+  const tmpM = new THREE.Matrix4();
+  const faceQ = new THREE.Quaternion();
   let actionId = null;
   let washTail = 0; // 세탁기에 셔츠가 들어간 뒤 덜컹거림이 끝날 때까지 "세탁 중" 안내를 이어 가는 남은 시간(초)
   const tmpFrom = new THREE.Vector3();
@@ -387,17 +410,54 @@ if (isMobileUA(navigator.userAgent)) {
     pull = null;
     crumple = null;
     flight = null;
+    stage = null;
+    showBlend = 0;
     placePaperInHand();
+    held.userData.setOpen?.(0);
     held.visible = false;
+    hud.clearSpeech(SPEECH_KEY);
+    glitter.clear();
   }
 
-  // 러너의 단계 시작: 클립 재생 또는 회전(제자리에서 대상 쪽으로, 대기 자세).
+  // 클립 재생 속도: 정지 자세 클립(0.17초)은 그대로, 나머지는 단계 길이에 맞춰 늘이거나 줄인다(0.3~1.5배).
+  const rawOf = (name) => (character ? character.getRawClipDurations()[name] : FALLBACK_RAW_DURATIONS[name]) ?? 0.5;
+  const speedFor = (step) => (rawOf(step.name) < 0.3 ? 1 : Math.min(1.5, Math.max(0.3, rawOf(step.name) / step.seconds)));
+
+  // 종이를 카메라 쪽으로 돌려 들여다보는 자세(들여다보기·한마디 단계): 종이 앞면(+y)이 카메라를 향하고 글자 윗쪽이 하늘을 향한다. blend 0 이면 손에 쥔 원래 방향.
+  function faceCamera(blend) {
+    held.updateWorldMatrix(true, false);
+    held.getWorldPosition(tmpV);
+    tmpV2.copy(camera.position).sub(tmpV).normalize(); // 종이 앞면 방향 n
+    const up = tmpV.set(0, 1, 0).addScaledVector(tmpV2, -tmpV2.y).normalize(); // n 에 수직인 하늘 방향
+    const zAxis = up.clone().negate(); // 종이 윗쪽은 로컬 -z
+    const xAxis = new THREE.Vector3().crossVectors(tmpV2, zAxis);
+    faceQ.setFromRotationMatrix(tmpM.makeBasis(xAxis, tmpV2, zAxis));
+    held.parent.getWorldQuaternion(tmpQuat);
+    faceQ.premultiply(tmpQuat.invert());
+    held.quaternion.setFromEuler(tmpEuler.set(...held.userData.rot)).slerp(faceQ, blend);
+    held.position.set(...PAPER_HAND.pos);
+    held.scale.setScalar(1 + (SHOW_SCALE - 1) * blend);
+    // 몸·머리에 가리지 않게 월드 기준으로 위(하늘)와 카메라 쪽으로 띄운다.
+    held.parent.updateWorldMatrix(true, false);
+    held.parent.localToWorld(tmpV.copy(held.position));
+    tmpV.y += SHOW_LIFT * blend;
+    tmpV.x += tmpV2.x * SHOW_FORWARD * blend;
+    tmpV.z += tmpV2.z * SHOW_FORWARD * blend;
+    held.position.copy(held.parent.worldToLocal(tmpV));
+  }
+
+  // 러너의 단계 시작: 클립 재생 또는 회전(제자리에서 대상 쪽으로, 대기 자세). 소각장 단계(phase 가 있다)는 startItemStep 이 장면을 맡는다.
   function onStep({ action, index, step }) {
     if (index === 0) {
       if (once('game_start')) track('game_start');
       actionId = action;
-      held = HELD_BY_ACTION[action];
-      if (held === paper) paper.userData.setVariant(paperVariant++ % paper.userData.variantCount);
+      if (isItemAction(action)) {
+        held = itemProps.get(chosen.id);
+        chosenLine = lineFor(chosen, action);
+        if (chosen.prop.kind === 'notice') held.userData.setVariant(paperVariant++ % held.userData.variantCount);
+      } else {
+        held = HELD_BY_ACTION[action];
+      }
       if (action === 'wash') dirtyShirt.userData.setSoiled(outfit.state === 'dirty'); // 그을음 옷을 빨 때는 어둡고 더러운 셔츠
       pocketQuat.setFromEuler(tmpEuler.set(...held.userData.rot));
       character?.beginAction();
@@ -411,8 +471,10 @@ if (isMobileUA(navigator.userAgent)) {
       } else {
         player.rotation.y = headingY(player.position, t);
       }
+      stage = step.phase ? { phase: step.phase, t: 0, dur: step.seconds } : null;
       return;
     }
+    if (step.phase) { startItemStep(step); return; }
     character?.playClip(step.name, byAction[action]?.speeds[step.name] ?? speeds[step.name] ?? 1);
     if (step.event === 'paperOut') {
       // 재킷 가슴 주머니에서 작은 종이가 나와 paperOut 순간까지 손으로 올라온다.
@@ -421,10 +483,44 @@ if (isMobileUA(navigator.userAgent)) {
       held.scale.setScalar(POCKET_SCALE);
       held.visible = true;
       updatePaper(0);
-    } else if (step.effect && action === 'burn') {
-      crumple = { t: 0, dur: step.seconds * CRUMPLE_FRACTION }; // 던지기 앞부분에서 종이를 구긴다
     }
   }
+
+  // 소각장 단계 시작(phase 별 장면). 클립은 단계 길이에 맞춰 재생하고, 물건의 움직임은 updateStage 가 매 프레임 이어 간다.
+  function startItemStep(step) {
+    const { phase } = step;
+    stage = { phase, t: 0, dur: step.seconds };
+    if (character) {
+      if (step.name === 'idle') character.idleInPlace();
+      else character.playClip(step.name, speedFor(step));
+    }
+    if (phase !== 'look' && phase !== 'mutter' && phase !== 'open') { // 들여다보는 자세가 끝났다: 손에 쥔 원래 방향으로
+      if (showBlend > 0) { showBlend = 0; if (!flight && !pull) placePaperInHand(); held.visible = true; }
+    }
+    if (phase === 'pull') {
+      pull = { t: 0, dur: step.seconds * step.eventAt }; // 주머니에서 올라온다(paperOut 에서 손에 쥔다)
+      handAttach.add(held);
+      held.scale.setScalar(POCKET_SCALE);
+      held.visible = true;
+      updatePaper(0);
+    } else if (phase === 'crumple') {
+      crumple = { t: 0, dur: step.seconds * 0.85 };
+    } else if (phase === 'glide') {
+      startShredFlight('glide', step.seconds);
+    } else if (phase === 'slide') {
+      startShredFlight('slide', step.seconds);
+    } else if (phase === 'grind') {
+      flight = null;
+      held.visible = false;
+    } else if (phase === 'watch') {
+      if (actionId === 'burn') { for (const at of EMBER_AT) setTimeoutGame(at, () => fire.embers(3)); }
+      if (held.userData.pour) held.visible = false; // 빈 주머니는 다시 주머니로
+    }
+  }
+
+  // 게임 시간으로 재는 한 번짜리 예약(탭이 멈추면 같이 멈춘다). 행동이 끝나면 비운다.
+  let timers = [];
+  function setTimeoutGame(seconds, fn) { timers.push({ left: seconds, fn }); }
 
   // 소품이 완전히 나왔다(pick-up 단계의 eventAt): 손에 쥔다.
   function onPaperOut() {
@@ -434,7 +530,27 @@ if (isMobileUA(navigator.userAgent)) {
   }
 
   // 효과 순간: 지수 -ACTION_REDUCE, 그리고 행동별 연출(소품이 손을 떠난다 / 빨래가 줄에 걸린다).
+  // 소각장: 태우기는 종이(가루)가 불에 닿는 순간, 파쇄는 조각이 쏟아지기 시작하는 순간이다.
+  function onItemEffect(id) {
+    track('action_done', { action: id });
+    track(id === 'burn' ? 'burn_item' : 'shred_item', { id: chosen.id });
+    applyReduction(ACTION_REDUCE);
+    changeOutfit(outfit.onAction(id));
+    if (id === 'burn') {
+      flight = null; // 종이는 불 속으로 들어갔다
+      held.visible = false;
+      fire.flare();
+      sfx.play('whoof'); // 소리는 불길이 확 솟는 순간 하나
+      if (chosen.flame) fire.setTint(chosen.flame.tint, chosen.flame.seconds);
+    } else {
+      shredder.shake();
+      sfx.play('shredder');
+      shredder.pour();
+    }
+  }
+
   function onEffect(id) {
+    if (isItemAction(id)) { onItemEffect(id); return; }
     track('action_done', { action: id });
     applyReduction(ACTION_REDUCE);
     crumple = null;
@@ -453,19 +569,37 @@ if (isMobileUA(navigator.userAgent)) {
     const startScale = held.scale.x;
     scene.attach(held);
     flight = {
-      kind: id, from: tmpFrom.clone(), to: new THREE.Vector3(), t: 0, startScale, washer: washIndex,
-      dur: id === 'burn' ? PAPER_FLIGHT_SEC : id === 'wash' ? SHIRT_FLIGHT_SEC : PAPER_SLIDE_SEC,
+      kind: id, from: tmpFrom.clone(), to: new THREE.Vector3(), t: 0, startScale, washer: washIndex, dur: SHIRT_FLIGHT_SEC,
     };
-    if (id === 'burn') {
-      flight.to.set(FURNACE.x, PAPER_FIRE_Y, FURNACE.z);
-    } else if (id === 'wash') {
-      laundry.washers.entryWorld(washIndex, flight.to);
-      net?.sendRoom({ k: 'fx', i: washIndex }); // 같은 세탁소의 다른 방문자 화면에서도 그 세탁기가 흔들린다
+    laundry.washers.entryWorld(washIndex, flight.to);
+    net?.sendRoom({ k: 'fx', i: washIndex }); // 같은 세탁소의 다른 방문자 화면에서도 그 세탁기가 흔들린다
+  }
+
+  // 던지기의 놓는 순간(release): 종이가 손을 떠나 불까지 날아간다(날아가기 단계 길이만큼). 가루 주머니는 손에 쥔 채 반짝이 가루를 뿌린다.
+  function onRelease() {
+    const fly = runner.stepsOf(actionId, chosen && variantOf(chosen)).find((st) => st.phase === 'fly');
+    const dur = (fly?.seconds ?? 0.5) * 0.98;
+    held.getWorldPosition(tmpFrom);
+    if (held.userData.pour) {
+      held.localToWorld(tmpV.copy(held.userData.pour));
+      glitter.burst(tmpV, new THREE.Vector3(FURNACE.x, PAPER_FIRE_Y, FURNACE.z), dur);
+      return;
+    }
+    const startScale = held.scale.x;
+    scene.attach(held);
+    flight = { kind: 'burn', from: tmpFrom.clone(), to: new THREE.Vector3(FURNACE.x, PAPER_FIRE_Y, FURNACE.z), t: 0, dur, startScale };
+  }
+
+  // 파쇄: 종이가 팔 끝에서 투입구까지 미끄러져 간다(glide), 투입구로 빨려 들어간다(slide).
+  function startShredFlight(kind, seconds) {
+    held.visible = true;
+    if (kind === 'glide') {
+      held.getWorldPosition(tmpFrom);
+      const startScale = held.scale.x;
+      scene.attach(held);
+      flight = { kind, from: tmpFrom.clone(), to: shredder.slotWorld(new THREE.Vector3()).add(new THREE.Vector3(0, 0.22, 0)), t: 0, dur: seconds, startScale };
     } else {
-      shredder.slotWorld(flight.to);
-      sfx.play('shredder');
-      shredder.wiggle();
-      shredder.spawnStrips();
+      flight = { kind, from: held.position.clone(), to: shredder.slotWorld(new THREE.Vector3()).add(new THREE.Vector3(0, -0.12, 0)), t: 0, dur: seconds, startScale: held.scale.x };
     }
   }
 
@@ -517,6 +651,7 @@ if (isMobileUA(navigator.userAgent)) {
     character?.endAction();
     clearPaper();
     actionId = null;
+    timers = [];
   }
 
   // 진행 중인 행동을 깨끗하게 취소한다(걷기·앉기·포춘 등): 종이를 치우고 자세를 idle 로 되돌린다.
@@ -526,6 +661,7 @@ if (isMobileUA(navigator.userAgent)) {
     character?.endAction();
     clearPaper();
     actionId = null;
+    timers = [];
   }
 
   // 행동 요청(막대 클릭·숫자 키). 막대가 보이는 구역 안의 자유 상태에서 쉬는 중이고 사정거리 안일 때만 시작한다.
@@ -534,7 +670,51 @@ if (isMobileUA(navigator.userAgent)) {
     stopWalking();
     if (id === 'interview') return interviewScene.openQuestion(); // 면접 보기: 질문 + 답변 선택 창(지수 감소는 답한 순간)
     if (id === 'improv') return interviewScene.startImprov(); // 돌발행동: 선택 없이 바로
-    return runner.start(id); // 첫 단계(한숨)는 이 프레임의 update 에서 시작된다.
+    if (isItemAction(id)) return openItemPicker(id); // 태우기·파쇄: 물건 고르기 창(고르면 startItemAction)
+    return runner.start(id); // 첫 단계는 이 프레임의 update 에서 시작된다.
+  }
+
+  // ---- 소각장 물건 고르기 창: 행동 막대의 태우기·파쇄(또는 1·2 키)를 누르면 열린다. 숫자 키·클릭으로 고르고 Esc·바깥 클릭은 아무 일 없이 닫는다. 열려 있는 동안 모드는 'item-choice'(이동·다른 단축키 잠김). ----
+  let pickerAction = null;
+  let pickerItems = [];
+  const iconCache = new Map();
+  const iconOf = (item) => { if (!iconCache.has(item.id)) iconCache.set(item.id, buildItemIcon(item)); return iconCache.get(item.id); };
+  function openItemPicker(id) {
+    const list = itemsFor(id);
+    if (!list.length || !dispatch('pick:open')) return false; // dispatch 가 눌려 있던 이동 키를 비우고 자동을 끈다
+    stopWalking();
+    renderer.domElement.style.cursor = '';
+    hud.hideTooltip();
+    pickerAction = id;
+    pickerItems = list;
+    hud.openPicker({
+      title: id === 'burn' ? '무엇을 태울까요?' : '무엇을 갈아 버릴까요?',
+      items: list.map((item, i) => ({ key: String(i + 1), label: item.label, icon: iconOf(item) })),
+      onPick: pickItem,
+      onCancel: cancelPicker,
+    });
+    return true;
+  }
+  function pickItem(index) {
+    const item = pickerItems[index];
+    if (!item || mode !== 'item-choice') return false;
+    const id = pickerAction;
+    hud.closePicker();
+    pickerAction = null;
+    dispatch('pick:choose'); // free 로 돌아온다
+    return startItemAction(id, item);
+  }
+  function cancelPicker() {
+    if (mode !== 'item-choice') return;
+    hud.closePicker();
+    pickerAction = null;
+    dispatch('pick:cancel'); // 지수·행동 횟수는 그대로
+  }
+  // 고른 물건으로 행동을 시작한다(자리가 그대로인지 다시 확인).
+  function startItemAction(id, item) {
+    if (runner.isBusy() || !inRangeFor(id)) return false;
+    chosen = item;
+    return runner.start(id, variantOf(item));
   }
 
   function toggleAuto() {
@@ -545,6 +725,39 @@ if (isMobileUA(navigator.userAgent)) {
     // 이 구역에서 다음에 할 행동(기록이 없으면 구역의 첫 행동)을 할 수 없는 자리면 켜지지 않는다. 자동이 없는 구역(면접장)은 next 가 null 이다.
     const next = runner.nextAutoAction();
     if (mode === 'free' && next && inRangeFor(next)) runner.setAuto(true);
+  }
+
+  // 소각장 단계의 매 프레임 장면: 절차적 몸짓, 들여다보는 종이, 가루 주머니 열기·기울이기, 예약 실행, 말풍선 위치.
+  function updateStage(dt) {
+    for (let i = timers.length - 1; i >= 0; i--) {
+      timers[i].left -= dt;
+      if (timers[i].left <= 0) { const { fn } = timers[i]; timers.splice(i, 1); fn(); }
+    }
+    if (hud.speechSize(SPEECH_KEY)) { // 멘트 말풍선: 머리 위 1.9 지점
+      camera.updateMatrixWorld();
+      bubblePoint.set(player.position.x, player.position.y + 1.9, player.position.z).project(camera);
+      if (bubblePoint.z >= 1) hud.clearSpeech(SPEECH_KEY);
+      else hud.positionSpeech(SPEECH_KEY, (bubblePoint.x * 0.5 + 0.5) * renderer.domElement.clientWidth, (-bubblePoint.y * 0.5 + 0.5) * renderer.domElement.clientHeight);
+    }
+    if (!stage) return;
+    stage.t += dt;
+    const k = Math.min(1, stage.t / stage.dur);
+    character?.setPose(poseFor(stage.phase, k, stage.t));
+    const { phase } = stage;
+    if (!held.visible || flight) return;
+    if ((phase === 'look' || phase === 'mutter' || phase === 'open') && !pull) {
+      showBlend = Math.min(1, showBlend + dt * 4);
+      if (held.userData.sheet && phase !== 'open') faceCamera(easeInOut(showBlend));
+      else if (held.userData.pour) held.scale.setScalar(1 + 0.8 * easeInOut(showBlend)); // 가루 주머니도 크게 들어 보인다
+    }
+    if (held.userData.pour) { // 가루 주머니: 열기(주둥이가 벌어진다) -> 던지기에서 기울인다
+      if (phase === 'open') held.userData.setOpen(easeInOut(k));
+      if (phase === 'throw') {
+        held.userData.setOpen(1);
+        held.rotation.set(...held.userData.rot);
+        held.rotation.z = -1.1 * easeInOut(Math.min(1, k * 1.6)); // 주둥이를 불 쪽으로 기울인다
+      }
+    }
   }
 
   // 소품 상태 갱신: 주머니에서 손으로 올라오기, 태우기의 구기기, 날아가기(태우기·파쇄·세탁).
@@ -581,6 +794,13 @@ if (isMobileUA(navigator.userAgent)) {
       held.rotation.x += 14 * dt;
       held.rotation.z += 9 * dt;
       held.scale.setScalar(flight.startScale * (1 - 0.5 * easeInOut(k)));
+    } else if (flight.kind === 'glide') {
+      held.position.y += SHRED_ARC * Math.sin(Math.PI * k);
+      held.rotation.x += (Math.PI / 2 - held.rotation.x) * Math.min(1, dt * 8); // 납작하게 눕혀 투입구로 들어갈 준비
+      held.rotation.z += (0 - held.rotation.z) * Math.min(1, dt * 8);
+      held.scale.setScalar(flight.startScale * (1 - 0.3 * easeInOut(k)));
+    } else if (flight.kind === 'slide') {
+      held.scale.setScalar(flight.startScale * (1 - 0.92 * easeInOut(k)));
     } else if (flight.kind === 'wash') {
       held.position.y += SHIRT_ARC * Math.sin(Math.PI * k); // 포물선으로 세탁기 투입구에 들어간다
       held.rotation.x += 10 * dt;
@@ -590,7 +810,8 @@ if (isMobileUA(navigator.userAgent)) {
       held.scale.setScalar(flight.startScale * (1 - 0.9 * easeInOut(k)));
     }
     if (k >= 1) {
-      if (flight.kind === 'burn') { fire.flare(); sfx.play('whoof'); } // 종이가 불에 닿는 순간
+      if (flight.kind === 'glide') { flight.t = flight.dur; return; } // 투입구 위에 머문다(다음 단계 slide 가 이어받는다)
+      if (flight.kind === 'burn' || flight.kind === 'slide') { flight = null; held.visible = false; return; } // 불·투입구에 들어갔다(불길은 효과 순간에 나온다)
       if (flight.kind === 'wash') { // 셔츠가 들어간 순간 세탁기가 흔들리고 거품이 올라온다
         laundry.washers.splash(flight.washer);
         sfx.play('washSplash');
@@ -611,16 +832,19 @@ if (isMobileUA(navigator.userAgent)) {
     for (const e of runner.update(dt)) {
       if (e.type === 'step') onStep(e);
       else if (e.type === 'paperOut') onPaperOut();
+      else if (e.type === 'say') { if (chosenLine) hud.say(SPEECH_KEY, chosenLine, { seconds: LINE_SECONDS, silent: true }); } // 한마디: 머리 위 말풍선(소리 없음)
+      else if (e.type === 'release') onRelease();
       else if (e.type === 'effect') onEffect(e.action);
       else onDone();
     }
+    updateStage(dt);
     updatePaper(dt);
 
     const meditating = mode === 'seated' && Boolean(seatItem) && Math.hypot(seatItem.x - FURNACE.x, seatItem.z - FURNACE.z) <= FIRE_ZONE_RADIUS;
     const relief = passive.update(dt, meditating);
     if (meditating && once('game_start')) track('game_start');
     if (relief > 0) applyReduction(relief, false); // 불멍은 소각 횟수에 넣지 않는다
-    if (pending && !runner.isBusy() && !interviewScene.busy && (pending.kind === 'side' || (mode !== 'fortune' && mode !== 'transition' && mode !== 'wearing'))) {
+    if (pending && !runner.isBusy() && !interviewScene.busy && (pending.kind === 'side' || (mode !== 'fortune' && mode !== 'transition' && mode !== 'wearing' && mode !== 'item-choice'))) {
       pending.wait -= dt;
       if (pending.wait <= 0) {
         const { kind, info } = pending;
@@ -811,7 +1035,7 @@ if (isMobileUA(navigator.userAgent)) {
       else if (stage === 'card') dispatch('close');
       return;
     }
-    if (runner.isBusy() || mode === 'transition' || mode === 'wearing' || mode === 'interview-choice' || mode === 'interview-play') return; // 행동·전환·옷 갈아입기·면접 중에는 E 동작을 하지 않는다.
+    if (runner.isBusy() || mode === 'transition' || mode === 'wearing' || mode === 'interview-choice' || mode === 'interview-play' || mode === 'item-choice') return; // 행동·전환·옷 갈아입기·면접 중에는 E 동작을 하지 않는다.
     if (mode === 'seated') { dispatch('interact'); return; }
     const item = nearestInRange(player.position, here().interactables);
     if (!item) return;
@@ -839,6 +1063,11 @@ if (isMobileUA(navigator.userAgent)) {
   window.addEventListener('keydown', (e) => {
     if (isTypingTarget(e.target)) return; // 닉네임 입력 중에는 게임 단축키가 반응하지 않는다
     if (mode === 'transition' || mode === 'wearing' || mode === 'interview-play') return; // 전환·옷 갈아입기·면접 연출 중에는 모든 키를 무시한다.
+    if (mode === 'item-choice') { // 소각장 물건 고르기 창: 숫자 키로 고르고 Esc 는 아무 일 없이 닫는다. 그 밖의 키는 모두 무시.
+      if (e.code === 'Escape') cancelPicker();
+      else if (!e.repeat) { const i = pickIndexFromCode(e.code, pickerItems.length); if (i >= 0) pickItem(i); }
+      return;
+    }
     if (mode === 'interview-choice') { // 답변 선택 창: 1·2·3 으로 고르고 Esc 는 감소 없이 닫는다.
       if (e.code === 'Escape') interviewScene.cancel();
       else if (e.code in CHOICE_KEYS && !e.repeat) interviewScene.pick(CHOICE_KEYS[e.code]);
@@ -900,7 +1129,7 @@ if (isMobileUA(navigator.userAgent)) {
     // 클릭하면 그 지점/오브젝트로 걸어간다(도착해도 아무 일도 일어나지 않는다. 동작은 E 키). 앉아 있으면 먼저 일어난다.
     // 행동 중에는 이동 클릭을 무시하고, 쉬는 중의 이동 클릭은 자동을 끈다.
     onClick: (ndc) => {
-      if (mode === 'fortune' || mode === 'transition' || mode === 'wearing' || mode === 'interview-choice' || mode === 'interview-play' || runner.isBusy()) return;
+      if (mode === 'fortune' || mode === 'transition' || mode === 'wearing' || mode === 'interview-choice' || mode === 'interview-play' || mode === 'item-choice' || runner.isBusy()) return;
       const item = pickInteractable(ndc);
       let target = item && interactTarget(item);
       if (!target) {
@@ -932,7 +1161,7 @@ if (isMobileUA(navigator.userAgent)) {
   const posOfRemote = (id) => { const r = net?.remotes.find((p) => p.id === id); return r ? { x: r.x, z: r.z } : undefined; };
   const quickChat = createQuickChat({
     container: document.getElementById('game'), hud, camera, renderer, player, list: QUICK_CHAT,
-    isBlocked: () => mode === 'interview-choice' || mode === 'interview-play' || mode === 'transition' || mode === 'wearing' || mode === 'fortune' || mode === 'result',
+    isBlocked: () => mode === 'interview-choice' || mode === 'interview-play' || mode === 'item-choice' || mode === 'transition' || mode === 'wearing' || mode === 'fortune' || mode === 'result',
     onSend: (i) => net?.chat(i) ?? false,
     onUse: (i) => track('quick_chat', { i }),
   });
@@ -1007,6 +1236,7 @@ if (isMobileUA(navigator.userAgent)) {
     updateActions(dt);
     fire.update(dt, time);
     shredder.update(dt);
+    glitter.update(dt);
     if (hud.isBubbleVisible()) {
       // 플레이어 발 위 1.9 지점을 화면 좌표로.
       const w = renderer.domElement.clientWidth;

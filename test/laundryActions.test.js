@@ -60,26 +60,23 @@ test('효과는 세탁·널기 모두 effect 표식 단계(마지막 후련 단�
 const RAW = {
   'emote-no': 0.667, 'pick-up': 0.333, 'attack-melee-right': 0.417, 'interact-right': 0.667, 'emote-yes': 0.667,
 };
-const naturalBurn = 0.667 + 0.333 + 0.417 + 0.667 + 0.5; // 한숨 있음(소각장)
 const naturalWash = 0.333 + 0.417 + 0.667 + 0.5; // 한숨 없음(세탁소)
 const naturalHang = 0.333 + 0.667 + 0.667 + 0.5;
 
-test('fitDurations: 세탁소 행동은 한숨이 없는 만큼 팔 올리기/치기 클립이 더 늘어나 총 5초(행동별 표), 소각장은 그대로', () => {
+test('fitDurations: 세탁소 행동은 팔 올리기/치기 클립만 늘어나 총 5초(행동별 표). 소각장 단계는 길이가 정해져 있어 클립을 늘리지 않는다', () => {
   const { byAction } = fitDurations(RAW, 0.5, 5);
   const hang = byAction.hang;
   const wash = byAction.wash;
-  const burn = byAction.burn;
   assert.ok(Math.abs(hang.durations['interact-right'] - (0.667 + 5 - naturalHang)) < 1e-9);
   assert.ok(Math.abs(wash.durations['attack-melee-right'] - (0.417 + 5 - naturalWash)) < 1e-9);
-  assert.ok(Math.abs(burn.durations['attack-melee-right'] - (0.417 + 5 - naturalBurn)) < 1e-9); // 같은 클립이라도 소각장 표는 따로(한숨이 있어 덜 늘어난다)
-  assert.ok(wash.durations['attack-melee-right'] > burn.durations['attack-melee-right'], '한숨(0.667초)이 빠진 만큼 세탁 클립이 더 길다');
-  assert.ok(Math.abs(wash.durations['attack-melee-right'] - burn.durations['attack-melee-right'] - 0.667) < 1e-9);
   assert.ok(hang.speeds['interact-right'] < 1 && hang.speeds['interact-right'] > 0);
-  for (const a of [hang, wash, burn]) assert.deepEqual([a.durations['emote-no'], a.durations['pick-up'], a.durations['emote-yes']], [0.667, 0.333, 0.667]);
+  for (const a of [hang, wash]) assert.deepEqual([a.durations['pick-up'], a.durations['emote-yes']], [0.333, 0.667]);
+  assert.deepEqual(byAction.burn.durations, RAW, '소각장: 클립 길이 표는 그대로(단계마다 seconds 가 있다)');
+  assert.deepEqual(byAction.shred.durations, RAW);
   const { durations: d } = fitDurations(RAW, 0.5, 5);
   assert.deepEqual(d, RAW, '기본(행동별 표가 없을 때)은 원래 길이');
   const r = createRunner({ durations: d, byAction, turnSeconds: 0.5, effectAt: 0.45, autoGap: 1 });
-  for (const id of ['burn', 'shred', 'wash', 'hang']) {
+  for (const id of ['wash', 'hang']) {
     r.start(id);
     assert.deepEqual(types(noSteps(r.update(4.99))), [`effect:${id}`], id);
     assert.deepEqual(types(noSteps(r.update(0.02))), [`done:${id}`], id);

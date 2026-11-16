@@ -1,13 +1,14 @@
 // 브라우저 전용: 소각로의 상시 모닥불. 셰이더로 그린 불꽃 혀(카메라를 보는 빌보드 한 덩어리) + 불티 + 연기 + 달아오른 숯 바닥 + 따뜻한 점광(그림자 없음).
 // 드로 콜 5개(불꽃, 불티, 연기, 숯, 바닥 빛), 텍스처는 작은 캔버스 둘. 프레임마다 새 객체를 만들지 않는다.
 // update(dt, time) 를 매 프레임 부르고, flare() 로 잠깐 커지게 한다(종이가 불에 닿았을 때: 더 높고 밝아지고 불티가 터진 뒤 가라앉는다).
+// setTint('aurora', seconds): 오로라 가루가 닿았을 때 불꽃이 청록·초록·보라 그라데이션으로 바뀌고 반짝이 불티가 터졌다가 seconds 뒤 원래 색으로 돌아온다(null 이면 바로 끈다).
 import * as THREE from 'three';
 
 const BASE_Y = 0.22; // 불 바닥 높이(돌 두둑 위)
 const LIGHT_INTENSITY = 3;
 const FLARE_SEC = 1.4; // 불꽃이 커졌다 가라앉는 시간(초)
 const FLARE_RISE = 0.12; // 커지는 데 걸리는 시간(초)
-const SPARK_COUNT = 34;
+const SPARK_COUNT = 64;
 const SMOKE_COUNT = 9;
 const SPARK_BURST = 16; // 종이가 닿을 때 한꺼번에 터지는 불티 수
 
@@ -58,6 +59,7 @@ void main() {
 const FLAME_FRAG = `
 uniform float uTime;
 uniform float uFlare;
+uniform float uAurora;
 varying vec2 vUv;
 varying float vSeed;
 varying float vLayer;
@@ -86,6 +88,14 @@ void main() {
   vec3 c = mix(red, orange, smoothstep(0.1, 0.45, heat));
   c = mix(c, yellow, smoothstep(0.42, 0.78, heat));
   c = mix(c, white, smoothstep(0.8, 1.05, heat));
+  if (uAurora > 0.0) { // 오로라: 위로 흐르는 청록 -> 초록 -> 보라 -> 분홍
+    float k = y * 2.4 + uTime * 0.9 + vSeed * 3.0;
+    float a = 0.5 + 0.5 * sin(k * 2.0);
+    float b = 0.5 + 0.5 * sin(k * 1.3 + 2.0);
+    vec3 ac = mix(mix(vec3(0.1, 0.95, 0.78), vec3(0.4, 1.0, 0.45), a), mix(vec3(0.62, 0.36, 1.0), vec3(1.0, 0.5, 0.92), b), smoothstep(0.3, 0.9, y));
+    ac = mix(ac * (0.8 + 0.5 * heat), vec3(1.0), smoothstep(0.85, 1.05, heat) * 0.5);
+    c = mix(c, ac, uAurora);
+  }
   float alpha = body * mix(0.85, 0.95, vLayer * 0.5);
   gl_FragColor = vec4(c * (1.0 + 0.5 * uFlare), alpha);
 }`;
@@ -103,6 +113,7 @@ void main() {
 }`;
 
 const SPARK_FRAG = `
+uniform float uAurora;
 varying float vLife;
 void main() {
   if (vLife < 0.0) discard;
@@ -110,6 +121,8 @@ void main() {
   float a = (1.0 - smoothstep(0.0, 1.0, r));
   a *= a;
   vec3 c = mix(vec3(1.0, 0.9, 0.5), vec3(1.0, 0.35, 0.05), vLife);
+  vec3 ac = 0.62 + 0.38 * cos(6.2831 * (vLife * 1.4 + vec3(0.0, 0.33, 0.67)) + gl_FragCoord.x * 0.07); // 알록달록 반짝이
+  c = mix(c, ac, uAurora);
   gl_FragColor = vec4(c * 1.4, a * (1.0 - vLife * vLife));
 }`;
 
@@ -219,7 +232,7 @@ function buildParticles(count, vert, frag, blending, order) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geo.setAttribute('aLife', new THREE.BufferAttribute(lifes, 1));
-  const uniforms = { uPixels: { value: 400 } };
+  const uniforms = { uPixels: { value: 400 }, uAurora: { value: 0 } };
   const mat = new THREE.ShaderMaterial({
     uniforms, vertexShader: vert, fragmentShader: frag, transparent: true, depthWrite: false, blending, toneMapped: false, fog: false,
   });
@@ -235,7 +248,7 @@ export function createFire(scene, furnacePos) {
   const group = new THREE.Group();
   group.position.set(furnacePos.x, BASE_Y, furnacePos.z);
 
-  const flameUniforms = { uTime: { value: 0 }, uFlare: { value: 0 } };
+  const flameUniforms = { uTime: { value: 0 }, uFlare: { value: 0 }, uAurora: { value: 0 } };
   const flames = buildFlameMesh(flameUniforms);
 
   // 숯 바닥(납작한 원)과 땅에 번지는 빛무리.
@@ -261,6 +274,7 @@ export function createFire(scene, furnacePos) {
   light.castShadow = false;
   scene.add(group, light);
 
+  let tint = null; // { dur, t } 오로라 불꽃 진행(없으면 null)
   let flareT = -1; // 불이 커진 뒤 경과 초(-1 이면 없음)
   let sparkAcc = 0;
   let smokeAcc = 0;
@@ -318,7 +332,24 @@ export function createFire(scene, furnacePos) {
       flareT = 0;
       for (let i = 0; i < SPARK_BURST; i++) spawnSpark(1.9);
     },
+    // 불꽃 색 효과. 'aurora' 만 있다(알 수 없는 이름이나 null 은 끈다). 시작할 때 반짝이 불티가 한꺼번에 터진다.
+    setTint(name, seconds = 4) {
+      if (name !== 'aurora' || !(seconds > 0)) { tint = null; return; }
+      tint = { dur: seconds, t: 0 };
+      for (let i = 0; i < 28; i++) spawnSpark(1.5 + Math.random() * 0.8);
+    },
+    // 불티 몇 개를 느리게 띄운다(타는 걸 지켜보는 동안의 불씨).
+    embers(count = 4) { for (let i = 0; i < count; i++) spawnSpark(0.8 + Math.random() * 0.5); },
+    tintAmount: () => flameUniforms.uAurora.value,
     update(dt, time) {
+      let aur = 0; // 오로라 정도(0..1): 0.3초에 번지고 끝나기 1.2초 전부터 사그라든다
+      if (tint) {
+        tint.t += dt;
+        aur = Math.min(1, tint.t / 0.3) * Math.min(1, Math.max(0, (tint.dur - tint.t) / 1.2));
+        if (tint.t >= tint.dur) tint = null;
+      }
+      flameUniforms.uAurora.value = aur;
+      sparks.points.material.uniforms.uAurora.value = aur;
       // 커졌다 가라앉는 정도(0..1): 빠르게 올라가 느리게 내려온다.
       let e = 0;
       if (flareT >= 0) {
@@ -333,13 +364,13 @@ export function createFire(scene, furnacePos) {
       const n = 0.5 * Math.sin(time * 9.3) + 0.3 * Math.sin(time * 17.1 + 1.3) + 0.2 * Math.sin(time * 31 + 0.6);
       const slow = Math.sin(time * 2.1) * 0.5 + Math.sin(time * 3.7 + 2) * 0.5;
       light.intensity = LIGHT_INTENSITY * (0.9 + 0.1 * slow + 0.12 * n + 0.9 * e);
-      light.color.setRGB(1, 0.52 + 0.06 * n + 0.08 * e, 0.22 + 0.05 * n + 0.1 * e);
+      light.color.setRGB(1 - 0.65 * aur, 0.52 + 0.06 * n + 0.08 * e + 0.38 * aur, 0.22 + 0.05 * n + 0.1 * e + 0.55 * aur);
       glowMat.opacity = Math.min(1, 0.85 + 0.15 * n + 0.4 * e);
       const pulse = 0.82 + 0.18 * Math.sin(time * 2.6) + 0.1 * n + 0.35 * e;
       emberMat.color.setRGB(pulse, pulse * 0.92, pulse * 0.85);
 
       // 불티: 평소 초당 7개쯤, 불이 커질 때 더 자주. 연기: 초당 2.4개.
-      sparkAcc += dt * (7 + 26 * e);
+      sparkAcc += dt * (7 + 26 * e + 22 * aur);
       while (sparkAcc >= 1) { sparkAcc -= 1; spawnSpark(1 + 0.6 * e); }
       stepParticles(sparks, SPARK_COUNT, dt, 0.4, 0.15);
       smokeAcc += dt * 2.4;

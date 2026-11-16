@@ -113,9 +113,10 @@ const tex = (canvas) => {
   return t;
 };
 
-// 손에 드는 종이 한 장(불합격 통지서). width x depth 는 월드 단위 크기(3:4 비율을 권장), 두께는 얇게.
-export function buildPaper(width = 0.7, depth = 0.93) {
-  const textures = NOTICE_VARIANTS.map((v, i) => tex(noticeCanvas(v, i)));
+// 손에 드는 종이 한 장. canvases: 앞면 무늬 캔버스들(variant 로 고른다), ballCanvas: 구겨진 공 무늬. width x depth 는 월드 단위 크기(3:4 비율을 권장), 두께는 얇게.
+// 불합격 통지서(buildPaper)와 소각장의 다른 종이 물건(src/incineratorProps.js)이 함께 쓴다.
+export function buildSheetProp(canvases, ballCanvas, width = 0.7, depth = 0.93) {
+  const textures = canvases.map((c) => tex(c));
   const lit = (map) => new THREE.MeshStandardMaterial({ map, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.45, roughness: 0.9 });
   const front = lit(textures[0]);
   const mirrored = textures.map((t) => { const m = t.clone(); m.wrapS = THREE.RepeatWrapping; m.repeat.x = -1; m.needsUpdate = true; return m; });
@@ -135,7 +136,7 @@ export function buildPaper(width = 0.7, depth = 0.93) {
     p.setXYZ(i, x * j, y * j, z * j);
   }
   ballGeo.computeVertexNormals();
-  const ball = new THREE.Mesh(ballGeo, new THREE.MeshStandardMaterial({ map: tex(ballCanvas()), emissive: 0x777770, flatShading: true, roughness: 1 }));
+  const ball = new THREE.Mesh(ballGeo, new THREE.MeshStandardMaterial({ map: tex(ballCanvas), emissive: 0x777770, flatShading: true, roughness: 1 }));
   ball.castShadow = true;
   ball.visible = false;
 
@@ -153,3 +154,11 @@ export function buildPaper(width = 0.7, depth = 0.93) {
   group.userData.variantCount = textures.length;
   return group;
 }
+
+// 손에 드는 불합격 통지서: 문구 4종(setVariant).
+export function buildPaper(width = 0.7, depth = 0.93) {
+  return buildSheetProp(NOTICE_VARIANTS.map((v, i) => noticeCanvas(v, i)), ballCanvas(), width, depth);
+}
+// 선택 창 그림 등에 쓰는 통지서 앞면 캔버스(변형 번호).
+export const noticeFace = (i = 0) => noticeCanvas(NOTICE_VARIANTS[i % NOTICE_VARIANTS.length], i);
+export const noticeBall = () => ballCanvas();

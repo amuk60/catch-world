@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { YARD, FURNACE, SPAWN, COLORS } from './config.js';
 
 const GROUND_SIZE = 140;
@@ -211,17 +212,23 @@ export function buildPickables(scene, interactables) {
 
 // ---- 소각장 상시 소품: 파쇄기와 손에 드는 종이 ----
 
-const STRIP_MAX = 8; // 동시에 살아 있는 파쇄 조각 최대 수
-const STRIP_LIFE = 0.6; // 조각이 사라지기까지(초)
-const STRIP_COUNT = 6; // 파쇄 한 번에 떨어지는 조각 수(<= STRIP_MAX)
-const WIGGLE_SEC = 0.08; // 파쇄기 흔들림 시간
+const SHAKE_SEC = 1.1; // 파쇄기가 덜덜 떠는 시간(조각이 쏟아지는 동안)
+const POUR_COUNT = 56; // 쏟아지는 조각 풀(동시에 떨어질 수 있는 최대 수)
+const POUR_SEC = 1.0; // 한 번에 조각이 쏟아지는 시간
+const POUR_PER_RUN = 34; // 파쇄 한 번에 쏟아지는 조각 수
+const PILE_MAX = 54; // 통 안에 쌓이는 조각 최대 수(많이 하면 수북해진다)
+const PILE_PER_RUN = 9; // 파쇄 한 번에 더미가 늘어나는 조각 수
+const PILE_HOLD_SEC = 14; // 마지막 파쇄 뒤 이 시간이 지나면 더미가 천천히 줄기 시작한다(바닥에 흩어지지 않고 서서히 사라진다)
+const PILE_DECAY_SEC = 0.7; // 줄어드는 조각 하나당 걸리는 시간
+const BIN = { x: 1.15, w: 0.62, d: 0.95, h: 0.2, wall: 0.04 }; // 파쇄기 오른쪽 옆(+x: 기본 카메라 쪽에서 보이는 면)에 놓인 조각 통(파쇄기 기준 로컬). 틈에서 쏟아진 조각이 여기 쌓인다.
 const SHREDDER_BODY = { w: 1.4, h: 1.0, d: 0.8 };
 
 // 손에 드는 종이(불합격 통지서)는 notice.js 에서 만든다.
 export { buildPaper } from './notice.js';
 
-// 파쇄기: 회색 상자 + 어두운 투입구. 바닥 y=0, 앞(+z)이 소각로를 향한다. wiggle() 로 흔들리고 spawnStrips() 로 조각이 떨어진다.
-// 흔들림과 조각 애니메이션은 매 프레임 update(dt) 가 진행한다.
+// 파쇄기: 회색 상자 + 어두운 투입구 + 앞에 놓인 조각 통. 바닥 y=0, 앞(+z)이 소각로를 향한다.
+// shake()/wiggle() 로 덜덜 떨고, pour() 로 조각이 아래 앞쪽 틈에서 쏟아져 통에 쌓인다(조각 풀 하나 + 더미 한 덩어리 = InstancedMesh 하나, 그리기 호출 1). 통은 한 덩어리 메시다.
+// 쏟아짐·더미·흔들림은 매 프레임 update(dt) 가 진행한다. 더미는 파쇄할수록 수북해지고 한동안 안 하면 천천히 줄어든다.
 export function buildShredder(scene, shredder) {
   const group = new THREE.Group();
   const body = new THREE.Mesh(
@@ -234,20 +241,79 @@ export function buildShredder(scene, shredder) {
   const slot = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.04, 0.14), new THREE.MeshStandardMaterial({ color: 0x15151f }));
   slot.position.y = SHREDDER_BODY.h + 0.01;
   slot.receiveShadow = true;
-  group.add(body, slot);
+  // 아래 앞쪽의 조각 나오는 틈(어두운 줄).
+  const outlet = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.05, 0.6), new THREE.MeshBasicMaterial({ color: 0x101018 }));
+  outlet.position.set(SHREDDER_BODY.w / 2 + 0.005, 0.22, 0);
+  // 조각 통: 바닥 + 벽 4개를 한 덩어리로 합친다.
+  const walls = [
+    [BIN.w, BIN.wall, BIN.d, 0, BIN.wall / 2, 0], // 바닥
+    [BIN.w, BIN.h, BIN.wall, 0, BIN.h / 2, BIN.d / 2 - BIN.wall / 2], // 앞
+    [BIN.w, BIN.h, BIN.wall, 0, BIN.h / 2, -BIN.d / 2 + BIN.wall / 2], // 뒤
+    [BIN.wall, BIN.h, BIN.d, BIN.w / 2 - BIN.wall / 2, BIN.h / 2, 0],
+    [BIN.wall, BIN.h, BIN.d, -BIN.w / 2 + BIN.wall / 2, BIN.h / 2, 0],
+  ].map(([w, h, d, x, y, z]) => new THREE.BoxGeometry(w, h, d).translate(x, y, z));
+  const bin = new THREE.Mesh(mergeGeometries(walls), new THREE.MeshStandardMaterial({ color: 0x59657a, emissive: 0x1c2230, roughness: 0.8 }));
+  bin.position.set(BIN.x, 0, 0);
+  bin.castShadow = true;
+  bin.receiveShadow = true;
+
+  // 조각: 얇고 긴 상자. 풀(0..POUR_COUNT-1: 떨어지는 조각) 뒤에 더미(PILE_MAX 개)가 이어진다.
+  const stripGeo = new THREE.BoxGeometry(0.05, 0.012, 0.3);
+  const total = POUR_COUNT + PILE_MAX;
+  const strips = new THREE.InstancedMesh(stripGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }), total);
+  strips.frustumCulled = false;
+  const tints = [0xffffff, 0xf3efe2, 0xe4e6ee, 0xfaf4dc];
+  for (let i = 0; i < total; i++) strips.setColorAt(i, new THREE.Color(tints[i % tints.length]));
+  strips.instanceColor.needsUpdate = true;
+  group.add(body, slot, outlet, bin, strips);
   group.position.set(shredder.x, 0, shredder.z);
   group.rotation.y = shredder.rotY;
   scene.add(group);
 
-  const stripGeo = new THREE.BoxGeometry(0.05, 0.012, 0.3);
-  const strips = []; // { mesh, vel, age }
-  let wiggleT = -1;
-  let wiggleSign = 1;
+  // 결정적 난수(더미 모양은 늘 같다).
+  let seed = 13;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const pileSpots = Array.from({ length: PILE_MAX }, (_, i) => {
+    const layer = Math.floor(i / 18); // 아래층부터 채우고 위로 쌓는다(위로 갈수록 좁은 더미)
+    const r = 1 - layer * 0.3;
+    return { x: (rnd() - 0.5) * (BIN.w - 0.2) * r, z: (rnd() - 0.5) * (BIN.d - 0.16) * r, y: BIN.wall + 0.008 + layer * 0.03 + rnd() * 0.012, yaw: rnd() * Math.PI, tilt: (rnd() - 0.5) * 0.35 };
+  });
+  const dummy = new THREE.Object3D();
+  const pour = Array.from({ length: POUR_COUNT }, () => ({ live: false, age: 0, delay: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, spin: 0, yaw: 0, land: 0 }));
+  let pileShown = 0; // 지금 보이는 더미 조각 수(실수: 쌓일 때 늘고, 줄어들 때 준다)
+  let pileTarget = 0;
+  let idleSince = 0;
+  let emitLeft = 0; // 아직 내보낼 조각 수
+  let emitClock = 0;
+  let pending = 0; // 떨어진 조각이 더미에 더해질 몫
+  let shakeT = -1;
+  let shakeLen = SHAKE_SEC;
+  let shakeSign = 1;
+  let dirty = true;
 
-  function removeStrip(i) {
-    const [s] = strips.splice(i, 1);
-    scene.remove(s.mesh);
-    s.mesh.material.dispose();
+  function hideInstance(i) {
+    dummy.position.set(0, -5, 0);
+    dummy.scale.setScalar(0.0001);
+    dummy.rotation.set(0, 0, 0);
+    dummy.updateMatrix();
+    strips.setMatrixAt(i, dummy.matrix);
+  }
+  for (let i = 0; i < total; i++) hideInstance(i);
+
+  function emit() {
+    const p = pour.find((q) => !q.live);
+    if (!p) return;
+    p.live = true;
+    p.age = 0;
+    p.x = SHREDDER_BODY.w / 2 + 0.01;
+    p.y = 0.2;
+    p.z = (rnd() - 0.5) * 0.6;
+    p.vx = 0.28 + rnd() * 0.4; // 옆(통 쪽)으로 흘러나온다
+    p.vy = -0.2 - rnd() * 0.3;
+    p.vz = (rnd() - 0.5) * 0.25;
+    p.spin = (rnd() - 0.5) * 8;
+    p.yaw = (rnd() - 0.5) * 0.9;
+    p.land = BIN.wall + 0.02 + 0.03 * Math.min(1, pileShown / PILE_MAX);
   }
 
   return {
@@ -257,44 +323,96 @@ export function buildShredder(scene, shredder) {
       group.updateWorldMatrix(true, false);
       return group.localToWorld(target.set(0, SHREDDER_BODY.h + 0.05, 0));
     },
-    wiggle() {
-      wiggleT = 0;
-      wiggleSign = -wiggleSign;
+    // seconds 동안 덜덜 떤다(한 번 더 부르면 처음부터).
+    shake(seconds = SHAKE_SEC) {
+      shakeT = 0;
+      shakeLen = seconds;
+      shakeSign = -shakeSign;
     },
-    // 하얀 가는 조각 몇 개를 투입구 아래로 떨어뜨린다(동시에 최대 STRIP_MAX 개, STRIP_LIFE 초 뒤 사라진다).
-    spawnStrips() {
-      const yaw = group.rotation.y;
-      group.updateWorldMatrix(true, false);
-      for (let i = 0; i < STRIP_COUNT; i++) {
-        if (strips.length >= STRIP_MAX) removeStrip(0);
-        const mesh = new THREE.Mesh(stripGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true }));
-        group.localToWorld(mesh.position.set((Math.random() - 0.5) * 0.8, SHREDDER_BODY.h, 0.1));
-        mesh.rotation.y = yaw + (Math.random() - 0.5) * 0.6;
-        scene.add(mesh);
-        // 슬롯 위로 살짝 튀었다가 앞(소각로 쪽)으로 떨어진다.
-        const vel = new THREE.Vector3((Math.random() - 0.5) * 0.8, 1.0 + Math.random() * 0.8, 0.5 + Math.random() * 0.8);
-        vel.applyAxisAngle(THREE.Object3D.DEFAULT_UP, yaw);
-        strips.push({ mesh, vel, age: 0 });
-      }
+    wiggle() { this.shake(0.08); },
+    // 조각이 아래 틈에서 쏟아진다(POUR_SEC 동안 POUR_PER_RUN 개). 떨어진 조각만큼 더미가 늘어난다.
+    pour() {
+      emitLeft = POUR_PER_RUN;
+      emitClock = 0;
+      pending += PILE_PER_RUN;
+      idleSince = 0;
     },
+    // 예전 이름(조각 몇 개를 떨어뜨린다).
+    spawnStrips() { this.pour(); },
     update(dt) {
-      if (wiggleT >= 0) {
-        wiggleT += dt;
-        const k = Math.min(1, wiggleT / WIGGLE_SEC);
-        const pulse = Math.sin(Math.PI * k);
-        group.scale.setScalar(1 + 0.1 * pulse);
-        group.rotation.z = 0.07 * pulse * wiggleSign;
-        if (k >= 1) wiggleT = -1;
+      if (shakeT >= 0) {
+        shakeT += dt;
+        const k = Math.min(1, shakeT / shakeLen);
+        const pulse = Math.sin(Math.PI * Math.min(1, k * 1.2));
+        group.scale.setScalar(1 + 0.03 * pulse);
+        group.rotation.z = 0.035 * pulse * Math.sin(shakeT * 55) * shakeSign;
+        group.position.y = 0.012 * pulse * Math.abs(Math.sin(shakeT * 43));
+        if (k >= 1) { shakeT = -1; group.scale.setScalar(1); group.rotation.z = 0; group.position.y = 0; }
       }
-      for (let i = strips.length - 1; i >= 0; i--) {
-        const s = strips[i];
-        s.age += dt;
-        if (s.age >= STRIP_LIFE) { removeStrip(i); continue; }
-        s.vel.y -= 9 * dt;
-        s.mesh.position.addScaledVector(s.vel, dt);
-        s.mesh.material.opacity = 1 - (s.age / STRIP_LIFE) ** 2;
+      if (emitLeft > 0) {
+        emitClock += dt;
+        const due = Math.min(emitLeft, Math.floor((emitClock / POUR_SEC) * POUR_PER_RUN) - (POUR_PER_RUN - emitLeft));
+        for (let i = 0; i < due; i++) { emit(); emitLeft -= 1; }
       }
+      let any = false;
+      for (let i = 0; i < POUR_COUNT; i++) {
+        const p = pour[i];
+        if (!p.live) continue;
+        any = true;
+        p.age += dt;
+        p.vy -= 5.5 * dt;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.z += p.vz * dt;
+        p.vx *= 1 - 0.8 * dt;
+        p.yaw += p.spin * dt * 0.3;
+        if (p.y <= p.land) { // 통 바닥(더미 위)에 닿았다: 이 조각은 사라지고 더미가 늘어난다
+          p.live = false;
+          hideInstance(i);
+          dirty = true;
+          continue;
+        }
+        dummy.position.set(Math.min(p.x, BIN.x + BIN.w / 2 - 0.1), p.y, Math.max(-BIN.d / 2 + 0.08, Math.min(BIN.d / 2 - 0.08, p.z)));
+        dummy.rotation.set(Math.sin(p.age * p.spin) * 0.6, p.yaw, p.spin * 0.05 * p.age);
+        dummy.scale.setScalar(1);
+        dummy.updateMatrix();
+        strips.setMatrixAt(i, dummy.matrix);
+        dirty = true;
+      }
+      // 더미: 조각이 다 떨어졌으면(쏟아질 조각이 없고 날아가는 조각도 없을 때) 늘어날 몫을 쌓는다.
+      if (pending > 0 && emitLeft === 0 && !any) {
+        pileTarget = Math.min(PILE_MAX, pileTarget + pending);
+        pending = 0;
+      } else if (pending > 0 && emitLeft > 0) {
+        // 쏟아지는 동안 조금씩 먼저 쌓아 보이게 한다.
+        const share = Math.min(pending, dt * (PILE_PER_RUN / POUR_SEC));
+        pileTarget = Math.min(PILE_MAX, pileTarget + share);
+        pending -= share;
+      }
+      if (!any && emitLeft === 0 && pending === 0 && pileTarget > 0) {
+        idleSince += dt;
+        if (idleSince > PILE_HOLD_SEC) pileTarget = Math.max(0, pileTarget - dt / PILE_DECAY_SEC);
+      }
+      const prev = Math.floor(pileShown);
+      pileShown += Math.sign(pileTarget - pileShown) * Math.min(Math.abs(pileTarget - pileShown), dt * 28);
+      const shown = Math.floor(pileShown + 1e-6);
+      if (shown !== prev || dirty) {
+        for (let i = 0; i < PILE_MAX; i++) {
+          if (i >= shown) { hideInstance(POUR_COUNT + i); continue; }
+          const sp = pileSpots[i];
+          dummy.position.set(BIN.x + sp.x, sp.y, sp.z);
+          dummy.rotation.set(sp.tilt, sp.yaw, sp.tilt * 0.6);
+          dummy.scale.setScalar(1);
+          dummy.updateMatrix();
+          strips.setMatrixAt(POUR_COUNT + i, dummy.matrix);
+        }
+        dirty = true;
+      }
+      strips.visible = any || emitLeft > 0 || shown > 0; // 쓰지 않을 때는 그리지 않는다
+      if (dirty) { strips.instanceMatrix.needsUpdate = true; dirty = false; }
     },
-    stripCount: () => strips.length,
+    stripCount: () => pour.filter((p) => p.live).length,
+    pileCount: () => Math.floor(pileShown + 1e-6),
+    meshes: [body, slot, outlet, bin, strips],
   };
 }

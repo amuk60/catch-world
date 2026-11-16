@@ -117,6 +117,51 @@ export const ACTION_TURN_SECONDS = 0.5;
 export const ACTION_EFFECT_AT = 0.45;
 export const ACTION_TARGET_SECONDS = 5;
 
+// 소각장 행동(태우기·파쇄)의 물건과 연출. 팀이 이 표를 고쳐 물건·멘트를 바꾼다(코드는 건드리지 않아도 된다).
+// targetSeconds: 태우기·파쇄 한 번의 총 길이 목표(초). 단계별 길이는 logic/actions.js 가 이 값에 맞춰 비율로 늘이고 줄인다(세탁소 행동은 ACTION_TARGET_SECONDS 를 그대로 쓴다).
+// auroraChance: 자동(R)의 태우기 차례에서 오로라 가루가 나올 확률(파쇄에는 나오지 않는다). 멘트 한 줄은 20자 이하로 쓴다.
+// items: 물건 목록(선택 창에 이 순서로 1~5 번호가 붙는다).
+//   id: 영문 고유 이름(분석 이벤트 burn_item / shred_item 에 실린다). label: 선택 창에 보이는 이름.
+//   burn / shred: 그 행동으로 할 수 있으면 { lines: [멘트들] }(주머니에서 꺼낸 뒤 말풍선으로 한 줄 중얼거린다). 없으면 그 행동 목록에 나오지 않는다. 오로라 가루는 파쇄 못 한다.
+//   prop: 손에 드는 물건의 겉모습. kind('letter' 자소서 | 'resume' 이력서 | 'notice' 불합격 통지서 | 'mail' 탈락 메일 | 'pouch' 가루 주머니), title(머리글), accent(색), ball(구긴 공에 남는 표식 색).
+//   flame: 불 색 효과 { tint: 'aurora', seconds } (오로라 가루: 불꽃이 오로라 빛으로 바뀌었다가 seconds 뒤 돌아온다).
+export const INCINERATOR = {
+  targetSeconds: 6.8,
+  auroraChance: 0.12,
+  items: [
+    {
+      id: 'cover', label: '자소서',
+      burn: { lines: ['지긋지긋했던 자소서는 태워버려!', '성장과정? 이제 재가 되었다!', '지원동기: 불타오르고 싶어서', '자소서야, 잘 가라~'] },
+      shred: { lines: ['이 자소서는 잘게 잘게!', '문장아, 이제 가루가 되렴', '자소서 쓰다 늙겠다, 갈자!'] },
+      prop: { kind: 'letter', title: '자기소개서', accent: '#3f6d5a', ball: '#3f6d5a' },
+    },
+    {
+      id: 'resume', label: '이력서',
+      burn: { lines: ['이력서야, 그동안 고생했다… 안녕!', '경력은 연기로 사라진다~', '증명사진도 같이 활활!', '빈칸 채우던 밤이여, 안녕'] },
+      shred: { lines: ['이제 이력서는 갈아버리자…', '이력서, 국수가 되어라!', '사진 속 나, 잘게 안녕~'] },
+      prop: { kind: 'resume', title: '이 력 서', accent: '#2f5fa8', ball: '#2f5fa8' },
+    },
+    {
+      id: 'notice', label: '불합격 통지서',
+      burn: { lines: ['불합격? 나도 너 불합격이야!', '통지서는 불쏘시개로 딱이지', '아쉽다고? 나도 아쉬워 죽겠다'] },
+      shred: { lines: ['불합격 통지서는 가루가 되라', '싹둑싹둑 잘게 갈아주마', '너는 이제 종이국수야'] },
+      prop: { kind: 'notice', title: '불합격 통지서', accent: '#2b3a67', ball: '#d3221c' },
+    },
+    {
+      id: 'mail', label: '면접 탈락 메일',
+      burn: { lines: ['탈락 메일, 연기가 되어라~', 'Re: 불합격… 재가 되어라', '메일함도 이렇게 비우고 싶다'] },
+      shred: { lines: ['탈락 메일은 파쇄가 답이지', '인쇄한 보람이 있었네, 갈자', '메일아, 먼지가 되어버려'] },
+      prop: { kind: 'mail', title: 'Re: 면접 결과 안내', accent: '#4a5a78', ball: '#d3221c' },
+    },
+    {
+      id: 'aurora', label: '오로라 가루',
+      burn: { lines: ['근심아, 오로라로 날아가라~', '반짝반짝 오로라 한 줌!', '스트레스야, 빛이 되어라~', '오로라 가루, 출동!'] },
+      prop: { kind: 'pouch', title: '오로라 가루', accent: '#7a5cc8', ball: '#7a5cc8' },
+      flame: { tint: 'aurora', seconds: 4.5 },
+    },
+  ],
+};
+
 // 시드: 마당 배치를 항상 같게 만든다.
 export const SEED = 20261111;
 

@@ -91,6 +91,8 @@
     .speech-who { display: block; margin-bottom: 2px; font-size: 11px; font-weight: 700; color: #8a5a2a; }
     .speech-player { background: #fff3d6; max-width: 240px; font-size: 15px; font-weight: 600; }
     .speech-player::after { border-top-color: #fff3d6; }
+    .speech-line-self { background: #fff3d6; max-width: 240px; font-size: 15px; font-weight: 700; }
+    .speech-line-self::after { border-top-color: #fff3d6; }
     .speech.big { max-width: 280px; padding: 10px 22px; border: 3px solid #f0b429; background: #fff6c8; color: #7a3b00; font-size: 26px; font-weight: 800; }
     .speech.big::after { border-top-color: #fff6c8; }
     .speech.big .speech-who { font-size: 12px; }
@@ -122,6 +124,22 @@
       text-decoration: underline; cursor: pointer; }
     .choice-cancel:hover { color: #3a2f1f; }
     .choice-cancel .keycap { margin-left: 6px; min-width: 0; padding: 0 5px; font-size: 11px; text-decoration: none; display: inline-block; }
+    /* 소각장 물건 고르기 창: 행동 막대(바닥 66px) 바로 위. 뒤 배경(#picker)을 누르면 닫힌다. */
+    #picker { position: absolute; inset: 0; display: none; z-index: 4; }
+    #picker.open { display: block; }
+    .picker-card { position: absolute; left: 50%; bottom: 122px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 24px); box-sizing: border-box;
+      padding: 10px 12px 8px; border-radius: 16px; background: rgba(253, 246, 227, 0.97); color: #3a2f1f; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); animation: picker-in 0.15s ease-out; }
+    @keyframes picker-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+    .picker-title { margin: 0 2px 8px; font-size: 15px; font-weight: 700; }
+    .picker-list { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+    .picker-list button { position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; width: 92px; padding: 8px 6px 7px; border: 1px solid #d8c9a4; border-radius: 12px;
+      background: #fff; color: #3a2f1f; font: inherit; font-size: 13px; font-weight: 600; line-height: 1.25; word-break: keep-all; cursor: pointer; transition: background 0.12s, transform 0.12s; }
+    .picker-list button:hover { background: #fff1d8; transform: translateY(-2px); }
+    .picker-list .keycap { position: absolute; left: 5px; top: 5px; min-width: 18px; padding: 1px 5px; background: #3a2f1f; color: #fff; box-shadow: 0 2px 0 #1b140a; font-size: 12px; }
+    .picker-icon { display: block; width: 54px; height: 72px; border-radius: 3px; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3); }
+    .picker-cancel { display: block; margin: 6px 0 0 auto; padding: 3px 6px; border: 0; background: none; color: #6b5d44; font: inherit; font-size: 12px; cursor: pointer; }
+    .picker-cancel:hover { color: #3a2f1f; }
+    .picker-cancel .keycap { margin-left: 5px; min-width: 0; padding: 0 5px; font-size: 11px; background: #3a2f1f; color: #fff; }
     /* 멀티플레이(켜져 있을 때만 생긴다): 다른 방문자 이름표와 왼쪽 아래 접속 칩. 이름표 층은 플레이어 말풍선·팝업보다 아래. */
     .mp-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 1; }
     .mp-label { position: absolute; left: 0; top: 0; max-width: 180px; padding: 2px 9px; border-radius: 999px; background: rgba(40, 70, 96, 0.72);
