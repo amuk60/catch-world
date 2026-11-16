@@ -105,7 +105,7 @@ export function buildLaundryInterior() {
   // 천장 조명(눈에 보이는 램프의 위치. 같은 자리 근처에 점광을 둔다).
   const lamps = [at(-3, -1.2), at(2.2, -1.8), at(-0.5, 2.6)].map((p) => ({ x: p.x, y: wallHeight - 0.2, z: p.z }));
 
-  const sign = { x: origin.x, y: 2.0, z: bounds.minZ + 0.06, rotY: 0, width: 2.4, height: 0.6, text: '세탁소' };
+  const sign = { x: origin.x, y: 1.8, z: bounds.minZ + 0.06, rotY: 0, width: 3.2, height: 0.64, text: '세탁소' };
 
   return {
     id: 'laundry', origin: { ...origin }, bounds, wallHeight, tile: TILE, walls, exit, arrival, interactables,

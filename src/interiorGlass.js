@@ -3,6 +3,7 @@
 // 조각 종류: wall(이어지는 유리 벽 한 칸), wallWindow(더 밝게 빛나는 큰 유리 창 + 창틀 + 선반), wallDoorwayWide(틀과 손잡이가 있는 유리 출입문 + 양옆 유리 + 위 유리).
 // 조각 좌표계: 조각 중심 바닥이 원점, 방 안쪽이 +z, 폭 = tile(x), 높이 = wallHeight(y). 방 경계에 안쪽 면이 닿도록 판은 두께 0.05 를 z=0.02 에 둔다(logic/interiors.js 의 WALL_OFFSET 과 맞춘다).
 import * as THREE from 'three';
+import { openTagCanvas } from './buildingExterior.js';
 
 const GLASS_Z = 0.02; // 유리 판 중심 z (안쪽 면 +0.045)
 const FRAME_DEPTH = 0.12; // 틀 두께(유리보다 안쪽으로 살짝 튀어나온다)
@@ -57,7 +58,14 @@ export function createGlassKit(look) {
       emissive: look.emissive, emissiveMap: map, emissiveIntensity: look.emissiveIntensity,
     });
   });
+  let openTag = null; // 출입문 안쪽 "OPEN" 표시(외관 문과 같은 그림). look.openTag 가 켜진 공간만
+  if (look.openTag) {
+    const map = new THREE.CanvasTexture(openTagCanvas());
+    map.colorSpace = THREE.SRGBColorSpace;
+    openTag = new THREE.MeshBasicMaterial({ map, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+  }
   return {
+    openTag,
     wall: pane('wall'), window: pane('window'), low: pane('low'),
     frame: new THREE.MeshStandardMaterial({ color: look.frame, roughness: 0.38, metalness: 0.3, emissive: look.frame, emissiveIntensity: 0.12 }),
     frameDark: new THREE.MeshStandardMaterial({ color: look.frameDark, roughness: 0.45, metalness: 0.3, emissive: look.frameDark, emissiveIntensity: 0.1 }),
@@ -127,6 +135,11 @@ function doorPiece(kit, v, W, H) {
     box(dw - 0.07, 0.06, 0.07, kit.frame, 0, 1.12, FRAME_Z + 0.015), // 문 가로대
     box(dw + 0.08, 0.025, 0.24, kit.frameDark, 0, 0.0125, 0.0), // 문턱
   );
+  if (kit.openTag) { // 안쪽 면에 걸린 OPEN 표시(문 가로대 위, 손잡이 반대쪽)
+    const tag = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.16), kit.openTag);
+    tag.position.set(-0.22, 1.5, FRAME_Z + 0.07);
+    g.add(tag);
+  }
   const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.62, 12), handleMat);
   bar.position.set(dw / 2 - 0.2, 1.05, FRAME_Z + 0.115); // 문을 여는 쪽(오른쪽) 세로 손잡이
   g.add(bar);

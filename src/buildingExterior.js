@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mulberry32 } from './logic/rng.js';
+import { LAUNDRY_LOOK } from './config.js';
 
 const PPM = 100; // 캔버스 한 변 1m 당 픽셀 수
 
@@ -355,9 +356,10 @@ function buildOfficeTower(b) {
 // 세탁소: 작은 상가
 // ============================================================
 const SHOP = { h: 3.1, parapet: 0.35, win: { x0: -1.0, x1: 2.4, y0: 0.55, y1: 2.05 }, doorW: 0.95, doorH: 2.0 };
-const TEAL = '#2c7a89';
-const TEAL_DARK = 0x35909e;
-const CREAM = '#f3e4bf';
+// 세탁소 외관·실내가 함께 쓰는 팔레트(config.js 의 LAUNDRY_LOOK).
+const TEAL = LAUNDRY_LOOK.teal;
+const TEAL_DARK = LAUNDRY_LOOK.tealFrame;
+const CREAM = LAUNDRY_LOOK.cream;
 const BRICK = 0xa8553c;
 
 function paintWasher(g, x, y, s) {
@@ -432,7 +434,7 @@ function displayCanvas(w, h) {
 function stripeCanvas() {
   const { canvas, g } = makeCanvas(256, 64);
   const n = 8;
-  for (let i = 0; i < n; i++) { g.fillStyle = i % 2 ? '#f6efdc' : '#2c8a99'; g.fillRect((i * 256) / n, 0, 256 / n + 1, 64); }
+  for (let i = 0; i < n; i++) { g.fillStyle = i % 2 ? LAUNDRY_LOOK.stripeLight : LAUNDRY_LOOK.tealStripe; g.fillRect((i * 256) / n, 0, 256 / n + 1, 64); }
   return canvas;
 }
 
@@ -445,8 +447,16 @@ function valanceCanvas() {
   g.rect(0, 0, 256, 64 - r);
   for (let i = 0; i < n; i++) g.arc((i + 0.5) * (256 / n), 64 - r, r, 0, Math.PI);
   g.clip();
-  for (let i = 0; i < n; i++) { g.fillStyle = i % 2 ? '#f6efdc' : '#2c8a99'; g.fillRect((i * 256) / n, 0, 256 / n + 1, 64); }
+  for (let i = 0; i < n; i++) { g.fillStyle = i % 2 ? LAUNDRY_LOOK.stripeLight : LAUNDRY_LOOK.tealStripe; g.fillRect((i * 256) / n, 0, 256 / n + 1, 64); }
   return canvas;
+}
+
+// "OPEN" 표시 캔버스(외관 문 안쪽 유리 위와 실내 출입문 안쪽이 같은 그림을 쓴다).
+function openTagCanvas() {
+  const openTag = makeCanvas(200, 80);
+  openTag.g.fillStyle = '#b5372c'; roundRect(openTag.g, 4, 4, 192, 72, 14); openTag.g.fill();
+  fitText(openTag.g, 'OPEN', 100, 44, 170, 56, '#fff1d6');
+  return openTag.canvas;
 }
 
 function buildShop(b) {
@@ -519,7 +529,7 @@ function buildShop(b) {
   // 문: 유리 문짝, 틀, 손잡이, OPEN 표시.
   const dW = SHOP.doorW;
   const dH = SHOP.doorH;
-  const doorGlass = new THREE.MeshBasicMaterial({ color: 0xffe9b8, toneMapped: false });
+  const doorGlass = new THREE.MeshBasicMaterial({ color: 0xe6f2ec, toneMapped: false }); // 실내 유리와 같은 서리 유리 느낌(밖에서 안이 안 보인다)
   plane(group, doorGlass, dW - 0.2, dH - 0.75, dx, 0.45 + (dH - 0.75) / 2 + 0.2, hd + 0.01);
   batch.box(teal, dW, 0.5, 0.06, dx, 0.25 + 0.04, hd + 0.04); // 아래 판
   batch.box(teal, 0.1, dH, 0.12, dx - dW / 2 + 0.05, dH / 2, hd + 0.05);
@@ -530,10 +540,7 @@ function buildShop(b) {
   const kicks = std(0x6b4a2f);
   batch.box(kicks, 0.04, 0.4, 0.05, dx + dW / 2 - 0.2, 1.0, hd + 0.1); // 손잡이
   batch.box(std(0x7a3a2e), 1.1, 0.02, 0.55, dx, 0.03, hd + 0.4); // 현관 매트
-  const openTag = makeCanvas(200, 80);
-  openTag.g.fillStyle = '#b5372c'; roundRect(openTag.g, 4, 4, 192, 72, 14); openTag.g.fill();
-  fitText(openTag.g, 'OPEN', 100, 44, 170, 56, '#fff1d6');
-  plane(group, new THREE.MeshBasicMaterial({ map: texOf(openTag.canvas), toneMapped: false }), 0.32, 0.128, dx - 0.12, 1.55, hd + 0.115);
+  plane(group, new THREE.MeshBasicMaterial({ map: texOf(openTagCanvas()), toneMapped: false }), 0.32, 0.128, dx - 0.12, 1.55, hd + 0.115);
 
   // 줄무늬 차양: 문과 쇼윈도 위(경사판 + 물결 처마).
   const awnX0 = -hw + 0.2;
@@ -625,4 +632,5 @@ function buildShop(b) {
 
 function dark() { return std(0x8d9196); }
 
-export { buildOfficeTower, buildShop };
+// 세탁소 실내가 같은 그림을 쓰도록 내보낸다: 간판(청록 판 + 세탁기·셔츠 + 글씨), 줄무늬·물결 차양 무늬, OPEN 표시.
+export { buildOfficeTower, buildShop, shopSignCanvas as laundrySignCanvas, stripeCanvas, valanceCanvas, openTagCanvas };

@@ -1,3 +1,4 @@
+import { LAUNDRY_FX } from '../config.js';
 // 세탁소 연출 계산 (순수): 빨랫줄 칸·셔츠 색, 세탁기 흔들림, 거품, 빨래 흔들림. 그리는 쪽은 laundry.js.
 
 export const PASTELS = [0xffb3c1, 0xb8e0d2, 0xfff1a8, 0xc3b6f2, 0xffcfa3, 0xa9d4f5]; // 분홍·민트·노랑·보라·살구·하늘
@@ -70,4 +71,49 @@ export function nearestIndex(pos, items) {
     }
   });
   return best;
+}
+
+// ---- 세탁·널기 이펙트 시간표 (순수). 숫자(시간·개수)는 config.js 의 LAUNDRY_FX. 그리는 쪽은 laundryFx.js. ----
+// 세탁: 셔츠가 세탁기에 들어간 순간이 t=0. 처음에 먼지·물방울, 돌아가는 동안 올라오는 비누방울·반짝이, burstAt 에 향기 폭죽(별 반짝이 + 빛 고리 + 떠오르는 방울).
+
+export function washEvents(fx = LAUNDRY_FX) {
+  const events = [{ t: 0, type: 'dust' }, { t: 0, type: 'splash', n: 5 }];
+  for (let t = 0.2; t < fx.burstAt - 0.1 + 1e-9; t += fx.bubbleEvery) events.push({ t: Math.round(t * 1000) / 1000, type: 'bubble' });
+  for (let t = 0.45; t < fx.burstAt - 0.1 + 1e-9; t += fx.sparkleEvery) events.push({ t: Math.round(t * 1000) / 1000, type: 'sparkle' });
+  events.push({ t: fx.burstAt, type: 'burst', n: 16 }, { t: fx.burstAt, type: 'ring' }, { t: fx.burstAt + 0.1, type: 'floaters', n: 5 });
+  return events.sort((a, b) => a.t - b.t);
+}
+
+// 세탁 진행률(0~100, 단조 증가): burstAt 까지 천천히 시작해 올라가고 그 순간 100.
+export function washPercent(t, fx = LAUNDRY_FX) {
+  if (!(t > 0)) return 0;
+  if (t >= fx.burstAt) return 100;
+  const k = t / fx.burstAt;
+  return Math.min(99, Math.floor(100 * (k * (2 - k)))); // 앞이 빠르고 끝이 느린 곡선
+}
+
+// 세탁기 LED 에 보일 글과 퍼센트. 돌아가는 동안은 "표시 글" + 점 1~3개 번갈아, 끝나면 "완료!".
+export function washDisplay(text, t, fx = LAUNDRY_FX) {
+  if (t >= fx.burstAt) return { text: '세탁 완료!', percent: 100, done: true };
+  const dots = '.'.repeat(1 + (Math.floor(Math.max(0, t) * 3) % 3));
+  return { text: `${text}${dots}`, percent: washPercent(t, fx), done: false };
+}
+
+// LED 표시판의 투명도(0~1): 처음 0.25 초에 켜지고 끝(seconds) 0.5 초 전부터 꺼진다. 시간 밖에서는 0.
+export function displayAlpha(t, fx = LAUNDRY_FX) {
+  if (!(t >= 0) || t >= fx.seconds) return 0;
+  return Math.min(1, t / 0.25, (fx.seconds - t) / 0.5);
+}
+
+// 널기: 셔츠가 걸린 순간이 t=0. 물방울이 떨어지고 hangTwinkleAt 에 자리 잡으며 반짝인다.
+export function hangEvents(fx = LAUNDRY_FX) {
+  const drops = [0.05, 0.2, 0.34, 0.5, 0.65, 0.82, 0.97].filter((t) => t < fx.hangSeconds).map((t) => ({ t, type: 'drip' }));
+  return [...drops, { t: fx.hangTwinkleAt, type: 'twinkle', n: 6 }].sort((a, b) => a.t - b.t);
+}
+
+// 마른 내 셔츠의 반짝임: 주기 dryPeriod 마다 dryPulse 동안 0 -> 1 -> 0 으로 번쩍(사인 곡선). 쉬는 동안 0. 음수 시간은 0.
+export function dryTwinkle(t, fx = LAUNDRY_FX) {
+  if (!(t >= 0)) return 0;
+  const phase = t % fx.dryPeriod;
+  return phase < fx.dryPulse ? Math.sin(Math.PI * (phase / fx.dryPulse)) : 0;
 }

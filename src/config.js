@@ -158,6 +158,57 @@ export const WASHER_RANGE = 4.0;
 export const CLOTHESLINE_RANGE = 4.0;
 // 빨랫줄 칸 수: 파스텔 셔츠가 돌려 쓰는 공용 칸(shared) + 방 정원(MULTIPLAYER.roomCap)만큼의 개인 "내 셔츠" 칸(personal). 여러 명이 한 줄을 같이 쓰므로 줄이 길다(interiors.js 가 칸 수에 맞춰 줄 길이를 정한다).
 export const CLOTHESLINE_SLOTS = { shared: 6, personal: 6 };
+
+// ---- 세탁소 외관·실내가 함께 쓰는 팔레트(청록 · 크림 · 따뜻한 나무 · 흰색). 간판·차양·창틀·바닥·틀·가구가 모두 여기 색을 따른다. ----
+export const LAUNDRY_LOOK = {
+  teal: '#2c7a89', tealFrame: 0x35909e, tealDeep: 0x2a6f7b, tealSoft: '#a9d6da', tealStripe: '#2c8a99',
+  cream: '#f3e4bf', creamBoard: 0xf4e9cd, creamWarm: 0xf0e2bc, stripeLight: '#f6efdc',
+  wood: 0x8a5f3a, woodWarm: 0xc99a5b, woodDark: 0xa77a4a, terracotta: 0x9a5a3a,
+  white: '#f6f1e6',
+};
+
+// ---- 세탁소 "빨 것" 5종(세탁 1 을 누르면 뜨는 선택 창의 1~5번 순서). 팀이 이 표를 고쳐 이름·멘트를 바꾼다(코드는 건드리지 않아도 된다). ----
+//   id: 영문 고유 이름(분석 이벤트 wash_item 에 실린다). label: 선택 창 이름. display: 세탁기 위 LED 표시 글("…" 뒤에 점과 퍼센트가 붙는다, 14자 이하 권장).
+//   lines: 세탁을 시작하며 한 줄 말한다(3~4개, 각 32자 이하). done: 다 빨린 뒤 한마디. icon: 선택 창 그림 { kind: 'smell'|'grime'|'sweat'|'ink'|'dust', color }(셔츠 위의 얼룩·구름).
+export const LAUNDRY_ITEMS = [
+  {
+    id: 'monday', label: '월요일 냄새', display: '월요일 냄새 세탁 중',
+    lines: ['월요일 냄새, 이제 안녕~', '월요일 아침의 퀴퀴함, 거품에 풍덩!', '일요일 밤의 한숨도 같이 빨자!', '출근길 지하철 냄새도 빠져라~'],
+    done: '뽀송뽀송~ 월요일 냄새 제거 완료!',
+    icon: { kind: 'smell', color: '#8fb06a' },
+  },
+  {
+    id: 'overtime', label: '야근 찌든 때', display: '야근 찌든 때 표백 중',
+    lines: ['야근의 흔적을 박박!', '표백제 한 스푼, 걱정은 두 스푼 빠져라', '새벽 퇴근길 때까지 싹 빼 준다!', '칼퇴 기운을 한 스푼 넣자~'],
+    done: '새하얗게! 야근 찌든 때 표백 완료!',
+    icon: { kind: 'grime', color: '#8a6a46' },
+  },
+  {
+    id: 'nerves', label: '면접 긴장 얼룩', display: '긴장 얼룩 제거 중',
+    lines: ['식은땀 자국, 거품으로 안녕~', '떨리던 손바닥 땀도 같이 빨자!', '면접장의 긴장을 헹궈 낸다~', '긴장은 물에 풀고 자신감만 남겨!'],
+    done: '긴장 얼룩 싹~ 자신감만 남았다!',
+    icon: { kind: 'sweat', color: '#6fb7e8' },
+  },
+  {
+    id: 'ink', label: '자소서 잉크 얼룩', display: '잉크 얼룩 표백 중',
+    lines: ['자소설 쓰다 묻은 잉크, 빠져라!', '볼펜 자국도 퇴고하듯 지운다~', '밤새 고친 흔적을 헹구자!', '번진 잉크는 이제 안녕~'],
+    done: '잉크 얼룩 제거 완료! 새 문장처럼 깨끗!',
+    icon: { kind: 'ink', color: '#3f5fb8' },
+  },
+  {
+    id: 'dawn', label: '새벽 감성 먼지', display: '새벽 감성 먼지 제거 중',
+    lines: ['새벽 두 시 감성 먼지, 훅 불어 날리자~', '괜히 센치했던 밤을 거품으로 덮자!', '쌓인 새벽 감성, 탈탈 턴다!', '부끄러운 흑역사도 함께 빨자~'],
+    done: '맑음! 새벽 감성 먼지 제거 완료!',
+    icon: { kind: 'dust', color: '#b8a4e8' },
+  },
+];
+// 널기(2)는 고르는 것 없이 이 멘트 중 하나를 말한다(3~4개, 각 32자 이하).
+export const LAUNDRY_HANG = { lines: ['바람에 보송보송 말려 보자~', '향기 퐁퐁~', '구김 없이 쫙!', '햇살 한 줌 넣어서 말리자~'] };
+// 세탁·널기 이펙트 시간표(초, 세탁기에 셔츠가 들어간 순간부터): seconds 세탁 연출 전체 길이, burstAt 향기 터지는 순간(표시 글은 여기서 "완료!"), bubbleEvery/sparkleEvery 올라오는 비누방울·반짝이 간격,
+// hangSeconds 널기 물방울이 떨어지는 시간, hangTwinkleAt 셔츠가 자리 잡고 반짝이는 순간, dryPeriod/dryPulse 마른 내 셔츠의 반짝임 주기·길이.
+export const LAUNDRY_FX = {
+  seconds: 3.6, burstAt: 2.6, bubbleEvery: 0.2, sparkleEvery: 0.32, hangSeconds: 1.1, hangTwinkleAt: 0.7, dryPeriod: 1.8, dryPulse: 0.5,
+};
 // 옷 상태 연동(소각 -> 그을음 옷 -> 세탁 -> 나시 -> 새 셔츠 널기 -> 마르면 입기).
 // DRY_SECONDS: 새 흰 셔츠를 빨랫줄에 널고 마르기까지 걸리는 시간(초, 실시간. 밖에 나가 있어도 센다).
 // WEAR_SECONDS: 마른 새 셔츠를 입는 동작의 길이(초, 이동·입력은 잠긴다). WEAR_SWAP_AT: 그중 셔츠가 줄에서 사라지고 옷이 바뀌는 순간의 비율.
@@ -167,6 +218,7 @@ export const DRY_SECONDS = 8;
 // washing: 세탁 동작이 진행되는 동안(셔츠가 세탁기에 들어가 덜컹거릴 때까지), tank: 세탁이 끝나고 아직 빨랫줄에 널기 전. (마르는 중·입기 문구는 logic/outfit.js 의 outfitPrompt)
 export const LAUNDRY_GUIDE = {
   washing: '세탁 중… 다 빨리면 빨랫줄에 널어요',
+  washingItem: '{item} 세탁 중… 다 빨리면 빨랫줄에 널어요', // 고른 빨 것이 있을 때({item} 자리에 이름)
   tank: '다음은 2 널기! 새 셔츠를 빨랫줄에 널어요',
 };
 export const WEAR_SECONDS = 1.2;
@@ -257,29 +309,31 @@ export const LAUNDRY_INTERIOR = { origin: { x: 300, z: 0 }, width: 12, depth: 10
 //   sheen: 비스듬한 빛줄기의 세기(0~1), roughness·clearcoat: 유리 광택(작을수록 번들), emissive·emissiveIntensity: 유리가 스스로 은은히 빛나는 색·세기(서리 유리의 밝은 느낌).
 // clothesline(선택): 빨랫줄 기둥·집게 색.
 export const INTERIOR_LOOK = {
-  background: 0xe4f1f3, hemiSky: 0xf4fbfd, hemiGround: 0xb8cad1, hemi: 1.25,
-  lamp: 0xf2fbff, lampIntensity: 9, lampDistance: 12, sun: 0.7, sunColor: 0xf3f9ff,
-  floor: { a: '#d9e8ed', b: '#c7dae1', line: 'rgba(90, 120, 135, 0.3)', speckle: false, roughness: 0.55, glow: 0.22 },
+  background: 0xe9f2ee, hemiSky: 0xf8fcfa, hemiGround: 0xc4cfc9, hemi: 1.25,
+  lamp: 0xfff9ee, lampIntensity: 9, lampDistance: 12, sun: 0.7, sunColor: 0xfff8ec,
+  floor: { a: '#f4ead2', b: '#a9d6da', line: 'rgba(44, 122, 137, 0.28)', speckle: false, roughness: 0.55, glow: 0.22 }, // 외관의 크림·청록 체크 타일
   baseboard: 0xb7c2ca,
-  sign: { board: 0xc4ccd3, bg: '#e9eff1', border: '#a9b5be', text: '#1b8a98', brushed: true },
+  sign: { board: 0xf4e9cd, bg: '#2c7a89', border: '#f3e4bf', text: '#f3e4bf', brushed: false }, // 외관 간판과 같은 청록 판 + 크림 글씨(그림은 interiorLaundry.js 가 외관과 같은 캔버스로 그린다)
   materials: {
-    table: { wood: 0xd3dde3 },
-    benchCushion: { wood: 0xcfd7dc, carpet: 0x47b4c0 },
-    pottedPlant: { wood: 0xe4eaed, woodDark: 0xbcc7ce },
-    trashcan: { metal: 0xcbd3d9, metalDark: 0x74818b },
-    cardboardBoxOpen: { wood: 0x6fc5cf, woodDark: 0x4aa7b3 },
-    lampRoundFloor: { metal: 0xcbd3d9, lamp: 0xf4fbff },
-    rugRectangle: { carpet: 0x93d5db, carpetDarker: 0x6dbcc4 },
+    table: { wood: 0xf0e2bc },
+    benchCushion: { wood: 0xf0e2bc, carpet: 0x35909e },
+    pottedPlant: { wood: 0x9a5a3a, woodDark: 0x7a3f28 },
+    trashcan: { metal: 0xe9ddbd, metalDark: 0x35909e },
+    cardboardBoxOpen: { wood: 0xc99a5b, woodDark: 0xa77a4a },
+    lampRoundFloor: { metal: 0xe9ddbd, lamp: 0xfff6e0 },
+    rugRectangle: { carpet: 0x7fc3cb, carpetDarker: 0x5aa9b4 },
   },
   glass: {
-    frame: 0xd8e0e5, frameDark: 0xb4c0c9,
+    frame: 0x35909e, frameDark: 0x2a6f7b, // 외관 문틀과 같은 청록
     texture: {
-      wall: ['#f6fcfc', '#e6f4f5', '#d4ebee'], low: ['#e2f2f4', '#d0e9ec', '#bfe0e5'], window: ['#fbfeff', '#ecf8f9', '#d9eff2'],
+      wall: ['#f8fdfb', '#e9f5f1', '#d7ebe6'], low: ['#e4f2f1', '#d2e9e8', '#c0e0e1'], window: ['#fcfffd', '#eff9f6', '#dcf0ee'],
     },
     sheen: { wall: 0.5, low: 0.4, window: 0.8 },
-    roughness: 0.42, clearcoat: 0.55, emissive: 0xcde9ed, emissiveIntensity: 0.32,
+    roughness: 0.42, clearcoat: 0.55, emissive: 0xd3ece6, emissiveIntensity: 0.32,
+    openTag: true, // 출입문 안쪽의 "OPEN" 표시(외관 문과 같다)
   },
-  clothesline: { post: 0xb4bec6, pin: 0x8e9ba5 },
+  clothesline: { post: 0x8a5f3a, pin: 0x35909e },
+  valance: true, // 세탁기 줄 위의 청록·크림 줄무늬 차양(외관 차양과 같다)
 };
 
 // 면접장 실내: 따뜻한 우드톤 대신 차갑고 딱딱한 사무실 느낌(쿨 화이트·회색 벽, 청회색 카펫 타일 바닥, 남색 포인트, 흰 형광등 빛).

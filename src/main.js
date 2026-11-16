@@ -12,6 +12,8 @@ import {
 import { createPlayer } from './player.js';
 import { createFire } from './fire.js';
 import { buildItemProp, buildItemIcon, createGlitter } from './incineratorProps.js';
+import { buildStainIcon } from './laundryFx.js';
+import { pickRandomStain, washLine, hangLine } from './logic/laundryItems.js';
 import { itemsFor, pickIndexFromCode, variantOf, isFlameItem, lineFor, pickRandomItem, poseFor } from './logic/incinerator.js';
 import { createHud } from './hud.js';
 import { interactTarget, hoverLabel, nearestInRange, actionOf, standPoint } from './logic/interaction.js';
@@ -52,7 +54,7 @@ import {
   INCINERATOR, ACTION_REDUCE, ACTION_EFFECT_AT, ACTION_TARGET_SECONDS, ACTION_TURN_SECONDS, AUTO_GAP, PASSIVE, MARSHMALLOW, FIRST_PERSON,
   FIRE_RANGE, SHREDDER_RANGE, WASHER_RANGE, CLOTHESLINE_RANGE, FIRE_ZONE_RADIUS, CATCH_URL, GA_MEASUREMENT_ID, WEAR_SECONDS, WEAR_SWAP_AT,
   INTERVIEW, INTERVIEW_ROUND, INTERVIEW_BONUS, INTERVIEW_ZONE_RADIUS, INTERVIEW_ANSWER_SECONDS, INTERVIEW_IMPROV_SECONDS, INTERVIEW_FINALE_SECONDS, SPEECH_SECONDS,
-  MULTIPLAYER, SUPABASE_URL, SUPABASE_ANON_KEY, CLOTHESLINE_SLOTS, QUICK_CHAT,
+  MULTIPLAYER, SUPABASE_URL, SUPABASE_ANON_KEY, CLOTHESLINE_SLOTS, QUICK_CHAT, LAUNDRY_ITEMS, LAUNDRY_FX,
 } from './config.js';
 import { isTypingTarget } from './logic/typing.js';
 import { createQuickChat } from './quickChat.js';
@@ -79,7 +81,7 @@ const SHOW_SIDE = 0.5; // 들여다볼 때 종이를 화면 오른쪽으로 비�
 const EMBER_AT = [0.0, 0.45]; // 지켜보는 단계에서 불씨를 띄우는 시각(초)
 const PAPER_ARC = 0.6; // 던질 때 포물선이 올라가는 높이
 const PAPER_FIRE_Y = 0.9; // 종이가 도착하는 불 위 높이
-const WASH_GUIDE_TAIL = 1.6; // 셔츠가 세탁기에 들어간 뒤 "세탁 중" 안내를 더 보이는 시간(초: 덜컹거림이 끝날 때까지)
+const WASH_GUIDE_TAIL = LAUNDRY_FX.burstAt; // 셔츠가 세탁기에 들어간 뒤 "세탁 중" 안내를 더 보이는 시간(초: 덜컹거림이 끝날 때까지)
 const SHIRT_FLIGHT_SEC = 0.45; // 구겨진 셔츠가 세탁기까지 날아가는 시간
 const SHIRT_ARC = 0.8; // 셔츠가 날아갈 때 포물선 높이
 const POP_HEIGHT = 1.6; // -3 팝업이 뜨는 머리 위 높이
@@ -124,7 +126,7 @@ if (isMobileUA(navigator.userAgent)) {
   buildBuildings(yardRoot, layout);
   const inside = buildInteriorLaundry(scene, interior, models);
   const insideInterview = buildInteriorInterview(scene, interviewData, models);
-  const laundry = { washers: inside.washers, clothesline: inside.clothesline, update: (dt) => inside.update(dt) };
+  const laundry = { washers: inside.washers, clothesline: inside.clothesline, fx: inside.fx, update: (dt) => inside.update(dt) };
   const zones = buildZones(layout, interior, interviewData);
   const { updateTreeOcclusion } = buildDecor(yardRoot, layout, models);
   buildSign(yardRoot, layout.sign);
@@ -298,6 +300,10 @@ if (isMobileUA(navigator.userAgent)) {
     canStart: (id) => inRangeFor(id), autoActions: () => autoActionsOf(currentZone),
     // 자동이 태우기·파쇄를 시작할 때마다 물건을 무작위로 고른다(태우기는 드물게 오로라 가루). 직접 고른 행동은 start 가 변형을 같이 넘긴다.
     variantFor: (id) => {
+      if (id === 'wash') { // 자동 세탁: 빨 것을 무작위로(직전과 같은 것은 피한다). 직접 고른 세탁은 start 가 변형('picked')을 넘기므로 여기 오지 않는다.
+        stain = pickRandomStain(Math.random, { lastId: stain?.id }) ?? stain;
+        return undefined;
+      }
       if (!isItemAction(id)) return undefined;
       chosen = pickRandomItem(id, Math.random, { lastId: lastAuto[id] }) ?? chosen;
       lastAuto[id] = chosen.id; // 같은 행동에서 같은 물건이 연달아 나오지 않게
@@ -328,6 +334,7 @@ if (isMobileUA(navigator.userAgent)) {
   const HELD_BY_ACTION = { wash: dirtyShirt, hang: cleanShirt }; // 소각장 행동의 소품은 고른 물건(itemProps)
   const isItemAction = (id) => id === 'burn' || id === 'shred';
   let chosen = INCINERATOR.items[0]; // 이번 행동의 물건(선택 창이나 자동이 정한다)
+  let stain = LAUNDRY_ITEMS[0]; // 이번 세탁의 빨 것(선택 창이나 자동이 정한다)
   let chosenLine = ''; // 그 물건의 멘트(행동을 시작할 때 한 줄 고른다)
   let paperVariant = 0; // 불합격 통지서 문구 4종을 행동마다 번갈아 쓴다
   let held = itemProps.get(chosen.id);
@@ -381,10 +388,14 @@ if (isMobileUA(navigator.userAgent)) {
   // 받은 빨랫줄 메시지를 반영하고(내 빨래가 졌으면 옮기고), 세탁기 효과는 그대로 보여 준다. 글은 없고 번호뿐이다.
   function onRoomMessage(m) {
     let moved = [];
-    if (m.k === 'line') moved = lineState.ingestEvent(m.id, m.slot, m.c, m.t, Date.now());
+    if (m.k === 'line') {
+      moved = lineState.ingestEvent(m.id, m.slot, m.c, m.t, Date.now());
+      if (spaceId === 'laundry' && m.c >= 0) laundry.fx.hang(m.slot); // 다른 방문자가 빨래를 널었다
+    }
     else if (m.k === 'lines') moved = lineState.ingestSnapshot(m.id, m.e, Date.now());
     else if (m.k === 'fx' && spaceId === 'laundry') {
       laundry.washers.splash(m.i);
+      laundry.fx.startWash(m.i, null); // 다른 방문자의 세탁: 비누방울·반짝이 폭죽(글은 "세탁 중")
       sfx.play('washSplash', { at: interior.washers[m.i], space: 'laundry', remote: true }); // 다른 방문자의 세탁기 소리(멀면 작게)
     }
     if (moved.length) { lineSnapDue = 0; lineDirtyUntil = performance.now() + LINE_DIRTY_MS; }
@@ -486,6 +497,8 @@ if (isMobileUA(navigator.userAgent)) {
       character?.beginAction();
     }
     if (step.kind === 'turn') {
+      if (action === 'wash') hud.say(SPEECH_KEY, washLine(stain), { seconds: LINE_SECONDS, silent: true }); // 세탁기 쪽으로 돌며 한마디(빨 것별 멘트)
+      else if (action === 'hang') hud.say(SPEECH_KEY, hangLine(), { seconds: LINE_SECONDS, silent: true });
       const t = pointOf(step.target);
       if (step.target === 'washer') washIndex = interior.washers.indexOf(t);
       if (character) {
@@ -575,6 +588,7 @@ if (isMobileUA(navigator.userAgent)) {
   function onEffect(id) {
     if (isItemAction(id)) { onItemEffect(id); return; }
     track('action_done', { action: id });
+    if (id === 'wash') track('wash_item', { id: stain.id });
     applyReduction(ACTION_REDUCE);
     crumple = null;
     changeOutfit(outfit.onAction(id));
@@ -582,7 +596,9 @@ if (isMobileUA(navigator.userAgent)) {
       // 깨끗한 셔츠가 줄에 걸려 흔들린다. 손의 셔츠는 사라진다. 나시만 입은 채 널면 내 새 흰 셔츠가 전용 칸에 걸리고,
       // 아니면 파스텔 셔츠(가득 차면 가장 오래된 것을 바꾼다. 내 셔츠 칸은 건너뛴다)가 걸린다.
       const now = Date.now();
-      announceLine(outfit.state === 'drying' && lineState.ownWhiteSlot() < 0 ? lineState.hangWhite(now) : lineState.hangPastel(hangCount++ % 6, now));
+      const hung = outfit.state === 'drying' && lineState.ownWhiteSlot() < 0 ? lineState.hangWhite(now) : lineState.hangPastel(hangCount++ % 6, now);
+      announceLine(hung);
+      laundry.fx.hang(hung?.slot); // 물방울이 떨어지고 자리 잡으며 반짝인다
       held.visible = false;
       sfx.play('flap'); // 셔츠를 줄에 탁
       return;
@@ -698,7 +714,7 @@ if (isMobileUA(navigator.userAgent)) {
     stopWalking();
     if (id === 'interview') return interviewScene.openQuestion(); // 면접 보기: 질문 + 답변 선택 창(지수 감소는 답한 순간)
     if (id === 'improv') return interviewScene.startImprov(); // 돌발행동: 선택 없이 바로
-    if (isItemAction(id)) return openItemPicker(id); // 태우기·파쇄: 물건 고르기 창(고르면 startItemAction)
+    if (isItemAction(id) || id === 'wash') return openItemPicker(id); // 태우기·파쇄·세탁: 물건(빨 것) 고르기 창(고르면 startItemAction)
     return runner.start(id); // 첫 단계는 이 프레임의 update 에서 시작된다.
   }
 
@@ -706,9 +722,9 @@ if (isMobileUA(navigator.userAgent)) {
   let pickerAction = null;
   let pickerItems = [];
   const iconCache = new Map();
-  const iconOf = (item) => { if (!iconCache.has(item.id)) iconCache.set(item.id, buildItemIcon(item)); return iconCache.get(item.id); };
+  const iconOf = (item) => { if (!iconCache.has(item.id)) iconCache.set(item.id, item.icon ? buildStainIcon(item) : buildItemIcon(item)); return iconCache.get(item.id); };
   function openItemPicker(id) {
-    const list = itemsFor(id);
+    const list = id === 'wash' ? LAUNDRY_ITEMS : itemsFor(id);
     if (!list.length || !dispatch('pick:open')) return false; // dispatch 가 눌려 있던 이동 키를 비우고 자동을 끈다
     stopWalking();
     renderer.domElement.style.cursor = '';
@@ -716,7 +732,7 @@ if (isMobileUA(navigator.userAgent)) {
     pickerAction = id;
     pickerItems = list;
     hud.openPicker({
-      title: id === 'burn' ? '무엇을 태울까요?' : '무엇을 갈아 버릴까요?',
+      title: id === 'wash' ? '무엇을 빨까요?' : id === 'burn' ? '무엇을 태울까요?' : '무엇을 갈아 버릴까요?',
       items: list.map((item, i) => ({ key: String(i + 1), label: item.label, icon: iconOf(item) })),
       onPick: pickItem,
       onCancel: cancelPicker,
@@ -741,6 +757,7 @@ if (isMobileUA(navigator.userAgent)) {
   // 고른 물건으로 행동을 시작한다(자리가 그대로인지 다시 확인).
   function startItemAction(id, item) {
     if (runner.isBusy() || !inRangeFor(id)) return false;
+    if (id === 'wash') { stain = item; return runner.start('wash', 'picked'); }
     chosen = item;
     return runner.start(id, variantOf(item));
   }
@@ -865,6 +882,8 @@ if (isMobileUA(navigator.userAgent)) {
       if (flight.kind === 'burn') { flight = null; held.visible = false; return; } // 불에 들어갔다(불길은 효과 순간에 나온다)
       if (flight.kind === 'wash') { // 셔츠가 들어간 순간 세탁기가 흔들리고 거품이 올라온다
         laundry.washers.splash(flight.washer);
+        const washed = stain;
+        laundry.fx.startWash(flight.washer, washed, () => hud.say(SPEECH_KEY, washed.done, { seconds: 3, silent: true })); // 먼지·물방울 -> 비누방울 -> 향기 폭죽 + 끝 멘트
         sfx.play('washSplash');
         sfx.play('washerRattle');
         washTail = WASH_GUIDE_TAIL;
@@ -1557,7 +1576,7 @@ if (isMobileUA(navigator.userAgent)) {
       }
       // 세탁소 순서 안내(세탁 중 / 세탁 끝: 다음은 널기): 다른 안내(문·빨랫줄 곁 문구)가 없을 때 눌러도 아무 일 없는 힌트로 띄운다. 세탁소 밖에서는 나오지 않는다.
       if (!nextPrompt && mode === 'free') {
-        const guide = laundryGuide(outfit.state, { washing: actionId === 'wash' || washTail > 0, spaceId });
+        const guide = laundryGuide(outfit.state, { washing: actionId === 'wash' || washTail > 0, spaceId, stain });
         if (guide) { nextPrompt = guide; actionable = false; }
       }
     }
@@ -1577,6 +1596,7 @@ if (isMobileUA(navigator.userAgent)) {
     quickChat.update(dt);
     updateLine(dt);
     laundry.update(dt);
+    laundry.fx.update(dt, camera, { drySlot: spaceId === 'laundry' && outfit.state === 'dry' ? lineState.ownWhiteSlot() : -1 }); // 마른 내 셔츠는 되풀이로 반짝인다
     interviewers.update(dt);
     crew.update(dt);
     interviewScene.update(dt);

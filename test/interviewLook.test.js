@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { INTERIOR_LOOK, INTERVIEW_LOOK } from '../src/config.js';
+import { INTERIOR_LOOK, INTERVIEW_LOOK, LAUNDRY_LOOK } from '../src/config.js';
 import { materialOverrides, rgb, cssRgb } from '../src/logic/look.js';
 import { buildInterviewInterior } from '../src/logic/interiors.js';
 
@@ -10,7 +10,7 @@ const cool = (hex) => { const [r, , b] = rgb(hex); return b >= r; };
 const colorOf = (s) => (typeof s === 'object' ? s.color : s);
 
 test('모양(look): 면접장과 세탁소(기본)가 같은 필드를 가지고, 모든 색이 올바른 값이다', () => {
-  const optional = new Set(['glass', 'clothesline']); // 세탁소만 가지는 선택 필드(유리 벽, 빨랫줄 색)
+  const optional = new Set(['glass', 'clothesline', 'valance']); // 세탁소만 가지는 선택 필드(유리 벽, 빨랫줄 색, 줄무늬 차양)
   assert.deepEqual(Object.keys(INTERVIEW_LOOK).sort(), Object.keys(INTERIOR_LOOK).filter((k) => !optional.has(k)).sort());
   for (const look of [INTERIOR_LOOK, INTERVIEW_LOOK]) {
     for (const k of ['background', 'hemiSky', 'hemiGround', 'lamp', 'sunColor', 'baseboard']) assert.ok(isHex(look[k]), k);
@@ -21,18 +21,21 @@ test('모양(look): 면접장과 세탁소(기본)가 같은 필드를 가지고
   }
 });
 
-test('세탁소 실내 모양: 서리 유리 가게. 배경·조명·바닥·걸레받이·간판·유리·빨랫줄 색이 모두 밝고 시원하다(파랑 성분 >= 빨강 성분)', () => {
+test('세탁소 실내 모양: 외관과 같은 팔레트(청록·크림). 간판은 외관과 같은 청록 판 + 크림 글씨, 바닥은 크림·연청록 체크, 배경은 밝다', () => {
   const L = INTERIOR_LOOK;
-  for (const k of ['background', 'hemiSky', 'hemiGround', 'lamp', 'sunColor', 'baseboard']) assert.ok(cool(L[k]), k);
-  for (const c of [L.floor.a, L.floor.b, L.sign.bg]) { const [r, , b] = cssRgb(c); assert.ok(b >= r, c); }
-  assert.ok(cool(L.sign.board));
+  for (const k of ['background', 'hemiSky', 'hemiGround', 'lamp', 'sunColor', 'baseboard']) assert.ok(isHex(L[k]), k);
+  assert.equal(L.sign.bg, LAUNDRY_LOOK.teal, '간판 판 = 외관 간판 청록');
+  assert.equal(L.sign.border, LAUNDRY_LOOK.cream);
+  assert.equal(L.sign.text, LAUNDRY_LOOK.cream);
   assert.equal(L.floor.speckle, false);
-  assert.ok(L.sign.brushed, '솔질한 금속 간판');
+  assert.equal(L.floor.a, '#f4ead2', '크림 타일');
+  assert.equal(L.floor.b, LAUNDRY_LOOK.tealSoft, '연청록 타일');
   const [r, g, b] = rgb(L.background);
   assert.ok(Math.min(r, g, b) > 0xc8, '밝은 배경(밖 풍경이 아닌 흰 안개 같은 바탕)');
   assert.notEqual(L.background, INTERVIEW_LOOK.background);
   const [fr, fg, fb] = cssRgb(L.floor.a);
   assert.ok(Math.min(fr, fg, fb) > 200, '밝은 타일 바닥');
+  assert.equal(L.valance, true, '줄무늬 차양');
 });
 
 test('세탁소 유리 벽 설정: 틀·유리 질감 색이 올바르고 유리는 밝다(불투명 서리 유리)', () => {
@@ -48,16 +51,17 @@ test('세탁소 유리 벽 설정: 틀·유리 질감 색이 올바르고 유리
   assert.ok(G.roughness > 0 && G.roughness <= 1 && G.clearcoat >= 0 && G.clearcoat <= 1 && G.emissiveIntensity >= 0);
   assert.equal(INTERVIEW_LOOK.glass, undefined, '면접장은 유리 벽이 아니다(모델 벽 그대로)');
   assert.ok(isHex(INTERIOR_LOOK.clothesline.post) && isHex(INTERIOR_LOOK.clothesline.pin));
+  assert.equal(G.frame, LAUNDRY_LOOK.tealFrame, '유리 틀 = 외관 문틀 청록');
+  assert.equal(G.openTag, true, '출입문 안쪽 OPEN 표시');
+  assert.equal(INTERIOR_LOOK.clothesline.pin, LAUNDRY_LOOK.tealFrame);
 });
 
-test('세탁소 가구 재질 덮어쓰기: 값이 올바르고 나무색·분홍 카펫이 남지 않는다(색이 밝고 푸른 쪽)', () => {
+test('세탁소 가구 재질 덮어쓰기: 값이 올바르고(크림·청록·따뜻한 나무·테라코타), 모든 가구가 외관 팔레트로 칠해진다', () => {
   let count = 0;
   for (const [model, over] of Object.entries(INTERIOR_LOOK.materials)) {
     for (const [mat, spec] of Object.entries(over)) {
       count++;
       assert.ok(isHex(colorOf(spec)), `${model}.${mat}`);
-      const [r, , b] = rgb(colorOf(spec));
-      assert.ok(b >= r, `${model}.${mat} 파랑 성분 >= 빨강 성분`);
     }
   }
   assert.ok(count >= 10);

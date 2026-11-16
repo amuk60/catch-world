@@ -59,9 +59,10 @@ export function outfitPrompt(state, secondsLeft) {
 
 // 세탁소 순서 안내(1 세탁 -> 2 널기 -> 마를 때까지 기다리기 -> E 새 셔츠 입기)의 앞 두 단계 문구. 세탁소 안에서만 나오고, 눌러도 아무 일 없는 힌트라서 문자열이나 null 만 돌려준다.
 // washing: 세탁 동작이 진행 중인가(옷 상태가 바뀐 뒤에도 셔츠가 세탁기에 들어가 덜컹거리는 동안은 true). 마르는 중·입기는 빨랫줄 곁의 outfitPrompt 가 맡는다.
-export function laundryGuide(state, { washing = false, spaceId = 'laundry' } = {}) {
+// stain: 고른 빨 것({ label })이 있으면 "월요일 냄새 세탁 중…" 처럼 이름이 들어간다.
+export function laundryGuide(state, { washing = false, spaceId = 'laundry', stain = null } = {}) {
   if (spaceId !== 'laundry') return null;
-  if (washing) return LAUNDRY_GUIDE.washing;
+  if (washing) return stain?.label ? LAUNDRY_GUIDE.washingItem.replace('{item}', stain.label) : LAUNDRY_GUIDE.washing;
   if (state === 'tank') return LAUNDRY_GUIDE.tank;
   return null;
 }

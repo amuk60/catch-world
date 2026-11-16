@@ -21,11 +21,13 @@ export const variantOf = (item) => (item?.prop?.solid ? 'solid' : 'paper');
 // 불꽃 색을 바꾸는 물건(오로라 가루)인가.
 export const isFlameItem = (item) => Boolean(item?.flame?.tint);
 
-// 그 행동의 멘트 한 줄(rng: 0 이상 1 미만). 없으면 빈 글자.
-export function lineFor(item, actionId, rng = Math.random) {
-  const lines = item?.[actionId]?.lines ?? [];
-  return lines.length ? lines[Math.min(lines.length - 1, Math.floor(rng() * lines.length))] : '';
+// 멘트 목록에서 한 줄(rng: 0 이상 1 미만). 없으면 빈 글자. 세탁소(logic/laundryItems.js)도 쓴다.
+export function pickLine(lines, rng = Math.random) {
+  return lines?.length ? lines[Math.min(lines.length - 1, Math.floor(rng() * lines.length))] : '';
 }
+
+// 그 행동의 멘트 한 줄(rng: 0 이상 1 미만). 없으면 빈 글자.
+export const lineFor = (item, actionId, rng = Math.random) => pickLine(item?.[actionId]?.lines, rng);
 
 // 자동(R)이 고르는 물건. 태우기에서는 auroraChance 의 확률로 불꽃 색을 바꾸는 물건(오로라 가루), 아니면 나머지 중 하나. 직전 물건(lastId)은 가능하면 피한다.
 export function pickRandomItem(actionId, rng = Math.random, { items = INCINERATOR.items, auroraChance = INCINERATOR.auroraChance, lastId = null } = {}) {
