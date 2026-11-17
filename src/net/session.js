@@ -1,7 +1,7 @@
 // 멀티플레이 세션(THREE 없음, 시험 가능): 전송(transport)을 감싸 공간별 방에 들어가고, 내 상태를 정책에 맞춰 보내고,
 // 받은 메시지를 검사·보간 버퍼에 쌓고, 오래 소식 없는 방문자를 지운다. 게임 루프로는 절대 예외를 던지지 않는다.
 import {
-  buildState, validateState, createSendPolicy, createInterpBuffer, isStale, nearestN, buildSay, validateSay, createSayLimiter, buildRoomMsg, validateRoomMsg, buildChat, validateChat,
+  buildState, validateState, createSendPolicy, createInterpBuffer, createDeadReckoner, createVelocityEstimator, isStale, nearestN, buildSay, validateSay, createSayLimiter, buildRoomMsg, validateRoomMsg, buildChat, validateChat,
 } from '../logic/net.js';
 import { createChatLimiter } from '../logic/quickChat.js';
 import { shardRoom, nextShard } from '../logic/shards.js';
@@ -13,7 +13,11 @@ import { shardRoom, nextShard } from '../logic/shards.js';
 export function createSession({ transport, self, cfg, now = () => performance.now(), clock = () => Date.now(), sayLimits = null, roomLimits = null, chatLimits = null }) {
   const remotes = new Map(); // id -> { id, nick, buffer, lastSeen, lastT, lastRecv }
   const peers = new Set(); // 지금 방에 있는 다른 방문자 id(전송 쪽 presence)
-  const policy = createSendPolicy({ hz: cfg.sendHz, heartbeatMs: cfg.heartbeatMs, epsPos: cfg.epsPos, epsRot: cfg.epsRot, minGapMs: cfg.minGapMs });
+  const policy = createSendPolicy({
+    hz: cfg.sendHz, minGapMs: cfg.minGapMs, heartbeatMs: cfg.heartbeatMs, heartbeatMovingMs: cfg.heartbeatMovingMs, epsPos: cfg.epsPos, epsRot: cfg.epsRot, epsSpeed: cfg.epsSpeed,
+    settleMs: cfg.settleMs, sustainedHz: cfg.sustainedHz, burst: cfg.burst, maxExtrapMs: cfg.maxExtrapMs,
+  });
+  const velocity = createVelocityEstimator(); // local 에 속도(vx, vz)가 없으면 프레임 간 위치 차이로 구한다
   const validateOpts = { adjectives: cfg.nickAdjectives, nouns: cfg.nickNouns };
   let space = null; // 지금 들어가 있는(또는 들어가는 중인) 공간
   let shard = 1; // 지금 들어가 있는(또는 살펴보는 중인) 방 번호
@@ -146,8 +150,9 @@ export function createSession({ transport, self, cfg, now = () => performance.no
     if (!r) {
       if (remotes.size >= cfg.maxTracked) return false;
       r = {
-        id: s.id, nick: s.nick, lastSeen: at, lastT: -1, lastRecv: -Infinity,
-        buffer: createInterpBuffer({ delayMs: cfg.interpDelayMs, teleportDist: cfg.teleportDist, extrapolateMs: cfg.extrapolateMs }),
+        id: s.id, nick: s.nick, lastSeen: at, lastT: -1, lastRecv: -Infinity, legacy: false,
+        buffer: createInterpBuffer({ delayMs: cfg.interpDelayMs, teleportDist: cfg.teleportDist, extrapolateMs: cfg.extrapolateMs }), // 옛 방식(속도 없음) 메시지용
+        dr: createDeadReckoner({ omega: cfg.smoothOmega, teleportDist: cfg.teleportDist, maxExtrapMs: cfg.maxExtrapMs }), // 새 방식(속도 있음)
       };
       remotes.set(s.id, r);
       peers.add(s.id);
@@ -158,7 +163,8 @@ export function createSession({ transport, self, cfg, now = () => performance.no
     r.lastRecv = at;
     r.lastSeen = at;
     r.nick = s.nick;
-    r.buffer.push(s, at);
+    r.legacy = s.vx === undefined; // 속도가 없으면 옛 클라이언트(주기 전송): 보간 버퍼로 그린다
+    if (r.legacy) r.buffer.push(s, at); else r.dr.push(s, at);
     received++;
     notify();
     return true;
@@ -259,9 +265,11 @@ export function createSession({ transport, self, cfg, now = () => performance.no
       if (local.space !== space) join(local.space);
       else if (phase === 'full' && nowMs - fullAt >= (cfg.fullRetryMs ?? 60000)) join(space);
       if (phase === 'probing' && tState === 'ready' && probeMs > 0 && nowMs >= probeUntil) decide(nowMs);
+      const v = local.vx === undefined ? velocity.update(nowMs, local.x, local.z, local.space) : { vx: local.vx, vz: local.vz };
       if (status !== 'ready' || !transport.isReady || !active) return;
-      if (policy.update(nowMs, local, peers.size > 0 || remotes.size > 0)) {
-        transport.send(buildState(self, local, Math.round(clock())));
+      const mine = { ...local, vx: v.vx, vz: v.vz };
+      if (policy.update(nowMs, mine, peers.size > 0 || remotes.size > 0)) {
+        transport.send(buildState(self, mine, Math.round(clock())));
         sent++;
       }
     } catch {
@@ -276,7 +284,7 @@ export function createSession({ transport, self, cfg, now = () => performance.no
     for (const [id, r] of remotes) if (isStale(r.lastSeen, nowMs, cfg.staleMs)) remotes.delete(id);
     const out = [];
     for (const r of remotes.values()) {
-      const p = r.buffer.sample(nowMs);
+      const p = r.legacy ? r.buffer.sample(nowMs) : r.dr.sample(nowMs);
       if (p && p.space === space) out.push({ id: r.id, nick: r.nick, ...p });
     }
     return nearestN(out, from, cfg.maxRemote);

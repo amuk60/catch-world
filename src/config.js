@@ -591,12 +591,23 @@ export const INTERVIEW = {
 // 공유되는 정보는 임의로 만든 닉네임·위치·방향·동작·옷 상태뿐이다(개인정보 아님). 끄려면 enabled: false. 접속 주소 뒤에 ?mp=off 를 붙이면 그 탭에서만 끈다.
 // transport: 'supabase'(실서비스: Supabase Realtime) | 'local'(같은 브라우저의 탭끼리 BroadcastChannel, 개발·시험용. 접속 주소에 ?mp=local 을 붙이면 이 탭에서만 local 로 바꾼다. 시작할 때 한 번만 읽는다).
 //   'supabase' 인데 아래 SUPABASE_URL / SUPABASE_ANON_KEY 가 비어 있으면 아무 일도 하지 않고(요청도 없다) 조용히 꺼진다.
-// sendHz: 내 상태를 보내는 최대 횟수(회/초, 바뀐 것이 있을 때만). heartbeatMs: 가만히 있어도 이 간격(ms)마다 한 번은 보낸다. 같은 공간에 다른 사람이 없으면 아무것도 보내지 않는다.
-// epsPos / epsRot: 이만큼(단위 / 라디안) 이상 바뀌어야 "움직였다"로 본다. minGapMs: 동작·옷·공간이 바뀌어 즉시 보낼 때도 이 간격(ms)은 둔다.
-// maxRemote: 한 번에 그리는 다른 방문자 수의 최대(가까운 순). maxTracked: 메시지를 받아 기억해 두는 방문자 수의 최대(악의적 폭주 방지). minRecvGapMs: 한 방문자가 이 간격보다 촘촘히 보내는 메시지는 버린다.
-// interpDelayMs: 다른 방문자를 이만큼(ms) 과거 위치로 그려 부드럽게 보이게 한다(3Hz 전송 주기 약 333ms 에 맞춘다). extrapolateMs: 다음 메시지가 늦을 때 걷는 방향으로 더 내다보는 최대 시간(ms). teleportDist: 이 거리(단위) 이상 한 번에 움직이면 보간 없이 곧장 옮긴다(공간이 바뀌어도 마찬가지).
-// staleMs: 이 시간(ms) 동안 메시지가 없으면 그 방문자를 지운다. 닉네임 규칙(2~10자, 허용 글자, 금칙어)은 logic/nick.js.
-// 방 샤딩: 한 공간을 roomCap 명 단위의 방(<공간>-1, <공간>-2, ...)으로 나눈다(전달 메시지 수가 방 인원의 제곱에 비례해서 무료 한도를 지키기 위함).
+// ---- 전송량(무료 요금제 한도: 프로젝트 전체 초당 약 100 메시지·월 약 200만) ----
+// 실측: 5명이 15분 내내 움직이면 "이벤트 방송" 약 20,700건/시간(초당 약 23건)이었다 = 서로 한 쌍(보내는 사람 -> 받는 사람)당 초당 약 1.15건(옛 방식: 3Hz 시계 전송).
+// 어림 공식(초당 전달 메시지 수 = 서버가 세는 값): 초당 전달 ≈ 인원 × (방 정원 - 1) × 쌍당 초당 전송.  쌍당 초당 전송 = 한 사람이 1초에 보내는 메시지 수.
+//   옛 방식(1.15, 정원 6, 60명 모두 이동): 60 × 5 × 1.15 ≈ 345/초(한도 초과). 새 방식(정원 4, 사람당 초당 0.3 이하): 60 × 3 × 0.3 ≈ 54/초 + 서 있는 사람 하트비트. 계산은 logic/netBudget.js.
+// 새 방식(dead reckoning): 위치를 시계로 보내지 않는다. 받는 쪽이 "마지막 위치 + 속도"로 이어서 그리고, 내 입력(걷기 시작·멈춤·방향 꺾임·속도 변화·동작·옷·앉기·공간)이 바뀌거나 예측과 실제가 벌어질 때만 보낸다.
+// 발표 때 보낼 양이 더 모자라면(한도 근처) 이 값들을 키운다: sustainedHz(평균 상한, 가장 직접적) -> roomCap(작게) -> heartbeatMs/heartbeatMovingMs(크게).
+// sendHz: 방향이 자주 바뀌는 순간에도 이동 메시지는 초당 이만큼(4회)을 넘지 않는다(minGapMs 이상 간격: 250ms). sustainedHz: 오래 평균으로 사람당 초당 이 횟수를 넘지 않는다(토큰 통, 순간 burst 개 모아 쓴다).
+//   -> 오래 계속 지그재그로 움직여도 사람당 초당 약 0.3건. 그만큼 모자란 정확도는 받는 쪽이 부드럽게 보정한다(오차가 커도 teleportDist 전에는 순간이동하지 않고 스프링처럼 따라붙는다).
+// heartbeatMs: 서 있을 때 이 간격(ms)마다 한 번(소식 확인·위치 보정). heartbeatMovingMs: 걷는 중(곧게 걸으면 아무것도 안 보내므로)이 간격마다 한 번. 같은 공간에 다른 사람이 없으면 아무것도 보내지 않는다.
+// epsPos: 받는 쪽이 그릴 예측 위치와 내 실제 위치가 이만큼(단위) 넘게 벌어지면 보낸다(플레이어 속도 4). epsRot: 걷는 방향이 이만큼(라디안, 0.35 ≈ 20도) 넘게 꺾이면, epsSpeed: 속도가 이 비율(0.3 = 30%) 넘게 바뀌면 보낸다.
+// settleMs: 걷기 시작·방향·속도 변화가 이만큼(ms) 계속될 때 보낸다(속도 추정이 안정된 뒤라 값이 정확하다). minGapMs: 공간·동작·옷이 바뀌어 즉시 보낼 때도 이 간격은 둔다.
+// maxExtrapMs: 받는 쪽이 마지막 메시지 뒤로 최대 이만큼(ms)까지 속도로 이어 그리고 그 뒤로는 멈춘다(heartbeatMovingMs 보다 커야 곧게 걷는 사람이 끊기지 않는다). 공간 경계 밖으로는 나가지 않는다. smoothOmega: 보정 속도(클수록 빠름, 임계 감쇠).
+// 비상 조치(발표 당일): 위의 enabled 를 false 로 올리면 접속한 모든 사람의 멀티플레이가 즉시 꺼진다(게임은 정상). 일부만 줄이려면 roomCap 을 낮춘다(주소 ?mpcap=N 은 시험용으로 그 탭만).
+// maxRemote: 한 번에 그리는 다른 방문자 수의 최대(가까운 순). maxTracked: 메시지를 받아 기억해 두는 방문자 수의 최대(악의적 폭주 방지). minRecvGapMs: 한 방문자가 이 간격(ms)보다 촘촘히 보내는 메시지는 버린다(정상 전송은 minGapMs 250 이상 간격).
+// interpDelayMs: (옛 클라이언트와 섞여 있을 때만 쓴다: 옛 방식 메시지는 속도가 없어 이만큼 과거 위치로 보간한다. 옛 3Hz 전송 주기 약 333ms 에 맞춘다.) extrapolateMs: 다음 메시지가 늦을 때 걷는 방향으로 더 내다보는 최대 시간(ms). teleportDist: 이 거리(단위) 이상 한 번에 움직이면 보간 없이 곧장 옮긴다(공간이 바뀌어도 마찬가지).
+// staleMs: (서 있는 사람은 heartbeatMs 마다 보내므로 그 2배보다 길어야 한다) 이 시간(ms) 동안 메시지가 없으면(서 있는 사람은 heartbeatMs 마다 보내므로 그 2배보다 길어야 한다) 그 방문자를 지운다. 닉네임 규칙(2~10자, 허용 글자, 금칙어)은 logic/nick.js.
+// 방 샤딩: 한 공간을 roomCap 명 단위의 방(<공간>-1, <공간>-2, ...)으로 나눈다(전달 메시지 수가 방 인원의 제곱에 비례해서 무료 한도를 지키기 위함). 발표(약 60명)에서는 정원 4 + 공간마다 최대 20개 방(maxShards). 발표(약 60명)에서는 정원 4 + 공간마다 최대 20개 방(maxShards).
 // 들어갈 때 1번 방부터 shardProbeMs(ms) 동안 presence 로 다른 사람 수를 세어 보고 roomCap 미만인 가장 앞 방에 머문다. 모두 차면(maxShards 개) 멀티플레이만 끄고(게임은 정상) fullRetryMs(ms) 뒤에 다시 시도한다.
 // 이미 접속한 사람은 쫓아내지 않는다. 동시에 들어오면 roomCap 을 조금 넘을 수 있다. 시험용으로 주소에 ?mpcap=2 처럼 쓰면 이 탭의 roomCap 을 바꾼다.
 // 전송 절감: 탭이 숨겨지거나 입력이 idleMs(ms) 동안 없으면 상태 전송을 멈춘다(연결·presence 는 유지, 상대 화면에서는 staleMs 뒤에 사라진다). 돌아오면 곧바로 다시 보낸다.
@@ -608,12 +619,12 @@ export const QUICK_CHAT = ['안녕하세요! 👋', '화이팅! 💪', '합격�
 export const MULTIPLAYER = {
   enabled: true,
   transport: 'supabase',
-  sendHz: 3, heartbeatMs: 3000, epsPos: 0.05, epsRot: 0.05, minGapMs: 40,
-  maxRemote: 20, maxTracked: 60, minRecvGapMs: 30,
-  interpDelayMs: 250, extrapolateMs: 150, teleportDist: 8,
-  staleMs: 9000, 
+  sendHz: 4, minGapMs: 250, sustainedHz: 0.25, burst: 3, heartbeatMs: 10000, heartbeatMovingMs: 4000, epsPos: 0.8, epsRot: 0.35, epsSpeed: 0.3, settleMs: 120,
+  maxRemote: 20, maxTracked: 60, minRecvGapMs: 100,
+  interpDelayMs: 250, extrapolateMs: 150, maxExtrapMs: 6500, smoothOmega: 9, teleportDist: 8,
+  staleMs: 25000,
   chatGapMs: 2000, chatGlobalMax: 6, chatGlobalWindowMs: 3000,
-  roomCap: 6, maxShards: 8, shardProbeMs: 700, fullRetryMs: 60000, idleMs: 5 * 60 * 1000,
+  roomCap: 4, maxShards: 20, shardProbeMs: 700, fullRetryMs: 60000, idleMs: 5 * 60 * 1000,
   retryBaseMs: 1000, retryMaxMs: 30000,
   supabaseSdkUrl: 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm',
   channelPrefix: 'catch-world:',

@@ -1,6 +1,7 @@
-// 멀티플레이 순수 로직: 메시지 검증, 전송 정책, 보간 버퍼, 닉네임, id, 가까운 순 선택. 다른 방문자가 보낸 데이터는 전부 믿을 수 없는 입력으로 본다.
+// 멀티플레이 순수 로직: 메시지 검증, 보간 버퍼(옛 방식), 닉네임, id, 가까운 순 선택. 다른 방문자가 보낸 데이터는 전부 믿을 수 없는 입력으로 본다.
 import { SPACES } from './spaces.js';
 import { validateNick } from './nick.js';
+import { MOVE_MIN } from './netMotion.js';
 
 export const SPACE_IDS = Object.keys(SPACES);
 // 다른 방문자가 보낼 수 있는 동작 이름(플레이어 모델의 기본 상태 + 행동 클립). 이 밖의 값은 idle 로 본다.
@@ -10,6 +11,7 @@ export const OUTFITS = ['clean', 'dirty', 'tank', 'drying', 'dry'];
 const ID_RE = /^[A-Za-z0-9_-]{4,24}$/;
 const LIMIT_XZ = 5000; // 공간 좌표의 한계(가장 먼 공간이 600 부근)
 const LIMIT_Y = 6;
+const MAX_SPEED = 30; // 받은 속도의 상한(플레이어 속도는 4)
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 const round = (v, digits = 2) => { const k = 10 ** digits; return Math.round(v * k) / k; };
@@ -68,10 +70,13 @@ export function nickOrFallback(raw, id, adjectives = [], nouns = []) {
 
 // ---- 상태 메시지 ----
 // 보낼 때: 필드를 모아 소수 둘째 자리로 줄인다. local: { space, x, z, y, rotY, anim, outfit, seat }.
+// vx, vz: 지금 걷는 속도(단위/초, 월드 좌표). 받는 쪽이 이 속도로 위치를 이어서 그린다(전송이 드물어도 부드럽게). 거의 안 움직이면 0.
 export function buildState(self, local, t) {
+  const slow = Math.hypot(local.vx ?? 0, local.vz ?? 0) < MOVE_MIN;
   return {
     id: self.id, nick: self.nick, space: local.space,
     x: round(local.x), z: round(local.z), y: round(local.y ?? 0), rotY: round(wrapAngle(local.rotY ?? 0)),
+    vx: slow ? 0 : round(clamp(local.vx, -MAX_SPEED, MAX_SPEED)), vz: slow ? 0 : round(clamp(local.vz, -MAX_SPEED, MAX_SPEED)),
     anim: local.anim, outfit: local.outfit, seat: Boolean(local.seat), t,
   };
 }
@@ -80,12 +85,17 @@ export function buildState(self, local, t) {
 // 숫자는 유한해야 하고 범위로 자른다. 동작·옷은 목록에 없으면 기본값. 닉네임은 validateNick 로 다시 검사해 통과하지 못하면 id 로 만든 이름.
 export function validateState(raw, { adjectives = [], nouns = [] } = {}) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-  const { id, nick, space, x, z, y, rotY, anim, outfit, seat, t } = raw;
+  const { id, nick, space, x, z, y, rotY, anim, outfit, seat, t, vx, vz } = raw;
   if (typeof id !== 'string' || !ID_RE.test(id)) return null;
   if (typeof space !== 'string' || !SPACE_IDS.includes(space)) return null;
   if (!isNum(x) || !isNum(z) || !isNum(rotY) || !isNum(t)) return null;
   if (y !== undefined && !isNum(y)) return null;
+  // 속도(vx, vz)는 새 방문자만 보낸다(옛 방문자의 메시지에는 없다): 둘 다 없거나 둘 다 숫자여야 한다.
+  if ((vx === undefined) !== (vz === undefined)) return null;
+  if (vx !== undefined && (!isNum(vx) || !isNum(vz))) return null;
+  const vel = vx === undefined ? {} : { vx: clamp(vx, -MAX_SPEED, MAX_SPEED), vz: clamp(vz, -MAX_SPEED, MAX_SPEED) };
   return {
+    ...vel,
     id,
     nick: nickOrFallback(nick, id, adjectives, nouns),
     space,
@@ -98,38 +108,8 @@ export function validateState(raw, { adjectives = [], nouns = [] } = {}) {
   };
 }
 
-// ---- 전송 정책 ----
-// 바뀐 것이 있을 때만 최대 hz 로, 가만히 있어도 heartbeatMs 마다 한 번. 공간·동작·옷·앉기가 바뀌면 (minGapMs 만 지켜) 즉시. hasPeers 가 false 면 보내지 않는다.
-// update(nowMs, state, hasPeers) -> true 면 보낸다(이 호출이 마지막으로 보낸 시각을 갱신한다). force() 는 다음 update 가 (간격만 지켜) 보내게 한다(새 방문자가 들어왔을 때).
-export function createSendPolicy({ hz = 5, heartbeatMs = 1000, epsPos = 0.05, epsRot = 0.05, minGapMs = 40 } = {}) {
-  const interval = 1000 / hz;
-  let last = null; // 마지막으로 보낸 상태
-  let lastAt = -Infinity;
-  let forced = false;
-  return {
-    force() { forced = true; },
-    reset() { last = null; lastAt = -Infinity; forced = false; },
-    update(nowMs, s, hasPeers) {
-      if (!hasPeers) return false;
-      const since = nowMs - lastAt;
-      if (since < minGapMs) return false;
-      let send = false;
-      if (!last || forced) send = true;
-      else if (s.space !== last.space || s.anim !== last.anim || s.outfit !== last.outfit || s.seat !== last.seat) send = true;
-      else if (since >= heartbeatMs) send = true;
-      else if (since >= interval) {
-        const moved = Math.hypot(s.x - last.x, s.z - last.z, (s.y ?? 0) - (last.y ?? 0)) > epsPos;
-        const turned = Math.abs(wrapAngle(s.rotY - last.rotY)) > epsRot;
-        send = moved || turned;
-      }
-      if (!send) return false;
-      last = { space: s.space, anim: s.anim, outfit: s.outfit, seat: s.seat, x: s.x, z: s.z, y: s.y ?? 0, rotY: s.rotY };
-      lastAt = nowMs;
-      forced = false;
-      return true;
-    },
-  };
-}
+// ---- 전송 정책 · 속도 기반 보간 · 속도 추정: logic/netMotion.js ----
+export { createSendPolicy, createDeadReckoner, createVelocityEstimator } from './netMotion.js';
 
 // ---- 보간 버퍼(방문자 한 명) ----
 // push(state, atMs): 받은 시각으로 표본을 쌓는다. 공간이 바뀌었거나 teleportDist 이상 떨어진 점프면 이전 표본을 버려 곧장 옮긴다.

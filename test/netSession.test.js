@@ -113,11 +113,11 @@ test('session: 소식이 staleMs 넘게 없으면 지우고, presence leave 는 
   x.at(0); x.tr.emitMsg(msg('peer00001'));
   x.tr.emitMsg(msg('peer00002', { t: 1 }));
   assert.equal(x.s.sample(1000).length, 2);
-  x.at(5000); x.tr.emitMsg(msg('peer00002', { t: 2 }));
-  assert.equal(x.s.sample(6000).length, 2, '6초 안');
-  assert.equal(x.s.sample(9500).length, 1, 'peer1 은 9.5초 소식 없음');
+  x.at(15000); x.tr.emitMsg(msg('peer00002', { t: 2 }));
+  assert.equal(x.s.sample(16000).length, 2, 'staleMs 안');
+  assert.equal(x.s.sample(cfg.staleMs + 500).length, 1, 'peer1 은 staleMs 넘게 소식 없음');
   x.tr.emitPresence({ type: 'leave', id: 'peer00002' });
-  assert.equal(x.s.sample(9600).length, 0);
+  assert.equal(x.s.sample(cfg.staleMs + 600).length, 0);
 });
 
 test('session: 한 번에 maxRemote 명만(가까운 순), maxTracked 를 넘는 새 방문자는 기억하지 않는다', async () => {
@@ -295,13 +295,76 @@ test('setActive(false) 면 보내지 않고, 다시 켜면 곧바로 한 번 보
   assert.equal(x.tr.sent.length, n + 1);
 });
 
-test('전송량: 기본 설정(3Hz)에서 계속 걸어도 초당 3번 이하, 서 있으면 3초에 한 번', () => {
+test('전송량: 기본 설정은 변화 시 전송(최대 4회/초·평균 sustainedHz)이고, 서 있으면 heartbeatMs 마다 한 번', () => {
   const p = MULTIPLAYER;
-  assert.equal(p.sendHz, 3);
-  assert.equal(p.heartbeatMs, 3000);
-  assert.ok(p.interpDelayMs >= 250);
+  assert.ok(p.sendHz <= 4);
+  assert.ok(p.minGapMs >= 250);
+  assert.ok(p.heartbeatMs >= 8000 && p.heartbeatMs <= 10000);
+  assert.ok(p.heartbeatMovingMs >= 4000 && p.heartbeatMovingMs <= 6000);
   assert.ok(p.staleMs > p.heartbeatMs * 2);
+  assert.equal(p.roomCap, 4);
+  assert.equal(p.enabled, true);
   assert.equal(p.idleMs, 5 * 60 * 1000, '입력이 5분 없으면 유휴');
+});
+
+// ---- 새 방식(속도) ----
+test('session: 계속 곧게 걸으면 시계로 보내지 않고(몇 번뿐), 보낸 메시지에 속도가 실린다', async () => {
+  const x = setup();
+  await joined(x);
+  x.tr.emitPresence({ type: 'join', id: 'peer00001' });
+  for (let t = 0; t < 30000; t += 1000 / 60) x.s.update(local({ x: (t / 1000) * 4, anim: 'walk' }), t);
+  assert.ok(x.tr.sent.length <= 2 + Math.ceil(30000 / cfg.heartbeatMovingMs), `보낸 수 ${x.tr.sent.length}`);
+  assert.ok(x.tr.sent.length >= 3);
+  const m = x.tr.sent.at(-1);
+  assert.ok(Math.abs(m.vx - 4) < 0.1, `vx=${m.vx}`);
+  assert.equal(m.vz, 0);
+});
+
+test('session: 새 방식 메시지(속도)는 이어서 그리고, 보내던 것이 끊겨도 maxExtrapMs 뒤에는 멈춘다', async () => {
+  const x = setup();
+  await joined(x);
+  x.at(1000); x.tr.emitMsg(msg('peer00001', { x: 0, z: 0, vx: 4, vz: 0, anim: 'walk', t: 1 }));
+  const a = x.s.sample(2000)[0];
+  assert.ok(Math.abs(a.x - 4) < 1e-6, 'x=' + a.x);
+  assert.equal(a.speed, 4);
+  const far = x.s.sample(1000 + cfg.maxExtrapMs + 100)[0];
+  assert.ok(Math.abs(far.x - cfg.maxExtrapMs * 0.004) < 1e-6 || far.x <= 12, 'maxExtrapMs 뒤에는 더 가지 않는다');
+  assert.equal(far.speed, 0);
+});
+
+test('session: 옛 클라이언트(속도 없음, 3Hz 주기 전송)와 새 클라이언트가 섞여 있어도 둘 다 그려진다', async () => {
+  const x = setup();
+  await joined(x);
+  for (let i = 0; i < 6; i++) { // 옛: 333ms 간격
+    x.at(1000 + i * 333); x.tr.emitMsg(msg('peer00001', { x: i * 1.33, z: 0, anim: 'walk', t: i + 1 }));
+  }
+  x.at(1000); x.tr.emitMsg(msg('peer00002', { x: 5, z: 5, vx: 0, vz: 4, anim: 'walk', t: 1 }));
+  const out = x.s.sample(2200);
+  assert.equal(out.length, 2);
+  const old = out.find((p) => p.id === 'peer00001');
+  const neu = out.find((p) => p.id === 'peer00002');
+  assert.ok(old.x > 2 && old.x < 7, 'old x=' + old.x);
+  assert.ok(old.speed > 3, '옛 클라이언트의 걷기도 속도로 걷기 동작');
+  assert.ok(Math.abs(neu.z - (5 + 4 * 1.2)) < 1e-6);
+});
+
+test('session: 새 방식은 vx 만 있거나 NaN 이면 버린다(믿을 수 없는 입력)', async () => {
+  const x = setup();
+  await joined(x);
+  x.tr.emitMsg(msg('peer00001', { vx: 1 }));
+  x.tr.emitMsg(msg('peer00002', { vx: NaN, vz: 0 }));
+  assert.equal(x.s.sample(1000).length, 0);
+  assert.ok(x.s.stats.rejected >= 2);
+});
+
+test('session: 서 있는 사람의 하트비트(heartbeatMs)에도 지워지지 않고, 소식이 없어지면 staleMs 뒤 지워진다', async () => {
+  const x = setup();
+  await joined(x);
+  x.at(0); x.tr.emitMsg(msg('peer00001', { vx: 0, vz: 0, t: 1 }));
+  x.at(cfg.heartbeatMs); x.tr.emitMsg(msg('peer00001', { vx: 0, vz: 0, t: 2 }));
+  assert.equal(x.s.sample(cfg.heartbeatMs + 1000).length, 1);
+  assert.equal(x.s.sample(cfg.heartbeatMs * 2 + 100).length, 1, '하트비트 두 번 거르는 동안은 남아 있다');
+  assert.equal(x.s.sample(cfg.heartbeatMs + cfg.staleMs + 100).length, 0);
 });
 
 // ---- 면접 답변·돌발행동 한마디(k: 'say') ----

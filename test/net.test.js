@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  makeId, nickFor, cleanNick, buildState, validateState, createSendPolicy, createInterpBuffer, isStale, nearestN, lerpAngle, wrapAngle, ANIMS, OUTFITS,
+  makeId, nickFor, cleanNick, buildState, validateState, createInterpBuffer, isStale, nearestN, lerpAngle, wrapAngle, ANIMS, OUTFITS,
 } from '../src/logic/net.js';
 import { MULTIPLAYER } from '../src/config.js';
 
@@ -81,6 +81,29 @@ test('buildState: 소수 둘째 자리로 줄이고 검증을 통과한다', () 
   assert.ok(validateState(s, opts));
 });
 
+test('validateState: 속도(vx, vz)는 새 필드: 없으면 옛 메시지로 통과, 있으면 숫자만, 한쪽만 있거나 NaN 이면 거부, 범위로 자른다', () => {
+  const old = validateState(good, opts);
+  assert.equal('vx' in old, false, '옛 형식은 속도 없음');
+  const ok = validateState({ ...good, vx: 3.5, vz: -1 }, opts);
+  assert.equal(ok.vx, 3.5);
+  assert.equal(ok.vz, -1);
+  for (const bad of [{ vx: 1 }, { vz: 1 }, { vx: NaN, vz: 0 }, { vx: 0, vz: Infinity }, { vx: '1', vz: 0 }, { vx: null, vz: 0 }]) assert.equal(validateState({ ...good, ...bad }, opts), null, JSON.stringify(bad));
+  const big = validateState({ ...good, vx: 1e9, vz: -1e9 }, opts);
+  assert.equal(big.vx, 30);
+  assert.equal(big.vz, -30);
+});
+
+test('buildState: 속도를 싣고(서 있으면 0), 검증을 통과한다', () => {
+  const me = { id: good.id, nick: good.nick };
+  const walk = buildState(me, { space: 'yard', x: 1, z: 2, y: 0, rotY: 0, anim: 'walk', outfit: 'clean', seat: false, vx: 3.14159, vz: -2 }, 1);
+  assert.equal(walk.vx, 3.14);
+  assert.equal(walk.vz, -2);
+  assert.ok(validateState(walk, opts));
+  const still = buildState(me, { space: 'yard', x: 1, z: 2, y: 0, rotY: 0, anim: 'idle', outfit: 'clean', seat: false, vx: 0.1, vz: 0.1 }, 1);
+  assert.equal(still.vx, 0);
+  assert.equal(buildState(me, { space: 'yard', x: 1, z: 2, anim: 'idle', outfit: 'clean' }, 1).vx, 0, '속도를 안 주면 0');
+});
+
 test('각도: wrapAngle / lerpAngle 은 짧은 쪽으로', () => {
   assert.ok(Math.abs(Math.abs(wrapAngle(3 * Math.PI)) - Math.PI) < 1e-9);
   const m = lerpAngle(3, -3, 0.5); // 3 -> -3 은 2PI 를 가로지르는 짧은 길(약 0.28rad)
@@ -89,53 +112,7 @@ test('각도: wrapAngle / lerpAngle 은 짧은 쪽으로', () => {
   assert.ok(Math.abs(lerpAngle(1, 2, 1) - 2) < 1e-9);
 });
 
-// ---- 전송 정책 ----
-const cfg = { hz: 5, heartbeatMs: 1000, epsPos: 0.05, epsRot: 0.05, minGapMs: 40 };
-const st = (o = {}) => ({ space: 'yard', x: 0, z: 0, y: 0, rotY: 0, anim: 'idle', outfit: 'clean', seat: false, ...o });
-
-test('sendPolicy: 첫 호출은 보내고, 같은 상태는 하트비트 전까지 안 보낸다', () => {
-  const p = createSendPolicy(cfg);
-  assert.equal(p.update(0, st(), true), true);
-  assert.equal(p.update(300, st(), true), false);
-  assert.equal(p.update(900, st(), true), false);
-  assert.equal(p.update(1000, st(), true), true, '하트비트');
-  assert.equal(p.update(1500, st(), true), false);
-});
-
-test('sendPolicy: 움직임은 최대 hz, 작은 떨림은 무시', () => {
-  const p = createSendPolicy(cfg);
-  p.update(0, st(), true);
-  assert.equal(p.update(100, st({ x: 1 }), true), false, '200ms 전에는 안 보낸다');
-  assert.equal(p.update(200, st({ x: 1 }), true), true);
-  assert.equal(p.update(400, st({ x: 1.01 }), true), false, 'eps 이하');
-  assert.equal(p.update(400, st({ x: 1.2 }), true), true);
-  assert.equal(p.update(600, st({ x: 1.2, rotY: 0.5 }), true), true, '방향 변화');
-  let sends = 0;
-  for (let t = 1000; t < 2000; t += 16) if (p.update(t, st({ x: 2 + t / 100 }), true)) sends++;
-  assert.ok(sends <= 5, `1초에 ${sends}번`);
-});
-
-test('sendPolicy: 동작·옷·앉기·공간이 바뀌면 즉시(최소 간격만)', () => {
-  const p = createSendPolicy(cfg);
-  p.update(0, st(), true);
-  assert.equal(p.update(10, st({ anim: 'walk' }), true), false, 'minGap 안');
-  assert.equal(p.update(50, st({ anim: 'walk' }), true), true);
-  assert.equal(p.update(100, st({ anim: 'walk', outfit: 'dirty' }), true), true);
-  assert.equal(p.update(150, st({ anim: 'walk', outfit: 'dirty', seat: true }), true), true);
-  assert.equal(p.update(200, st({ anim: 'walk', outfit: 'dirty', seat: true, space: 'laundry' }), true), true);
-});
-
-test('sendPolicy: 상대가 없으면 안 보내고, force 하면 곧 보낸다', () => {
-  const p = createSendPolicy(cfg);
-  assert.equal(p.update(0, st(), false), false);
-  assert.equal(p.update(5000, st({ x: 9 }), false), false);
-  assert.equal(p.update(5100, st({ x: 9 }), true), true);
-  assert.equal(p.update(5200, st({ x: 9 }), true), false);
-  p.force();
-  assert.equal(p.update(5300, st({ x: 9 }), true), true);
-  p.reset();
-  assert.equal(p.update(5310, st({ x: 9 }), true), true);
-});
+// 전송 정책·속도 기반 보간은 netMotion.test.js
 
 // ---- 보간 ----
 const smp = (x, z, o = {}) => ({ x, y: 0, z, rotY: 0, anim: 'walk', outfit: 'clean', seat: false, space: 'yard', ...o });
