@@ -208,7 +208,7 @@ export function createHud(container, { fortuneHandlers = {}, onClose = () => {} 
   return {
     // 면접장 말풍선. id: 'player' | 면접관 id | 'r-<방문자 id>'(다른 방문자), name: 이름표(없으면 생략), seconds 뒤에 스스로 사라진다(0 이하면 clearSpeech 로 지울 때까지).
     // 같은 id 로 다시 부르면 내용을 바꾸고 시간을 새로 센다. remote 면 다른 방문자 모양(하늘색 바탕).
-    say(id, text, { name = '', seconds = 2.3, big = false, remote = false, at, quiet = false, silent = false } = {}) {
+    say(id, text, { name = '', seconds = 2.3, big = false, remote = false, at, quiet = false, silent = false, thought = false } = {}) { // thought: 속마음(생각 구름: 점선·기울임·옅은 색)
       // 말풍선마다 웅얼거림(말하는 사람마다 목소리가 다르다). 큰 글씨(최종 합격!)는 팡파르가 맡는다. quiet: 다른 방문자의 장면에서 면접관이 하는 말(작고 초당 상한이 있다).
       if (!big && !silent) sfx.speech(id, text.length, { at, remote: quiet }); // silent: 소리 없는 말풍선(인사·응원말)
       let s = speeches.get(id);
@@ -222,6 +222,7 @@ export function createHud(container, { fortuneHandlers = {}, onClose = () => {} 
       clearTimeout(s.timer);
       s.el.classList.toggle('big', big);
       s.el.classList.toggle('remote', remote);
+      s.el.classList.toggle('thought', thought);
       s.el.replaceChildren();
       if (name) {
         const who = document.createElement('b');

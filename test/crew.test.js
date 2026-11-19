@@ -22,7 +22,7 @@ function rig() {
       actor: {
         play: (name) => log.push(['clip', id, name]),
         setPose: (p) => { state[id].pose = p; log.push(['pose', id, p]); },
-        fx: { setBounce: (b) => { state[id].bounce = b; log.push(['bounce', id, b]); }, startSpin: () => log.push(['spin', id]) },
+        fx: { setTilt: (r) => { state[id].tilt = r; log.push(['tilt', id, r]); }, setBounce: (b) => { state[id].bounce = b; log.push(['bounce', id, b]); }, startSpin: () => log.push(['spin', id]) },
       },
     }])),
     stand: (id) => log.push(['stand', id]),
@@ -204,4 +204,29 @@ test('crew: clear 는 모든 일을 접고, 기다리던 방문자 말풍선은 
   assert.ok(IDS.every((id) => crew.state(id).kind === 'idle'));
   assert.equal(state.hr.pose, null);
   assert.ok(!log.some((e) => e[0] === 'bubble' || e[0] === 'bubble2'));
+});
+
+test('crew: 속마음 — 보낸 방문자 머리 위 구름(onThink)이 답변 말풍선 뒤에, 속마음형은 구름 없이 반응만', () => {
+  for (const [a, expectThink] of [[0, true], [3, false]]) {
+    const { crew, run } = rig();
+    const calls = [];
+    const scene = ans('hr', 1, a);
+    crew.remote('hr', 'rA', { ...scene, onBubble: () => calls.push(['bubble', crew.clock]), onThink: (e) => calls.push(['think', crew.clock, e.text]) });
+    run(5);
+    assert.equal(calls.some((c) => c[0] === 'think'), expectThink, `a=${a}`);
+    if (expectThink) {
+      assert.equal(calls[1][2], INTERVIEW.questions[1].answers[a].inner);
+      assert.ok(calls[1][1] > calls[0][1], '말풍선 뒤에 구름');
+    }
+  }
+});
+
+test('crew: 큰절 — 담당 면접관이 숙였다가(tilt) 돌아오고, 끝나면 자세를 되돌린다(다른 둘은 가벼운 맞절)', () => {
+  const { crew, log, run, state } = rig();
+  crew.remote('leader', 'rA', { ...imp('leader', 'bow') });
+  run(3);
+  assert.ok(log.some((e) => e[0] === 'tilt' && e[1] === 'leader' && e[2] > 0), '숙임');
+  assert.ok(log.some((e) => e[0] === 'tilt' && e[1] !== 'leader' && e[2] > 0), '다른 면접관의 가벼운 맞절');
+  run(6);
+  for (const id of IDS) assert.ok(!state[id].tilt, `${id} 숙임 해제`);
 });

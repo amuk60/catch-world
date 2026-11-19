@@ -34,6 +34,7 @@ export function createCrew({ hud, interviewers, names, ids }) {
       case 'fx': {
         const fx = actorOf(e.who).fx;
         if ('bounce' in e.fx) fx.setBounce(e.fx.bounce);
+        if ('tilt' in e.fx) fx.setTilt(e.fx.tilt);
         if (e.fx.spin) fx.startSpin(e.fx.spin);
         break;
       }
@@ -51,6 +52,7 @@ export function createCrew({ hud, interviewers, names, ids }) {
     const actor = actorOf(id);
     actor.setPose(null);
     actor.fx.setBounce(null);
+    actor.fx.setTilt(0);
     hud.clearSpeech(id);
     if (job.kind === 'remote' && !job.bubbleShown) showBubble(job); // 끝까지 못 보였으면 보낸 방문자의 말풍선은 지금이라도
   }
@@ -73,6 +75,7 @@ export function createCrew({ hud, interviewers, names, ids }) {
       if (jobs.get(id) !== job) return; // 처리 도중 접혔다
       if (e.type === 'light') crew.light(e.who, e.spec, job.owner);
       else if (e.type === 'remoteBubble') showBubble(job);
+      else if (e.type === 'remoteThink') job.payload.onThink?.(e); // 보낸 방문자 머리 위 속마음 구름
       else if (e.who === id) apply(e, true);
     }
   }
@@ -83,6 +86,7 @@ export function createCrew({ hud, interviewers, names, ids }) {
     actor.play(spec.clip);
     if (spec.clap) actor.setPose('clap');
     if (spec.bounce) actor.fx.setBounce(spec.bounce);
+    if (spec.tilt) actor.fx.setTilt(spec.tilt);
     if (spec.text) hud.say(id, spec.text, { name: names[id], seconds: spec.textSeconds ?? LIGHT_LINE_SECONDS });
     const name = lightCue(spec);
     if (name) sfx.play(name, owner === 'me' ? { gain: 0.6 } : { remote: true });

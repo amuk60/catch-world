@@ -113,7 +113,7 @@ test('assignedImprov: 담당 면접관의 대사·동작은 그대로, 다른 �
 test('remoteScene(답변): 담당이 q 번 질문 글을 묻고 -> REMOTE_BUBBLE_AT 에 보낸 사람의 답변 말풍선 -> 담당의 종류별 반응과 대사, 다른 둘은 light', () => {
   const q = 5;
   for (const assigned of IDS3) {
-    for (const [a, type] of [[0, '정석'], [1, '솔직'], [2, '엉뚱']]) {
+    for (const [a, type] of [[0, '정석'], [1, '솔직'], [2, '엉뚱'], [3, '속마음']]) {
       const sc = remoteScene(INTERVIEW, { ty: 'ans', q, a }, assigned, { rng: mulberry32(3) });
       assert.equal(sc.line.text, INTERVIEW.questions[q].answers[a].text);
       assert.equal(sc.line.type, type);
@@ -128,6 +128,7 @@ test('remoteScene(답변): 담당이 q 번 질문 글을 묻고 -> REMOTE_BUBBLE
       if (type === '정석') assert.ok(sc.events.some((e) => e.type === 'pose' && e.who === assigned && e.name === 'clap'));
       if (type === '솔직') assert.ok(sc.events.some((e) => e.type === 'clip' && e.who === assigned && e.name === 'emote-no'));
       if (type === '엉뚱') assert.ok(sc.events.some((e) => e.type === 'fx' && e.who === assigned && e.fx.bounce));
+      if (type === '속마음') assert.ok(sc.events.some((e) => e.type === 'clip' && e.who === assigned), '속마음형 반응 동작');
       assert.deepEqual(sc.events.filter((e) => e.type === 'light').map((e) => e.who).sort(), IDS3.filter((x) => x !== assigned).sort());
       assert.ok(!sc.events.some((e) => DIRECT.includes(e.type) && e.who !== assigned), '다른 면접관의 직접 연기는 없다');
       assert.ok(sc.events.every((e) => !['effect', 'bonus', 'end', 'papers'].includes(e.type)), '지수·라운드와 무관');

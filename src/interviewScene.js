@@ -3,10 +3,11 @@
 // 지수 감소는 main 이 넘겨 준 콜백(reduce/bonus)으로만 한다: 답변·돌발행동은 effect 순간에 reduce(= ACTION_REDUCE), 완주는 bonus 순간에 한 번.
 import * as THREE from 'three';
 import {
-  createBagPicker, createRepeatFreePicker, createRound, createTimeline, answerScript, improvScript, seatedImprov, openingFor, pickReactions, finaleEvents, assignedImprov, ASK_CLIPS,
+  createBagPicker, createRound, createTimeline, answerScript, improvScript, seatedImprov, openingFor, pickReactions, finaleEvents, assignedImprov, ASK_CLIPS,
 } from './logic/interview.js';
 import { headingY } from './logic/movement.js';
 import { sfx } from './audio/sfx.js';
+import { createInterviewProps } from './interviewProps.js';
 
 const PAPER_COUNT = 12;
 const PAPER_LIFE = 3.2; // 종이가 날려 떨어져 사라지기까지(초)
@@ -14,6 +15,8 @@ const OPENING_SECONDS = 3.4;
 const PLAYER_SPEECH_Y = 1.9; // 플레이어 머리 위 말풍선 높이(발 기준)
 const SEATED_SPEECH_Y = 1.4; // 앉아 있을 때(앉은 높이가 이미 position.y 에 들어 있다)
 const RAW_FALLBACK = 0.667;
+const THOUGHT_KEY = 'player~t'; // 내 속마음 구름(말풍선 'player' 위에 쌓인다)
+const THOUGHT_GAP_PX = 30; // 구름 꼬리가 아래 말풍선을 가리지 않게 띄우는 거리
 
 // 담당 면접관제: 내가 앉은 의자 하나마다 담당 면접관 한 명(interior.assignments)이 모든 질문과 전체 반응을 맡고, 나머지 둘은 한가할 때만 가볍게 반응한다(crew 가 일을 중재한다).
 // ctx: { hud, interviewers, crew(interviewCrew.js), character, player, playerFx, interior, root, camera, renderer, config, params, callbacks, rng }
@@ -25,7 +28,8 @@ export function createInterviewScene(ctx) {
   const { hud, interviewers, crew, character, player, playerFx, interior, root, camera, renderer, config, params, callbacks } = ctx;
   const rng = ctx.rng ?? Math.random;
   const questionPicker = createBagPicker(config.questions.length, rng);
-  const improvPicker = createRepeatFreePicker(config.improvs.length, rng);
+  const improvPicker = createBagPicker(config.improvs.length, rng); // 돌발행동은 모두 한 번씩 돈 뒤에 다시(직전과 같은 것이 연달아 나오지 않는다)
+  const props = createInterviewProps({ root, player, interior, interviewers });
   const round = createRound(params.round);
   const names = Object.fromEntries(config.interviewers.map((i) => [i.id, i.name]));
   const home = { x: 0, z: 0 };
@@ -59,7 +63,7 @@ export function createInterviewScene(ctx) {
     }
     mine.clear();
   }
-  const clearMySpeech = () => { hud.clearSpeech('player'); for (const id of mine) hud.clearSpeech(id); };
+  const clearMySpeech = () => { hud.clearSpeech('player'); hud.clearSpeech(THOUGHT_KEY); for (const id of mine) hud.clearSpeech(id); };
 
   function facePlayer(x, z, seconds) {
     if (character) character.turnToward(x, z, seconds);
@@ -121,6 +125,13 @@ export function createInterviewScene(ctx) {
         if (current?.assigned) hud.clearSpeech(current.assigned);
         hud.say('player', e.text, { name: '', seconds: e.seconds, big: Boolean(e.big) });
         break;
+      case 'think': // 속마음: 말풍선과 따로 뜨는 생각 구름(소리 없음)
+        hud.say(THOUGHT_KEY, e.text, { name: '속마음', seconds: e.seconds, thought: true, silent: true });
+        break;
+      case 'prop': props.show(e.name, e.seconds); break;
+      case 'slam': props.slam(); break;
+      case 'plane': props.plane(e.seconds, 'leader'); break;
+      case 'notes': props.notes(e.count, e.seconds); break;
       case 'clip': {
         const speed = 1;
         character?.playClip(e.name, speed);
@@ -129,6 +140,8 @@ export function createInterviewScene(ctx) {
       }
       case 'fx':
         if ('bounce' in e.fx) playerFx.setBounce(e.fx.bounce);
+        if ('tilt' in e.fx) playerFx.setTilt(e.fx.tilt);
+        if ('lower' in e.fx) playerFx.moveAnchor({ y: e.fx.lower }, 0.45, 0);
         if (e.fx.spin) playerFx.startSpin(e.fx.spin);
         break;
       case 'stand': character?.idleInPlace(); break; // 의자에서 일어난다: 앉은 자세 -> 서기
@@ -188,6 +201,7 @@ export function createInterviewScene(ctx) {
     playerFx.end();
     character?.endAction(seated ? 'sit' : 'idle'); // 앉아서 한 장면은 앉은 자세 그대로 돌아온다
     clearPapers();
+    props.clear();
     callbacks.dispatch('interview:end');
   }
 
@@ -216,6 +230,7 @@ export function createInterviewScene(ctx) {
       interviewers.reset();
       if (playerFx.active) playerFx.end();
       clearPapers();
+      props.clear();
     },
 
     // 자리에 처음 선 순간: 팀장이 옷에 맞는 첫 대사를 한다(방문마다 한 번). 했으면 true.
@@ -260,7 +275,7 @@ export function createInterviewScene(ctx) {
       return true;
     },
 
-    // 선택지를 골랐다(0~2): 답변 연출이 시작된다. 지수 감소는 연출의 effect 순간에 일어난다.
+    // 선택지를 골랐다(0~3): 답변 연출이 시작된다. 지수 감소는 연출의 effect 순간에 일어난다.
     pick(i) {
       if (!asking || !asking.question.answers[i]) return false;
       const { question, index, assigned } = asking;
@@ -274,7 +289,7 @@ export function createInterviewScene(ctx) {
       callbacks.track('interview_answer', { type: answer.type });
       callbacks.say?.({ ty: 'ans', q: index, a: i }); // 같은 방의 다른 방문자 화면에 내 답변 말풍선이 뜬다(번호만 보낸다)
       const events = answerScript({
-        type: answer.type, line: answer.text, lines: pickReactions(config.reactions, answer.type, rng), assigned, interjections, rng,
+        type: answer.type, line: answer.text, lines: pickReactions(config.reactions, answer.type, rng), assigned, interjections, rng, inner: answer.inner,
         speech: params.speech, total: params.answerSeconds, finale: result.finale, deferFinale: true, finaleSeconds: params.finaleSeconds, finaleText: config.finale, seated,
       });
       begin(events, { kind: 'answer', assigned, seated });
@@ -299,6 +314,7 @@ export function createInterviewScene(ctx) {
     update(dt) {
       sceneTime += dt;
       updatePapers(dt);
+      props.update(dt);
       if (current) {
         if (playerIdleAt >= 0 && sceneTime >= playerIdleAt) {
           playerIdleAt = -1;
@@ -314,6 +330,12 @@ export function createInterviewScene(ctx) {
         const w = renderer.domElement.clientWidth;
         const h = renderer.domElement.clientHeight;
         for (const id of ids) {
+          if (id === THOUGHT_KEY) { // 속마음 구름: 내 말풍선이 있으면 그 위에, 없으면 머리 위에
+            point.set(player.position.x, player.position.y + (isSitting() ? SEATED_SPEECH_Y : PLAYER_SPEECH_Y), player.position.z).project(camera);
+            const under = hud.speechSize('player');
+            hud.positionSpeech(id, (point.x * 0.5 + 0.5) * w, (-point.y * 0.5 + 0.5) * h - (under ? under.h + THOUGHT_GAP_PX : 4), 0);
+            continue;
+          }
           if (id === 'player') point.set(player.position.x, player.position.y + (isSitting() ? SEATED_SPEECH_Y : PLAYER_SPEECH_Y), player.position.z);
           else if (interviewers.byId[id]) interviewers.headPoint(id, point);
           else continue; // 다른 방문자의 말풍선은 remoteSpeech.js 가 위치를 정한다

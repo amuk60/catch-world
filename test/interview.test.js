@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createBagPicker, createRepeatFreePicker, createRound, openingFor, pickReactions, createTimeline,
-  answerScript, improvScript, seatedImprov, EVENT_TYPES, validateInterview, IMPROV_IDS, remoteSayLine, remoteScene, finaleEvents, assignedImprov, ASK_CLIPS, REMOTE_BUBBLE_SECONDS, REMOTE_BUBBLE_AT,
+  answerScript, improvScript, seatedImprov, EVENT_TYPES, validateInterview, IMPROV_IDS, remoteSayLine, remoteScene, finaleEvents, assignedImprov, ASK_CLIPS, REMOTE_BUBBLE_SECONDS, REMOTE_BUBBLE_AT, INNER_AT, INNER_SECONDS, INNER_MAX_LENGTH,
 } from '../src/logic/interview.js';
 import { INTERVIEW, INTERVIEW_ROUND, INTERVIEW_ANSWER_SECONDS, INTERVIEW_IMPROV_SECONDS, INTERVIEW_FINALE_SECONDS, SPEECH_SECONDS, REDUCE_RANGE, INTERVIEW_BONUS_RANGE } from '../src/config.js';
 import { mulberry32 } from '../src/logic/rng.js';
@@ -273,7 +273,7 @@ test('improvScript: 모르는 id 는 오류', () => {
 });
 
 // ---- INTERVIEW 설정 검증 ----
-test('INTERVIEW: 질문 12개, 각 질문은 정석·솔직·엉뚱 하나씩, 글자 길이·질문자 규칙을 지킨다', () => {
+test('INTERVIEW: 질문 12개, 각 질문은 정석·솔직·엉뚱·속마음 정확히 4개, 글자 길이·속마음 규칙·질문자 규칙을 지킨다', () => {
   assert.deepEqual(validateInterview(INTERVIEW), []);
   assert.equal(INTERVIEW.questions.length, 12);
   const ids = INTERVIEW.interviewers.map((i) => i.id);
@@ -283,11 +283,19 @@ test('INTERVIEW: 질문 12개, 각 질문은 정석·솔직·엉뚱 하나씩, �
     assert.ok(ids.includes(q.asker));
     assert.ok(q.text.length > 0 && q.text.length <= 40, q.text);
     assert.deepEqual(q.answers.map((a) => a.type).sort(), [...INTERVIEW.types].sort(), q.text);
+    assert.equal(q.answers.length, 4, q.text);
+    assert.deepEqual(q.answers.map((a) => a.type), ['정석', '솔직', '엉뚱', '속마음'], '번호 0~3 = 키 1~4 순서');
     for (const a of q.answers) assert.ok(a.text.length > 0 && a.text.length <= 40, a.text);
+    for (const a of q.answers.filter((x) => x.type !== '속마음')) assert.ok(typeof a.inner === 'string' && a.inner.length > 0 && a.inner.length <= INNER_MAX_LENGTH, `속마음 ${a.inner}`);
+    assert.ok(q.answers.filter((x) => x.type !== '속마음').every((a) => /^\(.*\)$/.test(a.inner)), '속마음은 괄호로 감싼 혼잣말');
   }
+  assert.equal(new Set(INTERVIEW.questions.flatMap((q) => q.answers.map((a) => a.inner).filter(Boolean))).size, 36, '속마음 36개 모두 다르다');
+  for (const type of INTERVIEW.types) for (const id of ['leader', 'hr', 'mentor']) assert.ok(INTERVIEW.reactions[type][id].length >= 2 && INTERVIEW.reactions[type][id].every((t) => t.length <= 28), `${type}/${id} 반응(28자 이내)`);
   assert.equal(new Set(INTERVIEW.questions.map((q) => q.text)).size, 12, '질문 중복 없음');
   for (const id of ids) assert.ok(INTERVIEW.questions.some((q) => q.asker === id), `${id} 도 질문한다`);
-  assert.equal(INTERVIEW.improvs.length, 4);
+  assert.equal(INTERVIEW.improvs.length, 10);
+  assert.equal(new Set(INTERVIEW.improvs.map((i) => i.id)).size, 10, '돌발행동 id 중복 없음');
+  assert.deepEqual(INTERVIEW.types, ['정석', '솔직', '엉뚱', '속마음']);
   assert.equal(INTERVIEW.finale, '최종 합격!');
 });
 
@@ -405,17 +413,87 @@ test('예비 사수: 설정 이름·id, 말투에서 막내 느낌이 나는 대
 
 test('remoteSayLine: 답변은 질문 q 의 a 번째 답변 글·종류·질문자를, 돌발행동은 id 의 첫 대사를 돌려준다', () => {
   for (let q = 0; q < INTERVIEW.questions.length; q++) {
-    for (let a = 0; a < 3; a++) {
+    for (let a = 0; a < 4; a++) {
       const line = remoteSayLine(INTERVIEW, { ty: 'ans', q, a });
       const src = INTERVIEW.questions[q];
-      assert.deepEqual(line, { text: src.answers[a].text, type: src.answers[a].type, asker: src.asker, improvId: null });
+      assert.deepEqual(line, { text: src.answers[a].text, type: src.answers[a].type, asker: src.asker, improvId: null, inner: src.answers[a].inner ?? null });
     }
   }
-  for (const im of INTERVIEW.improvs) assert.deepEqual(remoteSayLine(INTERVIEW, { ty: 'imp', imp: im.id }), { text: im.player[0], type: null, asker: null, improvId: im.id });
+  for (const im of INTERVIEW.improvs) assert.deepEqual(remoteSayLine(INTERVIEW, { ty: 'imp', imp: im.id }), { text: im.player[0], type: null, asker: null, improvId: im.id, inner: null });
   assert.ok(REMOTE_BUBBLE_SECONDS >= 2 && REMOTE_BUBBLE_SECONDS <= 4);
 });
 
 test('remoteSayLine: config 에 없는 번호·id·이상한 입력은 null', () => {
-  for (const say of [null, undefined, {}, { ty: 'ans', q: 99, a: 0 }, { ty: 'ans', q: 0, a: 7 }, { ty: 'ans', q: -1, a: 0 }, { ty: 'imp', imp: 'nope' }, { ty: 'x' }]) assert.equal(remoteSayLine(INTERVIEW, say), null, JSON.stringify(say));
+  for (const say of [null, undefined, {}, { ty: 'ans', q: 99, a: 0 }, { ty: 'ans', q: 0, a: 4 }, { ty: 'ans', q: -1, a: 0 }, { ty: 'imp', imp: 'nope' }, { ty: 'x' }]) assert.equal(remoteSayLine(INTERVIEW, say), null, JSON.stringify(say));
   assert.equal(remoteSayLine({ questions: [], improvs: [] }, { ty: 'ans', q: 0, a: 0 }), null);
+});
+
+// ---- 속마음(생각 구름) · 속마음형 답변 · 새 돌발행동 ----
+test('answerScript(inner): 말풍선 뒤 INNER_AT 초에 속마음 구름(think)이 INNER_SECONDS 동안 뜨고, 감소·반응·길이는 그대로', () => {
+  for (const type of ['정석', '솔직', '엉뚱']) {
+    const plain = answerScript({ type, line: '대사 하나', lines: LINES, ...opts });
+    const ev = answerScript({ type, line: '대사 하나', lines: LINES, ...opts, inner: '(속마음이다)' });
+    assertScript(ev, type);
+    const say = ev.find((e) => e.type === 'say' && e.who === 'player');
+    const think = ev.filter((e) => e.type === 'think');
+    assert.equal(think.length, 1);
+    assert.deepEqual([think[0].who, think[0].text, think[0].seconds], ['player', '(속마음이다)', INNER_SECONDS]);
+    assert.ok(Math.abs(think[0].t - (say.t + INNER_AT)) < 1e-9);
+    assert.deepEqual(ev.filter((e) => e.type !== 'think'), plain, '속마음이 없을 때와 나머지는 똑같다(지수 감소 순간·길이 그대로)');
+    assert.ok(think[0].t + think[0].seconds <= ev[ev.length - 1].t + 1e-9, '장면이 끝나기 전에 사라진다(장면이 길어지지 않는다)');
+    assert.ok(!plain.some((e) => e.type === 'think'));
+  }
+});
+
+test('속마음형 답변: 면접관 성격대로 반응 — 팀장 당황(얼어붙음), 인사담당 폭소(큰 튀기), 예비 사수 몰래 끄덕(소리 없는 작은 튀기)', () => {
+  for (const assigned of ['leader', 'hr', 'mentor']) {
+    const ev = answerScript({ type: '속마음', line: '솔직히 월급!', lines: LINES, assigned, ...opts });
+    assertScript(ev, `속마음 ${assigned}`);
+    assert.equal(ev.filter((e) => e.type === 'effect').length, 1);
+    const own = ev.filter((e) => e.who === assigned);
+    if (assigned === 'leader') assert.ok(own.some((e) => e.type === 'clip' && e.name === 'emote-no') && !own.some((e) => e.type === 'fx'));
+    if (assigned === 'hr') assert.ok(own.some((e) => e.type === 'fx' && e.fx.bounce && e.fx.bounce.freq >= 5));
+    if (assigned === 'mentor') assert.ok(own.some((e) => e.type === 'fx' && e.fx.bounce && e.fx.bounce.freq < 5));
+    assert.deepEqual(ev.filter((e) => e.type === 'light').map((e) => e.who).sort(), ['hr', 'leader', 'mentor'].filter((x) => x !== assigned));
+  }
+});
+
+test('새 돌발행동 6개: 속마음 방송·합격 도장·종이비행기·선글라스·큰절·노래 — 대사 2줄 이상, 소품·연출 이벤트, 길이 5~6.5초, 효과 한 번', () => {
+  const NEW = ['heart', 'stamp', 'plane', 'shades', 'bow', 'song'];
+  assert.equal(INTERVIEW.improvs.length, 10);
+  for (const id of NEW) {
+    const improv = INTERVIEW.improvs.find((i) => i.id === id);
+    assert.ok(improv && improv.title && improv.player.length >= 2, id);
+    for (const who of ['leader', 'hr', 'mentor']) assert.ok(improv[who].length > 0 && improv[who].length <= 40, `${id} ${who}`);
+    const ev = improvScript(improv, { total: INTERVIEW_IMPROV_SECONDS });
+    assertScript(ev, id);
+    const end = ev[ev.length - 1].t;
+    assert.ok(end >= 5 - 1e-9 && end <= 6.5, `${id} 길이 ${end}`);
+    assert.equal(ev.filter((e) => e.type === 'effect').length, 1);
+    for (const e of ev.filter((x) => x.type === 'think')) assert.ok(e.who === 'player' && e.text.length <= INNER_MAX_LENGTH);
+  }
+  const by = (id) => improvScript(INTERVIEW.improvs.find((i) => i.id === id), { total: INTERVIEW_IMPROV_SECONDS });
+  assert.ok(by('heart').some((e) => e.type === 'prop' && e.name === 'mic') && by('heart').some((e) => e.type === 'think'));
+  assert.equal(by('stamp').filter((e) => e.type === 'slam').length, 3);
+  assert.ok(by('stamp').some((e) => e.type === 'prop' && e.name === 'stamp'));
+  assert.ok(by('plane').some((e) => e.type === 'plane') && by('plane').some((e) => e.type === 'clip' && e.who === 'leader'));
+  assert.ok(by('shades').some((e) => e.type === 'prop' && e.name === 'shades') && by('shades').some((e) => e.type === 'fx' && e.who === 'player' && e.fx.spin && e.fx.spin.turns === 1));
+  assert.ok(by('bow').some((e) => e.type === 'fx' && e.who === 'player' && e.fx.tilt > 1), '큰절은 깊이 숙인다');
+  for (const id of ['leader', 'hr', 'mentor']) assert.ok(by('bow').some((e) => e.type === 'fx' && e.who === id && e.fx.tilt > 0), `${id} 맞절`);
+  assert.ok(by('song').some((e) => e.type === 'notes'));
+});
+
+test('remoteScene(속마음형 답변): 보낸 방문자 머리 위 속마음 구름(remoteThink)은 정석·솔직·엉뚱에만, 속마음형은 구름 없이 반응만', () => {
+  for (const [a, type] of [[0, '정석'], [1, '솔직'], [2, '엉뚱'], [3, '속마음']]) {
+    const sc = remoteScene(INTERVIEW, { ty: 'ans', q: 1, a }, 'hr', { rng: mulberry32(2) });
+    assert.equal(sc.line.type, type);
+    const th = sc.events.filter((e) => e.type === 'remoteThink');
+    if (type === '속마음') assert.equal(th.length, 0);
+    else {
+      assert.equal(th.length, 1);
+      assert.equal(th[0].text, INTERVIEW.questions[1].answers[a].inner);
+      assert.ok(Math.abs(th[0].t - (sc.bubbleAt + INNER_AT)) < 1e-9);
+    }
+    assert.ok(sc.duration > sc.bubbleAt);
+  }
 });

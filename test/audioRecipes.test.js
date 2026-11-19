@@ -503,3 +503,11 @@ test('crackBreak: 첫 갈라짐 + 몸통 + 알갱이 8개 + 부스러기 3개, �
   }
   assert.equal(RECIPES.crackBreak.minInterval, 0.3);
 });
+
+test('질문 종소리(ding): 이전(gain 3.16)의 절반 크기 — 마스터 체인(압축기)을 거친 측정에서 RMS 0.49배·최대 0.54배(브라우저 오프라인 분석), 소리 자체는 그대로', () => {
+  const OLD_GAIN = 3.16;
+  assert.equal(RECIPES.ding.gain, 1.3);
+  assert.ok(RECIPES.ding.gain / OLD_GAIN < 0.45 && RECIPES.ding.gain / OLD_GAIN > 0.35, '압축기 때문에 회로 앞 gain 은 절반보다 더 줄여야 측정이 절반이 된다');
+  assert.deepEqual(RECIPES.ding.duration, [0.6, 1.5]);
+  assert.equal(RECIPES.ding.priority, 4);
+});
