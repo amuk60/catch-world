@@ -16,7 +16,7 @@ const SEARCH = globalThis.location?.search ?? '';
 // 시작할 때 한 번 읽는 시험용 주소 옵션: ?mpdev=<태그>(시험 채널), ?mpcap=<명>(방 정원)
 const MULTIPLAYER = { ...BASE_CFG, channelPrefix: channelPrefix(SEARCH, BASE_CFG), roomCap: numberParam(SEARCH, 'mpcap', BASE_CFG.roomCap, 1, 50) };
 // 면접 답변·돌발행동 한마디를 받을 때의 허용 범위(내 설정의 질문 수·답변 수·돌발행동 id). 이 밖의 값은 버린다.
-const SAY_LIMITS = { questions: INTERVIEW.questions.length, answers: 3, improvs: [...IMPROV_IDS] };
+const SAY_LIMITS = { questions: INTERVIEW.questions.length, answers: Math.max(...INTERVIEW.questions.map((q) => q.answers.length)), improvs: [...IMPROV_IDS] };
 // 세탁소 빨랫줄·세탁기 효과 메시지의 허용 범위(칸 수·공용 칸 수·세탁기 수는 세탁소 데이터에서).
 const LAUNDRY = buildLaundryInterior();
 const ROOM_LIMITS = { slots: LAUNDRY.clothesline.slots, shared: LAUNDRY.clothesline.shared, washers: LAUNDRY.washers.length };

@@ -397,7 +397,7 @@ export const RECIPES = {
   flap: { run: flap, duration: [0.15, 0.6], priority: 3, gain: 3.2, jitter: J, minInterval: 0.2, group: '세탁소', label: '셔츠 널기(조용히)' },
   tada: { run: tada, duration: [0.6, 1.5], priority: 4, gain: 1.86, jitter: { pitch: 0.02, gain: 0 }, minInterval: 0.6, group: '세탁소', label: '짜잔(새 셔츠)' },
 
-  ding: { run: ding, duration: [0.6, 1.5], priority: 4, gain: 3.16, jitter: { pitch: 0.02, gain: 0.05 }, minInterval: 0.4, group: '면접장', label: '질문 딩' },
+  ding: { run: ding, duration: [0.6, 1.5], priority: 4, gain: 1.3, jitter: { pitch: 0.02, gain: 0.05 }, minInterval: 0.4, group: '면접장', label: '질문 딩(종소리, 이전의 절반 크기: 마스터 체인 통과 후 RMS 0.49배·최대 0.54배)' },
   confirm: { run: confirm, duration: [0.15, 0.6], priority: 3, gain: 1.26, jitter: { pitch: 0.03, gain: 0.05 }, minInterval: 0.2, group: '면접장', label: '답변 확정' },
   speech: { run: speech, duration: [0.1, 0.6], priority: 2, gain: 1.0, jitter: NOJ, minInterval: 0.25, group: '면접장', label: '말풍선 웅얼(짧고 조용히)', demo: { voice: 'hr', syllables: 3 } },
   applause: { run: applause, duration: [1.0, 2.4], priority: 3, gain: 1.77, jitter: { pitch: 0.05, gain: 0.1 }, minInterval: 1.0, group: '면접장', label: '박수' },

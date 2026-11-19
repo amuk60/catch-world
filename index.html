@@ -157,6 +157,14 @@
     .speech-leader .speech-who { color: #b4382e; }
     .speech-hr .speech-who { color: #c2569a; }
     .speech-junior .speech-who { color: #3d7be0; }
+    /* 속마음: 말 풍선 뒤에 따로 뜨는 생각 구름(점선 테두리·기울임·옅은 색·작은 "속마음" 라벨). 꼬리는 작은 동그라미 둘. */
+    .speech.thought { max-width: 200px; padding: 8px 15px 7px; border: 2px dashed #8f9cc4; border-radius: 30px / 24px; background: rgba(240, 244, 255, 0.94); color: #56638c; font-size: 13px;
+      font-style: italic; font-weight: 500; box-shadow: 0 3px 10px rgba(60, 70, 120, 0.25); animation: thought-pop 0.7s ease-out; }
+    .speech.thought::after { left: calc(50% + var(--tail, 0px)); top: 100%; margin: 4px 0 0 -5px; width: 10px; height: 10px; box-sizing: border-box; border: 2px dashed #8f9cc4; border-radius: 50%; background: rgba(240, 244, 255, 0.94); }
+    .speech.thought::before { content: ''; position: absolute; left: calc(50% + var(--tail, 0px) + 7px); top: calc(100% + 18px); width: 6px; height: 6px; box-sizing: border-box; border: 2px dashed #8f9cc4; border-radius: 50%; background: rgba(240, 244, 255, 0.94); }
+    .speech.thought .speech-who { margin-bottom: 1px; font-size: 10px; font-style: normal; font-weight: 700; letter-spacing: 0.1em; color: #8a94b8; }
+    @keyframes thought-pop { 0% { opacity: 0; transform: translate(-50%, -100%) scale(0.5); } 30% { opacity: 1; transform: translate(-50%, -100%) scale(1.14) rotate(-3deg); }
+      45% { transform: translate(-50%, -100%) scale(1) rotate(3deg); } 60% { transform: translate(-50%, -100%) rotate(-2deg); } 75% { transform: translate(-50%, -100%) rotate(1.5deg); } 100% { opacity: 1; transform: translate(-50%, -100%); } }
     @keyframes speech-in { from { opacity: 0; margin-top: 4px; } to { opacity: 1; margin-top: -8px; } }
     #choice { position: absolute; left: 0; right: 0; bottom: 0; display: none; justify-content: center; padding: 0 12px 14px;
       pointer-events: none; z-index: 3; }
@@ -174,6 +182,8 @@
     .tag-정석 { background: #3d7be0; }
     .tag-솔직 { background: #2e9d6a; }
     .tag-엉뚱 { background: #e8833a; }
+    .tag-속마음 { background: #8a4fd0; }
+    @media (max-width: 640px) { .choice-card { padding: 10px 11px 8px; } .choice-q { margin-bottom: 7px; font-size: 15px; } .choice-list { gap: 5px; } .choice-list button { gap: 7px; padding: 6px 9px; font-size: 13.5px; } .choice-tag { padding: 1px 6px; } }
     .choice-line { flex: 1; min-width: 0; line-height: 1.35; word-break: keep-all; }
     .choice-cancel { display: block; margin: 8px 0 0 auto; padding: 4px 8px; border: 0; background: none; color: #6b5d44; font: inherit; font-size: 13px;
       text-decoration: underline; cursor: pointer; }

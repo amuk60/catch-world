@@ -368,7 +368,7 @@ test('session: 서 있는 사람의 하트비트(heartbeatMs)에도 지워지지
 });
 
 // ---- 면접 답변·돌발행동 한마디(k: 'say') ----
-const sayLimits = { questions: 12, answers: 3, improvs: ['paperToss', 'reverse', 'dance', 'banzai'] };
+const sayLimits = { questions: 12, answers: 4, improvs: ['paperToss', 'reverse', 'dance', 'banzai', 'heart', 'stamp', 'plane', 'shades', 'bow', 'song'] };
 const sayMsg = (id, o = {}) => ({ k: 'say', id, space: 'interview', ty: 'ans', q: 2, a: 1, ...o });
 async function hall({ limits = sayLimits, c = cfg } = {}) {
   const tr = fakeTransport();
@@ -422,7 +422,7 @@ test('session: 모르는 방문자·다른 공간·내 메시지·범위 밖 번
   assert.equal(x.seen.length, 0);
   const r0 = x.s.stats.rejected;
   x.at(4000); x.tr.emitMsg(sayMsg('peer00001', { q: 12 }));
-  x.at(6000); x.tr.emitMsg(sayMsg('peer00001', { a: 3 }));
+  x.at(6000); x.tr.emitMsg(sayMsg('peer00001', { a: 4 }));
   x.at(8000); x.tr.emitMsg(sayMsg('peer00001', { ty: 'imp', imp: 'rm -rf' }));
   x.at(10000); x.tr.emitMsg(sayMsg('peer00001', { text: '<b>hi</b>', q: 'x' }));
   assert.equal(x.seen.length, 0);

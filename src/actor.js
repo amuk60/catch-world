@@ -17,6 +17,8 @@ export function createFx(group) {
   let freq = 3;
   let lean = 0; // 앞으로 숙이는 최대 각도(라디안)의 현재값/목표값
   let leanTarget = 0;
+  let tilt = 0; // 큰절처럼 앞으로 깊이 숙이는 각도(라디안)의 현재값/목표값
+  let tiltTarget = 0;
   let spin = null; // { turns, seconds, t, last }
   let move = null; // { from, to, seconds, t, arc }
   const fx = {
@@ -24,7 +26,7 @@ export function createFx(group) {
     get anchor() { return anchor; },
     begin() {
       anchor = { x: group.position.x, y: group.position.y, z: group.position.z };
-      t = 0; amp = 0; ampTarget = 0; lean = 0; leanTarget = 0; spin = null; move = null;
+      t = 0; amp = 0; ampTarget = 0; lean = 0; leanTarget = 0; tilt = 0; tiltTarget = 0; spin = null; move = null;
       group.rotation.order = 'YXZ'; // 앞으로 숙이기(x)가 몸의 방향(y)을 따라가게
     },
     // 끝: 앵커 자리로 되돌려 놓고 맡은 것을 놓는다.
@@ -32,10 +34,11 @@ export function createFx(group) {
       if (!anchor) return;
       group.position.set(anchor.x, anchor.y, anchor.z);
       group.rotation.x = 0;
-      anchor = null; amp = 0; ampTarget = 0; lean = 0; leanTarget = 0; spin = null; move = null;
+      anchor = null; amp = 0; ampTarget = 0; lean = 0; leanTarget = 0; tilt = 0; tiltTarget = 0; spin = null; move = null;
     },
     setAnchor(patch) { if (anchor) Object.assign(anchor, patch); },
     setBounce(cfg) { ampTarget = cfg ? cfg.amp : 0; leanTarget = cfg?.lean ?? 0; if (cfg) freq = cfg.freq; },
+    setTilt(rad) { tiltTarget = rad || 0; },
     startSpin({ turns, seconds }) { spin = { turns, seconds, t: 0, last: 0 }; },
     moveAnchor(to, seconds, arc = 0) {
       if (!anchor) return;
@@ -46,6 +49,7 @@ export function createFx(group) {
       t += dt;
       amp += (ampTarget - amp) * (1 - Math.exp(-14 * dt));
       lean += (leanTarget - lean) * (1 - Math.exp(-14 * dt));
+      tilt += (tiltTarget - tilt) * (1 - Math.exp(-9 * dt));
       let arcY = 0;
       if (move) {
         move.t += dt;
@@ -60,7 +64,7 @@ export function createFx(group) {
       const beat = Math.abs(Math.sin(Math.PI * freq * t));
       const hop = amp > 1e-4 ? beat * amp : 0;
       group.position.set(anchor.x, anchor.y + hop + arcY, anchor.z);
-      group.rotation.x = lean > 1e-4 ? beat * lean : 0;
+      group.rotation.x = (lean > 1e-4 ? beat * lean : 0) + tilt;
       if (spin) {
         spin.t += dt;
         const k = Math.min(1, spin.t / spin.seconds);

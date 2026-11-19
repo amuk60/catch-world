@@ -73,6 +73,7 @@ export function createInterviewers({ root, interior, gltfs, chairs, cfg }) {
       if (!m) return;
       m.actor.setPose(null);
       m.actor.fx.setBounce(null);
+      m.actor.fx.setTilt?.(0);
       m.standing = false;
       m.actor.setBase('sit');
       m.actor.fx.setAnchor({ y: m.seat.y });
