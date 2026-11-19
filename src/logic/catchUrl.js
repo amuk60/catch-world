@@ -22,3 +22,7 @@ export function linkCatchUrl(links, id, medium, campaign = id, source = 'catchwo
 export function fortuneCatchUrl(base, utm, category) {
   return buildCatchUrl(base, { utm_source: utm.source, utm_medium: utm.medium, utm_campaign: category });
 }
+
+// 캐치 링크를 여는 CTA 의 위치(source) → utm_medium. fortune: 포춘쿠키 버튼, popup_goal: 측면 팝업(≤20), popup_clear: 가운데 팝업(지수 0), popup_ready: 면접 준비 팝업, chip: 우상단 칩, share: 공유 카드.
+export const CATCH_SOURCES = ['fortune', 'popup_goal', 'popup_clear', 'popup_ready', 'chip', 'share'];
+export const mediumForSource = (source) => (source === 'fortune' ? 'fortune' : source === 'chip' ? 'chip' : source === 'share' ? 'banner' : 'popup');

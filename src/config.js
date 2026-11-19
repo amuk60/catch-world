@@ -13,7 +13,7 @@ export const CATCH_LINKS = [
   { id: 'cover_letter', name: '합격자소서', desc: '합격자들의 자기소개서를 참고할 수 있어요', url: 'https://www.catch.co.kr/JobN/CoverLetter/Main' },
   { id: 'cafe', name: '캐치카페', desc: '회원에게 무료로 제공하는 오프라인 공간: 대학생·취준생 모두 무료, 매일 음료 1잔, 카페 좌석·스터디 공간 대여·채용설명회', url: 'https://www.catch.co.kr/CatchCafe/' },
   { id: 'tv', name: '캐치TV', desc: '취준생의 영원한 친구 캐치TV, 취업 정보를 재미있게 풀어 주는 유튜브 채널', url: 'https://www.catch.co.kr/News/CatchCast' },
-  { id: 'home', name: '캐치', desc: '취업 준비에 필요한 모든 것, 캐치', url: CATCH_URL }, // 칩·배너·공유 카드 등 일반 용도
+  { id: 'home', name: '캐치', desc: '취업 준비의 모든 것, 캐치', url: CATCH_URL }, // 칩·배너·공유 카드 등 일반 용도
 ];
 
 // GA4 측정 ID ('G-'로 시작). 비어 있으면 분석이 꺼진다. localhost 에서는 켜지지 않는다.
@@ -178,10 +178,13 @@ export const MARSHMALLOW = {
     cueSeconds: [0.6, 1.0],
   },
   // 돌리기: 마시멜로는 sides 개의 면을 가진다. 불을 마주 보는 면이 가장 빨리(속도 sideSpeed) 익고 나머지 면은 ambientRate 비율로 천천히 익는다.
-  // 클릭·Space 한 번에 한 면(360/sides 도)씩 rotateSeconds 동안 부드럽게 돈다. 결과는 면들의 평균 굽기로 가르고, 면 사이 차이(최댓값-최솟값)가 evenSpread 이하여야 "고르게"다.
+  // 굴리기: 마우스 버튼·Space 를 누르고 있는 동안 막대가 한 방향으로 일정한 속도(rollDegPerSec 도/초)로 굴러가고(양꼬치·통닭처럼) rollRampSeconds 동안 부드럽게 오르내린다.
+  // 굴리는 동안은 열이 모든 면에 돌아가며 닿아 면마다 평균 비율이 낮아지므로 rollHeat 배로 보정한다(고르게 굽는 데 걸리는 시간이 가만히 굽는 것과 비슷하다). 결과는 면들의 평균 굽기로 가르고, 면 사이 차이(최댓값-최솟값)가 evenSpread 이하여야 "고르게"다.
   // 한쪽 탐: 고르지 않은데 가장 많이 익은 면이 unevenAt 이상(평균이 숯 전이면).
   sides: 3,
-  rotateSeconds: 0.25,
+  rollDegPerSec: 300,
+  rollRampSeconds: 0.12,
+  rollHeat: 1.9,
   ambientRate: 0.3,
   sideSpeed: 1.7,
   evenSpread: 0.2,

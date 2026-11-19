@@ -81,10 +81,13 @@ test('linkCatchUrl: 표에 기존 쿼리·해시가 있어도 보존한다, 모�
   assert.equal(linkCatchUrl(CATCH_LINKS, 'nope', 'popup'), undefined);
 });
 
-test('팝업 버튼의 서비스: 목표=jobs, 지수 0=ai_match, 면접 준비=ai_interview (모두 표에 있다)', () => {
+test('팝업 버튼의 서비스: 목표(≤20)·지수 0(게임 종료)=home(캐치 메인), 면접 준비=ai_interview (모두 표에 있다)', () => {
   const ids = new Set(CATCH_LINKS.map((l) => l.id));
-  assert.equal(goalMessage(18).link, 'jobs');
-  assert.equal(emptyMessage().link, 'ai_match');
+  assert.equal(goalMessage(18).link, 'home');
+  assert.equal(emptyMessage().link, 'home');
+  const home = 'https://www.catch.co.kr/?utm_source=catchworld&utm_medium=popup&utm_campaign=home';
+  assert.equal(linkCatchUrl(CATCH_LINKS, goalMessage(18).link, 'popup'), home);
+  assert.equal(linkCatchUrl(CATCH_LINKS, emptyMessage().link, 'popup'), home);
   assert.equal(readyMessage().link, 'ai_interview');
   for (const m of [goalMessage(18), emptyMessage(), readyMessage()]) {
     assert.ok(ids.has(m.link));

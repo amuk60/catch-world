@@ -189,30 +189,43 @@ export function classifyRoast(levels, round, cfg = MARSHMALLOW) {
   return { result, level, spread, even };
 }
 
-// 굽는 중 입력 하나가 무엇을 하는가: input = { type: 'key', code } | { type: 'click' }, phase = 굽기 단계. 'rotate' | 'pull' | 'cancel' | null.
-//   굽는 중(toast): 클릭·Space 돌리기, 1·E 꺼내기, Esc 취소. 꺼내 들고 뻗는 중(take·reach): Esc·E 취소. 그 밖에는 아무 일 없다.
+// 굽는 중 입력 하나가 무엇을 하는가: input = { type: 'key', code } (눌림) | { type: 'keyup', code } | { type: 'pointerdown' } | { type: 'pointerup' }, phase = 굽기 단계.
+//   'rollStart'(누르는 동안 굴리기 시작) | 'rollStop'(떼면 멈춤) | 'pull' | 'cancel' | null.
+//   굽는 중(toast): 마우스 버튼·Space 를 누르고 있는 동안 굴리고 떼면 멈춘다, 1·E 꺼내기, Esc 취소. 떼는 입력은 어느 단계에서든 멈춤이다(굴림이 남지 않게).
+//   꺼내 들고 뻗는 중(take·reach): Esc·E 취소. 그 밖에는 아무 일 없다.
 export function roastInputAction(input, phase) {
+  if (input.type === 'pointerup' || (input.type === 'keyup' && input.code === 'Space')) return 'rollStop';
   if (phase === 'toast') {
-    if (input.type === 'click') return 'rotate';
-    if (input.code === 'Space') return 'rotate';
-    if (input.code === 'Digit1' || input.code === 'Numpad1' || input.code === 'KeyE') return 'pull';
-    if (input.code === 'Escape') return 'cancel';
+    if (input.type === 'pointerdown') return 'rollStart';
+    if (input.type === 'key') {
+      if (input.code === 'Space') return 'rollStart';
+      if (input.code === 'Digit1' || input.code === 'Numpad1' || input.code === 'KeyE') return 'pull';
+      if (input.code === 'Escape') return 'cancel';
+    }
     return null;
   }
   if (phase === 'take' || phase === 'reach') return input.type === 'key' && (input.code === 'Escape' || input.code === 'KeyE') ? 'cancel' : null;
   return null;
 }
 // 굽는 패널의 안내 글.
-export const roastHint = (canPull) => (canPull ? '클릭/Space: 돌리기 · 1/E: 꺼내기 · Esc: 취소' : 'Esc: 취소');
+export const roastHint = (canPull) => (canPull ? '누르고 있으면 돌아가요 (클릭/Space) · 1/E: 꺼내기 · Esc: 취소' : 'Esc: 취소');
+
+// 굴리기 속도(라디안/초) 한 걸음: 목표 속도(굴리는 중이면 rollDegPerSec, 아니면 0)로 rollRampSeconds 안에 일정한 가속도로 오르내린다(방향은 늘 한쪽).
+export const rollMaxSpeed = (cfg = MARSHMALLOW) => (cfg.rollDegPerSec * Math.PI) / 180;
+export function rollSpeedStep(speed, rolling, dt, cfg = MARSHMALLOW) {
+  const max = rollMaxSpeed(cfg);
+  const target = rolling ? max : 0;
+  const delta = (max / cfg.rollRampSeconds) * dt;
+  return speed < target ? Math.min(target, speed + delta) : Math.max(target, speed - delta);
+}
 
 // 한 번의 굽기 진행. 단계: take(막대를 꺼냄) -> reach(팔을 뻗어 불 위에 댐) -> toast(굽는 중: 돌리고 꺼낼 수 있다) -> bring(입으로) -> chew(씹기) -> relief(후련) -> done.
-// 취소(cancel)는 take·reach·toast 에서만 되고 phase 가 'cancelled' 가 된다(감소 없음). 꺼내기(pull)·돌리기(rotate)는 toast 에서만 된다.
+// 취소(cancel)는 take·reach·toast 에서만 되고 phase 가 'cancelled' 가 된다(감소 없음). 꺼내기(pull)·굴리기(setRolling)는 toast 에서만 된다.
 // 굽기는 면마다 따로 익는다(sideTau): 불을 마주 보는 면이 가장 빨리 익고 나머지는 천천히 익는다. 면 하나가 탄 단계에 닿으면 꺼내지 않아도 자동으로 빼낸다.
 // update(dt) 는 이벤트 배열을 돌려준다: { type: 'phase', phase } | { type: 'stage', id } | { type: 'flare' } (불이 튀기 시작) | { type: 'pulled', result, level, even, auto }
-//   | { type: 'reduce', result, amount } (relief 시작, 한 번만) | { type: 'done', result }. rotate() 는 [{ type: 'rotate', side }] 를 돌려준다.
+//   | { type: 'reduce', result, amount } (relief 시작, 한 번만) | { type: 'done', result }. setRolling(true|false) 는 누르고 있는 동안 막대를 한 방향으로 일정한 속도로 굴린다(angle 이 계속 늘고 면별 열은 각도에 따라 적분된다).
 // 판은 만들 때 rng 로 뽑는다(round 를 직접 줄 수도 있다).
 const SUBSTEP = 0.05; // 굽는 열을 쌓는 가장 긴 한 걸음(초): 돌아가는 각도에 따라 열이 달라지므로 잘게 적분한다
-const smooth = (x) => x * x * (3 - 2 * x);
 export function createRoast(cfg = MARSHMALLOW, rng = Math.random, round = makeRound(rng, cfg)) {
   const order = ['take', 'reach', 'toast', 'bring', 'chew', 'relief'];
   const length = { take: cfg.takeSeconds, reach: cfg.reachSeconds, bring: cfg.eat.bringSeconds, chew: cfg.eat.chewSeconds, relief: cfg.eat.reliefSeconds };
@@ -220,9 +233,9 @@ export function createRoast(cfg = MARSHMALLOW, rng = Math.random, round = makeRo
   let phase = 'take';
   let t = 0; // 지금 단계에서 지난 시간(toast 에서는 불에 댄 실제 시간)
   const taus = Array(cfg.sides).fill(0); // 면별 익는 시간
-  let rotFrom = 0; // 돌기 시작한 각도
-  let rotTo = 0; // 목표 각도(돌리기를 누를 때마다 step 씩 늘어난다)
-  let rotT = cfg.rotateSeconds; // 돌기 시작한 뒤 지난 시간(rotateSeconds 이상이면 멈춤)
+  let angle = 0; // 지금까지 굴러 간 각도(라디안, 한 방향으로만 늘어난다)
+  let speed = 0; // 지금 굴리는 속도(라디안/초, 0..rollDegPerSec)
+  let rolling = false; // 굴리는 입력을 누르고 있는가
   let stageIndex = -1;
   let flareIndex = 0; // 알린 불 튐 수
   let result = null;
@@ -230,7 +243,6 @@ export function createRoast(cfg = MARSHMALLOW, rng = Math.random, round = makeRo
   let pulledLevel = null;
   const first = [{ type: 'phase', phase: 'take' }];
 
-  const angleAt = (time) => rotFrom + (rotTo - rotFrom) * smooth(Math.min(1, Math.max(0, time / cfg.rotateSeconds)));
   const levelsNow = () => taus.map((x) => toastLevel(x, round, cfg));
 
   function pull(auto, events) {
@@ -245,6 +257,8 @@ export function createRoast(cfg = MARSHMALLOW, rng = Math.random, round = makeRo
   function go(next, events) {
     phase = next;
     t = 0;
+    rolling = false;
+    speed = 0;
     events.push({ type: 'phase', phase });
     if (phase === 'relief') events.push({ type: 'reduce', result, amount: rewardFor(result, cfg) });
   }
@@ -257,18 +271,23 @@ export function createRoast(cfg = MARSHMALLOW, rng = Math.random, round = makeRo
       for (const f of round.flares) for (const edge of [f.at, f.at + f.duration]) if (edge > t + 1e-12 && edge < boundary) boundary = edge;
       const dtStep = Math.min(left, boundary - t, SUBSTEP);
       const mult = round.flares.reduce((m, f) => (t + dtStep / 2 >= f.at && t + dtStep / 2 <= f.at + f.duration ? f.boost : m), 1);
-      const weights = sideWeights(angleAt(rotT + dtStep / 2), cfg);
-      const gain = weights.map((w) => dtStep * mult * cfg.sideSpeed * w);
+      const nextSpeed = rollSpeedStep(speed, rolling, dtStep, cfg);
+      const midAngle = angle + dtStep * (speed + nextSpeed) / 4; // 걸음 중간 각도(속도는 직선으로 변한다)
+      const rollK = (speed + nextSpeed) / 2 / rollMaxSpeed(cfg); // 굴리는 정도 0..1
+      const weights = sideWeights(midAngle, cfg);
+      const gain = weights.map((w) => dtStep * mult * cfg.sideSpeed * w * (1 + (cfg.rollHeat - 1) * rollK));
       let frac = 1;
       for (let i = 0; i < taus.length; i++) if (taus[i] + gain[i] >= round.burntTau - 1e-12) frac = Math.min(frac, Math.max(0, (round.burntTau - taus[i]) / gain[i]));
       if (frac < 1) {
         for (let i = 0; i < taus.length; i++) taus[i] = Math.min(round.burntTau, taus[i] + gain[i] * frac);
         for (let i = 0; i < taus.length; i++) if (taus[i] >= round.burntTau - 1e-9) taus[i] = round.burntTau;
-        t += dtStep * frac; rotT += dtStep * frac; left -= dtStep * frac; burnt = true;
+        angle += dtStep * frac * (speed + nextSpeed) / 2; speed = nextSpeed;
+        t += dtStep * frac; left -= dtStep * frac; burnt = true;
         break;
       }
       for (let i = 0; i < taus.length; i++) taus[i] += gain[i];
-      t += dtStep; rotT += dtStep; left -= dtStep;
+      angle += dtStep * (speed + nextSpeed) / 2; speed = nextSpeed;
+      t += dtStep; left -= dtStep;
     }
     while (flareIndex < round.flares.length && t >= round.flares[flareIndex].at) { events.push({ type: 'flare' }); flareIndex++; }
     const level = Math.max(...levelsNow());
@@ -286,17 +305,17 @@ export function createRoast(cfg = MARSHMALLOW, rng = Math.random, round = makeRo
     get level() { return phase === 'toast' ? averageLevel(levelsNow()) : (pulledLevel ?? 0); },
     // 면별 굽기(꺼낸 뒤에는 꺼낼 때의 값).
     get sideLevels() { return phase === 'toast' ? levelsNow() : (pulledSides ?? Array(cfg.sides).fill(0)); },
-    get angle() { return angleAt(rotT); }, // 지금까지 돈 각도(라디안, 돌아가는 중에는 중간값)
-    get facing() { return ((Math.round(rotTo / step) % cfg.sides) + cfg.sides) % cfg.sides; }, // 불을 마주 볼(보는) 면
-    get turning() { return rotT < cfg.rotateSeconds; },
-    get turnProgress() { return Math.min(1, rotT / cfg.rotateSeconds); },
+    get angle() { return angle; }, // 지금까지 굴러 간 각도(라디안)
+    get rollSpeed() { return speed; }, // 지금 굴리는 속도(라디안/초)
+    get rolling() { return rolling; }, // 굴리는 입력을 누르고 있는가
+    get facing() { return ((Math.round(angle / step) % cfg.sides) + cfg.sides) % cfg.sides; }, // 불을 가장 마주 본 면
     get toastSeconds() { return phase === 'toast' ? t : 0; }, // 불에 댄 실제 시간
     get flare() { return phase === 'toast' ? flareAmount(t, round) : 0; },
     get cue() { return phase === 'toast' ? cueAt(t, round) : { blush: 0, steam: 0 }; },
     get active() { return phase !== 'done' && phase !== 'cancelled'; },
     get canCancel() { return phase === 'take' || phase === 'reach' || phase === 'toast'; },
     get canPull() { return phase === 'toast'; },
-    get canRotate() { return phase === 'toast'; },
+    get canRoll() { return phase === 'toast'; },
     // 시작 이벤트(take 단계 진입). 한 번만 부르면 된다.
     start() { return first.map((e) => ({ ...e })); },
     pull() {
@@ -305,17 +324,15 @@ export function createRoast(cfg = MARSHMALLOW, rng = Math.random, round = makeRo
       pull(false, events);
       return events;
     },
-    // 한 면(360/sides 도) 돌린다. 돌아가는 중에 또 누르면 그만큼 더 간다.
-    rotate() {
-      if (phase !== 'toast') return null;
-      rotFrom = angleAt(rotT);
-      rotTo += step;
-      rotT = 0;
-      return [{ type: 'rotate', side: this.facing }];
+    // 굴리는 입력을 누르고 있는가를 알린다(떼면 false). toast 가 아니면 굴리지 않는다.
+    setRolling(on) {
+      rolling = Boolean(on) && phase === 'toast';
+      return rolling;
     },
     cancel() {
       if (!this.canCancel) return false;
       phase = 'cancelled';
+      rolling = false;
       return true;
     },
     update(dt) {

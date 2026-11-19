@@ -70,15 +70,23 @@ export function createHud(container, { fortuneHandlers = {}, onClose = () => {} 
   roastPanel.id = 'roast-panel';
   roastPanel.innerHTML = `
     <div class="roast-gauge"><div class="roast-fill"></div></div>
-    <div class="roast-row"><button type="button" class="roast-turn"><span class="keycap">Space</span><span class="label">돌리기</span></button><button type="button" class="roast-pull"><span class="keycap">1</span><span class="label">꺼내기</span></button><span class="roast-hint"></span></div>`;
+    <div class="roast-row"><button type="button" class="roast-turn"><span class="keycap">Space</span><span class="label">누르고 돌리기</span></button><button type="button" class="roast-pull"><span class="keycap">1</span><span class="label">꺼내기</span></button><span class="roast-hint"></span></div>`;
   const roastFill = roastPanel.querySelector('.roast-fill');
   const roastPull = roastPanel.querySelector('.roast-pull');
   const roastTurn = roastPanel.querySelector('.roast-turn');
   const roastHint = roastPanel.querySelector('.roast-hint');
-  let roastHandlers = { onPull: () => {}, onTurn: () => {} };
+  let roastHandlers = { onPull: () => {}, onRoll: () => {} };
   roastPull.addEventListener('pointerdown', (e) => e.preventDefault());
-  roastTurn.addEventListener('pointerdown', (e) => e.preventDefault());
-  roastTurn.addEventListener('click', () => { if (roastTurn.getAttribute('aria-disabled') !== 'true') roastHandlers.onTurn(); });
+  // 돌리기 버튼: 누르고 있는 동안 굴린다(떼거나 포인터가 취소·이탈하면 멈춘다).
+  const rollEnd = () => { roastTurn.classList.remove('held'); roastHandlers.onRoll(false); };
+  roastTurn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    if (roastTurn.getAttribute('aria-disabled') === 'true' || e.button !== 0) return;
+    try { roastTurn.setPointerCapture(e.pointerId); } catch { /* 지원하지 않으면 pointerleave 로 멈춘다 */ }
+    roastTurn.classList.add('held');
+    roastHandlers.onRoll(true);
+  });
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture', 'pointerleave']) roastTurn.addEventListener(type, rollEnd);
   roastPull.addEventListener('click', () => { if (roastPull.getAttribute('aria-disabled') !== 'true') roastHandlers.onPull(); });
   // 클리어 팝업(종료 화면): 흐린 배경 + 카드. 문구는 열 때 채운다.
   const result = document.createElement('div');
@@ -414,7 +422,7 @@ export function createHud(container, { fortuneHandlers = {}, onClose = () => {} 
     },
     // 마시멜로 굽기 패널. state: { fill(0..1 가는 시간 줄), color('rgb(..)'), canPull(꺼내기 버튼 켜짐), hint(안내 글) } — 완벽 구간은 알려 주지 않는다.
     showRoast(handlers = {}) {
-      roastHandlers = { onPull: () => {}, onTurn: () => {}, ...handlers };
+      roastHandlers = { onPull: () => {}, onRoll: () => {}, ...handlers };
       roastPanel.classList.add('visible');
     },
     updateRoast({ fill = 0, color = '#fff', canPull = false, hint = '' } = {}) {
@@ -422,6 +430,7 @@ export function createHud(container, { fortuneHandlers = {}, onClose = () => {} 
       roastFill.style.background = color;
       roastPull.setAttribute('aria-disabled', canPull ? 'false' : 'true');
       roastTurn.setAttribute('aria-disabled', canPull ? 'false' : 'true');
+      if (!canPull) roastTurn.classList.remove('held');
       roastHint.textContent = hint;
     },
     hideRoast() {

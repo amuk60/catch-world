@@ -14,9 +14,9 @@ export function ctaMessage(stress) {
 export const goalMessage = (stress) => ({
   ...ctaMessage(stress),
   title: '목표 달성!',
-  line2: '다음 지원서는 캐치에서 조건별로 골라 볼까요?',
-  cta: '조건별 공고 탐색하기',
-  link: 'jobs',
+  line2: '다음 지원서는 캐치에서 찾아볼까요?',
+  cta: '캐치 구경하러 가기',
+  link: 'home',
 });
 
 // 가운데 팝업(지수 0) 문구와 버튼(cta) 이름·서비스(link).
@@ -24,9 +24,9 @@ export function emptyMessage() {
   return {
     title: '소각 완료!',
     line1: '스트레스 지수 0! 마음이 한결 가벼워졌죠?',
-    line2: '다음 지원서는 캐치가 나에게 맞는 공고로 같이 찾아드릴게요!',
-    cta: '나에게 맞는 공고 추천받기',
-    link: 'ai_match',
+    line2: '다음 지원서는 캐치가 같이 찾아드릴게요!',
+    cta: '캐치에서 새 시작하기',
+    link: 'home',
   };
 }
 

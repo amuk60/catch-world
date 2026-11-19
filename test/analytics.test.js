@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { initAnalytics, track } from '../src/analytics.js';
+import { initAnalytics, track, trackCatchClick } from '../src/analytics.js';
 
 function clean() {
   delete globalThis.gtag;
@@ -53,4 +53,24 @@ test('initAnalytics: id 는 URL 인코딩된다', () => {
   initAnalytics('G-A&B', { createElement: () => ({}), head: { appendChild: (el) => appended.push(el) } });
   assert.ok(appended[0].src.endsWith('id=G-A%26B'));
   clean();
+});
+
+test('trackCatchClick: catch_link_click 을 link·source·medium·campaign 으로 보낸다(category 는 있을 때만)', () => {
+  clean();
+  const calls = [];
+  globalThis.gtag = (...args) => calls.push(args);
+  assert.equal(trackCatchClick({ link: 'home', source: 'chip' }), true);
+  trackCatchClick({ link: 'jobs', source: 'fortune', category: 'growth' });
+  trackCatchClick({ link: 'home', source: 'popup_clear' });
+  assert.deepEqual(calls, [
+    ['event', 'catch_link_click', { link: 'home', source: 'chip', medium: 'chip', campaign: 'home' }],
+    ['event', 'catch_link_click', { link: 'jobs', source: 'fortune', medium: 'fortune', campaign: 'jobs', category: 'growth' }],
+    ['event', 'catch_link_click', { link: 'home', source: 'popup_clear', medium: 'popup', campaign: 'home' }],
+  ]);
+  clean();
+});
+
+test('trackCatchClick: gtag 가 없으면 false', () => {
+  clean();
+  assert.equal(trackCatchClick({ link: 'home', source: 'chip' }), false);
 });

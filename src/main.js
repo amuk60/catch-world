@@ -21,7 +21,7 @@ import { nextMode, holdsSeat, showPrompt as promptAllowed } from './logic/player
 import { occupiedSeats, seatOfRemote, seatPromptFor, SEAT_OCCUPIED_RADIUS } from './logic/seats.js';
 import { pickFortuneFor } from './logic/fortune.js';
 import { createCookieCrack } from './logic/cookieCrack.js';
-import { linkCatchUrl } from './logic/catchUrl.js';
+import { createCatchOpener } from './logic/catchOpen.js';
 import { rollReduction } from './logic/stressRoll.js';
 import { buildFortuneStall } from './fortuneStall.js';
 import { createControls } from './controls.js';
@@ -51,7 +51,7 @@ import { shareLines, shareFilename, shareUrl, resultPlan, goalMessage, emptyMess
 import { createOutfit, outfitPrompt, laundryGuide } from './logic/outfit.js';
 import { createLine } from './logic/line.js';
 import { makeId } from './logic/net.js';
-import { initAnalytics, track } from './analytics.js';
+import { initAnalytics, track, trackCatchClick } from './analytics.js';
 import { loadSignFonts } from './signFont.js';
 import { renderShareCard, saveShareCard, copyText } from './share.js';
 import { easeInOut } from './logic/burn.js';
@@ -922,6 +922,8 @@ if (isMobileUA(navigator.userAgent)) {
   let roastGlow = 0; // 좋음 띠 안에 있는 동안 아주 은은히 오르는 밝기 힌트(0..1)
   let flareEmberAt = 0;
   let swayClock = 0;
+  const rollIn = { mouse: false, key: false, button: false }; // 굴리기 입력(누르고 있는 동안만 굴러간다): 마우스 버튼·Space·패널의 돌리기 버튼
+  const releaseRoll = () => { rollIn.mouse = false; rollIn.key = false; rollIn.button = false; };
   const ROAST_GRIP = 0.35; // 막대가 손 뒤로 나온 길이
   const ROAST_FIRE = { edge: 0.45, y: 1.0 }; // 마시멜로를 대는 곳: 불 가장자리(소각로 중심에서 손 쪽으로 edge) 위 y
   const FP_FIRE_Y = 1.25; // 1인칭에서 바라보는 불의 높이
@@ -960,7 +962,8 @@ if (isMobileUA(navigator.userAgent)) {
     roastGlow = 0;
     flareEmberAt = 0;
     character?.beginAction();
-    hud.showRoast({ onPull: roastPull, onTurn: roastTurn });
+    releaseRoll();
+    hud.showRoast({ onPull: roastPull, onRoll: (on) => { rollIn.button = on; } });
     if (once('game_start')) track('game_start');
     for (const e of roast.start()) onRoastEvent(e);
     return true;
@@ -970,6 +973,7 @@ if (isMobileUA(navigator.userAgent)) {
   function finishRoast() {
     if (!roast) return;
     roast = null;
+    releaseRoll();
     roastProp.hide();
     hud.hideRoast();
     character?.endAction('sit');
@@ -981,11 +985,8 @@ if (isMobileUA(navigator.userAgent)) {
     finishRoast();
     return true;
   }
-  // 클릭·Space·돌리기 버튼: 굽는 중이면 마시멜로(막대)를 한 면 돌린다.
-  function roastTurn() {
-    if (!roast || !roast.canRotate) return;
-    roast.rotate();
-  }
+  // 마우스·Space·돌리기 버튼을 누르고 있는 동안 마시멜로(막대)를 한 방향으로 일정하게 굴린다(logic/marshmallow.js 의 roastInputAction: 누름 = 시작, 뗌 = 멈춤).
+  const rollHeld = () => rollIn.mouse || rollIn.key || rollIn.button;
   // 1·E·꺼내기 버튼: 굽는 중이면 꺼내고 먹기 시작한다.
   function roastPull() {
     if (!roast || !roast.canPull) return;
@@ -1030,6 +1031,7 @@ if (isMobileUA(navigator.userAgent)) {
     if (!roast) return;
     if (mode !== 'roasting' || !seatItem || spaceId !== 'yard' || Math.hypot(seatItem.x - FURNACE.x, seatItem.z - FURNACE.z) > FIRE_ZONE_RADIUS) { // 자리가 바뀌었다: 감소 없이 정리
       roast.cancel();
+      releaseRoll();
       hud.clearSpeech(SPEECH_KEY);
       const stuck = mode === 'roasting';
       roast = null;
@@ -1040,6 +1042,7 @@ if (isMobileUA(navigator.userAgent)) {
       return;
     }
     roastClock += dt;
+    roast.setRolling(mode === 'roasting' && rollHeld());
     for (const e of roast.update(dt)) onRoastEvent(e);
     if (!roast) return;
     const { phase } = roast;
@@ -1130,13 +1133,6 @@ if (isMobileUA(navigator.userAgent)) {
       }
       rStart.lerp(fpStart, fpK);
       rTip.lerp(fpTip, fpK);
-    }
-    const twirl = phase === 'toast' ? Math.sin(Math.PI * (roast.turning ? roast.turnProgress : 0)) : 0; // 돌리는 순간 막대 끝이 작게 원을 그린다
-    if (twirl > 0) {
-      fpTmp.crossVectors(rDir, UP).normalize();
-      const ang = Math.PI * 2 * roast.turnProgress;
-      rTip.addScaledVector(fpTmp, 0.07 * twirl * Math.cos(ang)).addScaledVector(UP, 0.05 * twirl * Math.sin(ang));
-      rStart.addScaledVector(fpTmp, -0.02 * twirl * Math.cos(ang));
     }
     const eaten = phase === 'chew' ? easeInOut(Math.min(1, roastClock / cfg.eat.chewSeconds)) : phase === 'relief' ? 1 : 0;
     const level = roast.level;
@@ -1241,10 +1237,8 @@ if (isMobileUA(navigator.userAgent)) {
   // ---- 측면 팝업(목표 달성)·가운데 팝업(지수 0)과 캐치 칩 ----
   // 캐치 서비스(CATCH_LINKS 의 id)를 새 탭으로 연다. medium: popup | chip | banner (utm_medium), campaign 은 link id.
   const catchLink = (id) => CATCH_LINKS.find((l) => l.id === id);
-  function openCatch(place, link = 'home', medium = place === 'chip' ? 'chip' : 'popup') {
-    window.open(linkCatchUrl(CATCH_LINKS, link, medium), '_blank', 'noopener');
-    track('banner_click', { place, link });
-  }
+  // 모든 캐치 링크 클릭의 유일한 관문(logic/catchOpen.js): 새 탭 + catch_link_click 1번 + 기존 상세 이벤트. source: fortune | popup_goal | popup_clear | popup_ready | chip.
+  const openCatch = createCatchOpener({ links: CATCH_LINKS, open: (url) => window.open(url, '_blank', 'noopener'), track, trackCatch: trackCatchClick });
 
   async function saveResultImage() {
     try { renderer.render(scene, camera); } catch (err) { console.warn('저장용 화면을 그리지 못했습니다.', err); } // 같은 틱에서 바로 복사해야 캔버스가 비지 않는다.
@@ -1285,7 +1279,7 @@ if (isMobileUA(navigator.userAgent)) {
     track('game_restart');
   }
 
-  const showChip = () => hud.showCtaChip(() => openCatch('chip'));
+  const showChip = () => hud.showCtaChip(() => openCatch('home', { source: 'chip' }));
 
   // 측면 팝업: 모드·자동·입력은 그대로 두고 카드만 띄운다. 닫으면(✕) 우상단 칩이 남는다.
   // 측면 자리는 하나뿐이라 열려 있는 다른 측면 팝업(면접 준비 완료)이 있으면 그것을 대체한다(겹쳐 뜨지 않는다).
@@ -1293,7 +1287,7 @@ if (isMobileUA(navigator.userAgent)) {
     hud.openSidePopup({
       stress,
       link: catchLink(goalMessage(stress).link),
-      onCta: () => openCatch('side', goalMessage(stress).link),
+      onCta: () => openCatch(goalMessage(stress).link, { source: 'popup_goal' }),
       onClose: () => { hud.closeSidePopup(); showChip(); },
     });
   }
@@ -1306,7 +1300,7 @@ if (isMobileUA(navigator.userAgent)) {
     hud.closeSidePopup();
     hud.openReadyPopup({
       link: catchLink(readyMessage().link),
-      onCta: () => { window.open(linkCatchUrl(CATCH_LINKS, readyMessage().link, 'popup'), '_blank', 'noopener'); track('cta_click', { source: 'outfit_ready', link: readyMessage().link }); },
+      onCta: () => openCatch(readyMessage().link, { source: 'popup_ready' }),
       onLater: () => hud.closeSidePopup(),
       onClose: () => hud.closeSidePopup(),
     });
@@ -1322,7 +1316,7 @@ if (isMobileUA(navigator.userAgent)) {
     hud.hideBubble();
     showChip();
     hud.openResult({
-      link: catchLink(emptyMessage().link), onCta: () => openCatch('modal', emptyMessage().link), onSave: saveResultImage, onCopy: copyAddress, onContinue: closeResult, onRestart: restart,
+      link: catchLink(emptyMessage().link), onCta: () => openCatch(emptyMessage().link, { source: 'popup_clear' }), onSave: saveResultImage, onCopy: copyAddress, onContinue: closeResult, onRestart: restart,
     });
   }
 
@@ -1393,11 +1387,7 @@ if (isMobileUA(navigator.userAgent)) {
     if (mode === 'fortune' && hud.fortune.stage() === 'card') { cookieKind = null; hud.fortune.openPicker(COOKIE_KINDS); }
   }
   function openFortuneCta(category, link) {
-    const url = linkCatchUrl(CATCH_LINKS, link, 'fortune');
-    if (!url) return;
-    window.open(url, '_blank', 'noopener');
-    track('fortune_cta_click', { category, link });
-    track('cta_click', { source: 'fortune', category, link });
+    openCatch(link, { source: 'fortune', category });
   }
 
   // E 키: 포춘 모달이면 깨기/닫기, 앉은 상태면 일어나기, 아니면 가장 가까운 대상의 동작(소각로는 E 동작이 없다).
@@ -1438,11 +1428,11 @@ if (isMobileUA(navigator.userAgent)) {
       else if (e.code in CHOICE_KEYS && !e.repeat) interviewScene.pick(CHOICE_KEYS[e.code]);
       return;
     }
-    if (mode === 'roasting') { // 마시멜로 굽는 중: Space 로 돌리고, 1·E 로 꺼내고, Esc(굽기 전에는 E 도)로 취소한다(logic/marshmallow.js 의 roastInputAction). 그 밖의 키(이동·R·2)는 무시.
+    if (mode === 'roasting') { // 마시멜로 굽는 중: Space 를 누르고 있으면 굴리고, 1·E 로 꺼내고, Esc(굽기 전에는 E 도)로 취소한다(logic/marshmallow.js 의 roastInputAction). 그 밖의 키(이동·R·2)는 무시.
       if (e.code === 'Space') e.preventDefault();
       if (e.repeat) return;
       const act = roastInputAction({ type: 'key', code: e.code }, roast?.phase);
-      if (act === 'rotate') roastTurn();
+      if (act === 'rollStart') rollIn.key = true;
       else if (act === 'pull') roastPull();
       else if (act === 'cancel') cancelRoast();
       return;
@@ -1492,9 +1482,13 @@ if (isMobileUA(navigator.userAgent)) {
     fpPointer.x = ((e.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1;
     fpPointer.y = ((e.clientY - rect.top) / Math.max(1, rect.height)) * 2 - 1;
   });
-  window.addEventListener('keyup', (e) => { keys.up(e.code); });
-  window.addEventListener('blur', () => keys.clear());
-  document.addEventListener('visibilitychange', () => { keys.clear(); if (document.hidden) fireView.off(); });
+  window.addEventListener('keyup', (e) => { keys.up(e.code); if (roastInputAction({ type: 'keyup', code: e.code }, roast?.phase) === 'rollStop') rollIn.key = false; });
+  window.addEventListener('blur', () => { keys.clear(); releaseRoll(); });
+  document.addEventListener('visibilitychange', () => { keys.clear(); releaseRoll(); if (document.hidden) fireView.off(); });
+  // 마우스: 캔버스를 누르고 있는 동안 굴린다. 어디서 떼든(창 밖·취소·포인터 캡처 상실) 멈추고, 버튼이 이미 떼어진 채 움직이면 멈춘다.
+  renderer.domElement.addEventListener('pointerdown', (e) => { if (e.button === 0 && mode === 'roasting' && roastInputAction({ type: 'pointerdown' }, roast?.phase) === 'rollStart') rollIn.mouse = true; });
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) window.addEventListener(type, () => { rollIn.mouse = false; }, true);
+  window.addEventListener('pointermove', (e) => { if (rollIn.mouse && e.buttons === 0) rollIn.mouse = false; }, true);
 
   // 화면 좌표(ndc)에 보이는 상호작용 대상(없으면 null).
   function pickInteractable(ndc) {
@@ -1519,10 +1513,7 @@ if (isMobileUA(navigator.userAgent)) {
     // 클릭하면 그 지점/오브젝트로 걸어간다(도착해도 아무 일도 일어나지 않는다. 동작은 E 키). 앉아 있으면 먼저 일어난다.
     // 행동 중에는 이동 클릭을 무시하고, 쉬는 중의 이동 클릭은 자동을 끈다.
     onClick: (ndc) => {
-      if (mode === 'roasting') { // 굽는 중 클릭: 막대를 한 면 돌린다(이동·다른 클릭은 없다)
-        if (roastInputAction({ type: 'click' }, roast?.phase) === 'rotate') roastTurn();
-        return;
-      }
+      if (mode === 'roasting') return; // 굽는 중 클릭은 굴리기(누르는 동안)라서 이동·안내는 없다
       if (mode !== 'transition' && !runner.isBusy() && fire.tintActive()) { // 오로라 불꽃을 클릭하면 원래 불꽃으로 돌아온다(스트레스에는 영향 없음)
         const hit = pickInteractable(ndc);
         if (hit?.kind === 'furnace' && fire.clearTint()) return;
@@ -1542,7 +1533,7 @@ if (isMobileUA(navigator.userAgent)) {
       walkTo(target);
     },
     onHover: (ndc, clientX, clientY) => {
-      const item = ndc && mode !== 'transition' && mode !== 'roasting' && pickInteractable(ndc); // 굽는 중에는 클릭이 돌리기라서 가리키는 안내를 띄우지 않는다
+      const item = ndc && mode !== 'transition' && mode !== 'roasting' && pickInteractable(ndc); // 굽는 중에는 누름이 굴리기라서 가리키는 안내를 띄우지 않는다
       if (item) {
         renderer.domElement.style.cursor = 'pointer';
         hud.showTooltip(item.kind === 'furnace' && spaceId === 'yard' && fire.tintActive() ? AURORA_RETURN_HINT : hoverLabel(item), clientX, clientY);
