@@ -7,12 +7,16 @@ export const BUILDING_NAMES = {
   fortune: '포춘쿠키 상점',
 };
 
+// 파쇄기 몸통 명판 글씨(영문 줄은 영문 기본 글자에 들어 있다).
+export const SHREDDER_PLATE = '스트레스 파쇄기';
+
 // 폰트 종류별 설정. family: 구글 폰트 이름, weight: 그 글꼴이 가진 굵기(디스플레이 글꼴은 400 하나뿐이라 굵게 흉내 내지 않는다).
 export const SIGN_FACE_SPECS = {
   corp: { family: 'Do Hyeon', weight: 400 }, // 캐치 면접장: 또렷한 회사 느낌
   friendly: { family: 'Jua', weight: 400 }, // 마음 세탁소: 동글동글 친근한 느낌
   stall: { family: 'Black Han Sans', weight: 400 }, // 포춘쿠키 상점: 굵고 따뜻한 장식체
   yard: { family: 'Jua', weight: 400 }, // 마당 팻말 "Catch World"
+  plate: { family: 'Black Han Sans', weight: 400 }, // 파쇄기 몸통 명판 "스트레스 파쇄기"(굵고 또렷한 각인체)
 };
 
 // 폰트 부분 집합에 들어가는 간판 글씨(전부).
@@ -23,6 +27,7 @@ export const SIGN_STRINGS = [
   '오늘의 면접 평가표', '표정  ★★★☆☆', '목소리  ★★★★☆', '당당함  ★★★★★', '화이팅!',
   '면접 안내', '1. 질문은 총 5문항', '2. 답변은 1·2·3 선택', '3. 핸드폰은 무음으로', '4. 복장은 단정하게',
   'Catch World',
+  SHREDDER_PLATE, '캠프파이어', '파쇄기', // 파쇄기 명판, 마당 이정표(건물 이름은 위 BUILDING_NAMES)
 ];
 
 // 글자 목록(중복 없이, 코드 순). 영문·숫자·기본 기호(0x20~0x7E)는 항상 넣어 둔다. 공백·제어 문자는 뺀다. 없는 글자는 시스템 글꼴이 채운다.

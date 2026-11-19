@@ -4,6 +4,7 @@ import { createStage } from './stage.js';
 import { applyAtmosphere } from './atmosphere.js';
 import { loadModels, loadGltf } from './assets.js';
 import { buildDecor } from './decor.js';
+import { buildGuidePaths } from './pathsVisual.js';
 import { buildLayout } from './logic/layout.js';
 import {
   buildGround, buildCity, buildBoundary, buildFurnace, buildPlayer, buildSign, buildMarker, buildPickables,
@@ -144,6 +145,7 @@ if (isMobileUA(navigator.userAgent)) {
   const laundry = { washers: inside.washers, clothesline: inside.clothesline, fx: inside.fx, update: (dt) => inside.update(dt) };
   const zones = buildZones(layout, interior, interviewData);
   const { updateTreeOcclusion } = buildDecor(yardRoot, layout, models);
+  buildGuidePaths(yardRoot, layout); // 바닥 가는 길(디딤돌·흙길)과 허브 이정표
   buildSign(yardRoot, layout.sign);
   const fortuneStall = buildFortuneStall(yardRoot, layout.stall);
   // 모델이 없으면 도형 대체물.
