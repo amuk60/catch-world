@@ -193,7 +193,7 @@ function whoof(env) {
   tone(env, { f: 90, to: 55, dur: 0.3, gain: 0.14, attack: 0.05 });
   return 0.55;
 }
-// 파쇄: 덜컥 물리는 소리 뒤에 윙윙 갈리는 소리(톱니 소리가 빠르게 끊김).
+// 파쇄: 덜컥 물리는 소리 뒤에 윙윙 갈리는 소리(톱니 소리가 빠르게 끊김). 소리 크기는 RECIPES.shredder.gain 으로 정한다(예전 1.57 에서 +6dB 크게: 마스터 체인(압축기)을 거친 측정에서 RMS 약 2배, 최대 0.66 아래).
 function shredder(env) {
   tone(env, { type: 'triangle', f: 140, to: 55, dur: 0.12, gain: 0.3, attack: 0.002 });
   const grind = chop(env, { freq: 26, depth: 0.45, at: 0.05, dur: 0.85, dest: lowpass(env, 500) });
@@ -390,7 +390,7 @@ export const RECIPES = {
   portal: { run: portal, duration: [0.7, 1.4], priority: 4, gain: 1.13, jitter: { pitch: 0.03, gain: 0 }, minInterval: 1.0, group: '이동', label: '공간 전환(차원문)' },
 
   whoof: { run: whoof, duration: [0.3, 0.9], priority: 4, gain: 1.35, jitter: { pitch: 0.06, gain: 0.1 }, minInterval: 0.3, group: '소각장', label: '불 타오름 후웁(부드럽게)' },
-  shredder: { run: shredder, duration: [0.6, 1.3], priority: 3, gain: 1.57, jitter: { pitch: 0.06, gain: 0.1 }, minInterval: 0.5, group: '소각장', label: '파쇄기' },
+  shredder: { run: shredder, duration: [0.6, 1.3], priority: 3, gain: 3.25, jitter: { pitch: 0.06, gain: 0.1 }, minInterval: 0.5, group: '소각장', label: '파쇄기' },
 
   washSplash: { run: washSplash, duration: [0.5, 1.2], priority: 4, gain: 2.0, jitter: { pitch: 0.06, gain: 0.1 }, minInterval: 0.4, group: '세탁소', label: '세탁기 퐁당(부드럽게)' },
   washerRattle: { run: washerRattle, duration: [0.8, 1.6], priority: 2, gain: 0.8, jitter: { pitch: 0.05, gain: 0.1 }, minInterval: 0.5, group: '세탁소', label: '세탁기 덜컹덜컹(세탁할 때만)' },

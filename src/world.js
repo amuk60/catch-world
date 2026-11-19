@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { YARD, FURNACE, SPAWN, COLORS } from './config.js';
-import { signCanvas, liveSignTexture, drawSignText } from './signFont.js';
+import { signCanvas, liveSignTexture, drawSignText, fitSignFont } from './signFont.js';
+import { SHREDDER_PLATE } from './logic/signText.js';
 
 const GROUND_SIZE = 140;
 // 납작한 면은 높이를 달리하고 polygonOffset 을 더해 지면(y=0)과 깊이가 겹쳐 깜빡이지 않게 한다.
@@ -217,6 +218,51 @@ const GRIND_STRIPS = 46; // 종이 한 장이 다 갈리는 동안 쏟아지는 
 // 손에 드는 종이(불합격 통지서)는 notice.js 에서 만든다.
 export { buildPaper } from './notice.js';
 
+
+// 파쇄기 몸통 명판: 어두운 강판에 "스트레스 파쇄기"를 새긴(레이저 각인) 모양 + 빨간 띠 + 작은 영문 줄. 고해상도 캔버스(signFont 의 SIGN_SCALE 배 + 밉맵·이방성).
+const PLATE = { w: 1.32, h: 0.48, lw: 1100, lh: 400 }; // 월드 크기(w x h)와 캔버스 논리 크기
+function shredderPlateTexture() {
+  return liveSignTexture(() => {
+    const { canvas, g } = signCanvas(PLATE.lw, PLATE.lh);
+    const { lw, lh } = PLATE;
+    const steel = g.createLinearGradient(0, 0, 0, lh);
+    steel.addColorStop(0, '#454c58'); steel.addColorStop(0.5, '#2f353f'); steel.addColorStop(1, '#262b33');
+    g.fillStyle = steel;
+    g.fillRect(0, 0, lw, lh);
+    for (let y = 6; y < lh; y += 5) { // 솔질한 강판 결
+      g.fillStyle = `rgba(255,255,255,${0.018 + ((y * 7) % 5) * 0.006})`;
+      g.fillRect(0, y, lw, 1.5);
+    }
+    g.lineWidth = 6; // 테두리 모서리 윤곽(위·왼쪽 밝게, 아래·오른쪽 어둡게)
+    g.strokeStyle = 'rgba(190,200,214,0.55)'; g.beginPath(); g.moveTo(9, lh - 9); g.lineTo(9, 9); g.lineTo(lw - 9, 9); g.stroke();
+    g.strokeStyle = 'rgba(0,0,0,0.65)'; g.beginPath(); g.moveTo(lw - 9, 9); g.lineTo(lw - 9, lh - 9); g.lineTo(9, lh - 9); g.stroke();
+    for (const [rx, ry] of [[34, 34], [lw - 34, 34], [34, lh - 34], [lw - 34, lh - 34]]) { // 나사
+      g.fillStyle = '#7b8494'; g.beginPath(); g.arc(rx, ry, 11, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#20242b'; g.fillRect(rx - 8, ry - 1.5, 16, 3);
+    }
+    g.fillStyle = '#d63a3a'; g.fillRect(70, 38, lw - 140, 16); // 빨간 포인트 띠
+    g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(70, 38, lw - 140, 3);
+    // 큰 글씨(각인): 아래로 떨어지는 그림자 + 어두운 테두리(파인 느낌) + 은빛 속 + 위쪽 어두운 안쪽 그림자 줄
+    const cx = lw / 2;
+    const cy = 168;
+    const fit = fitSignFont(g, SHREDDER_PLATE, { maxW: lw - 110, size: 190, face: 'plate', minPx: 40 });
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+    g.fillStyle = 'rgba(255,255,255,0.32)'; g.fillText(SHREDDER_PLATE, cx + 2, cy + 5); // 파인 아랫선 하이라이트
+    g.strokeStyle = 'rgba(8,10,14,0.9)'; g.lineWidth = Math.max(5, fit.size * 0.05); g.strokeText(SHREDDER_PLATE, cx, cy);
+    const silver = g.createLinearGradient(0, cy - fit.size / 2, 0, cy + fit.size / 2);
+    silver.addColorStop(0, '#ffffff'); silver.addColorStop(0.55, '#e3e7ee'); silver.addColorStop(1, '#a9b1be');
+    g.fillStyle = silver; g.fillText(SHREDDER_PLATE, cx, cy);
+    g.fillStyle = 'rgba(20,24,30,0.28)'; g.fillText(SHREDDER_PLATE, cx - 1.5, cy - 4); // 위쪽 안쪽 그림자 느낌
+    // 영문 줄
+    const sub = 'STRESS  SHREDDER';
+    fitSignFont(g, sub, { maxW: lw - 360, size: 60, face: 'plate', minPx: 20 });
+    g.fillStyle = 'rgba(255,255,255,0.22)'; g.fillText(sub, cx + 1.5, 324 + 2.5);
+    g.fillStyle = '#aab3c1'; g.fillText(sub, cx, 324);
+    g.fillStyle = '#d63a3a'; g.fillRect(70, 366, lw - 140, 6); // 아래 가는 빨간 줄
+    return canvas;
+  });
+}
+
 // 파쇄기: 회색 상자 + 어두운 투입구(+ 켜지는 표시등) + 옆에 놓인 조각 통. 바닥 y=0, 앞(+z)이 스폰 쪽(작업 자리 쪽)이다.
 // beginGrind(palette, seconds) -> setFeed(k) -> endGrind(): 종이가 투입구로 내려가는 진행(k 0~1)에 맞춰 덜덜 떨고 그 색의 가는 조각이 아래 틈에서 쏟아져 통에 쌓인다(표시등·투입구가 켜진다).
 // shake()/wiggle() 로 덜덜 떨고, pour() 로 조각이 아래 틈에서 한꺼번에 쏟아져 통에 쌓인다(조각 풀 하나 + 더미 한 덩어리 = InstancedMesh 하나, 그리기 호출 1). 통은 한 덩어리 메시다.
@@ -241,6 +287,21 @@ export function buildShredder(scene, shredder) {
   const lampMat = new THREE.MeshBasicMaterial({ color: 0x3a3f46 });
   const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.07, 0.03), lampMat);
   lamp.position.set(0.5, SHREDDER_BODY.h - 0.12, SHREDDER_BODY.d / 2 + 0.012);
+  // 명판: 정면(+z, 스폰 쪽)에 크게, 오른쪽 옆면(+x)에 작게. 깊이 겹침 방지로 몸통에서 4mm 띄우고 polygonOffset 을 준다.
+  const plateTex = shredderPlateTexture();
+  const plateMat = new THREE.MeshStandardMaterial({
+    map: plateTex, emissive: 0xffffff, emissiveMap: plateTex, emissiveIntensity: 0.4, roughness: 0.5, metalness: 0,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+  });
+  const plate = new THREE.Mesh(new THREE.PlaneGeometry(PLATE.w, PLATE.h), plateMat);
+  plate.position.set(0, 0.46, SHREDDER_BODY.d / 2 + 0.004);
+  // 옆면 명판 2개(작게): 기본 카메라에서는 정면이 비스듬해 보이므로 양 옆면에도 붙인다. 왼쪽(-x)은 조각 통 위, 높이 0.60.
+  const badges = [1, -1].map((side) => {
+    const b = new THREE.Mesh(new THREE.PlaneGeometry(0.74, 0.74 * (PLATE.h / PLATE.w)), plateMat);
+    b.rotation.y = (side * Math.PI) / 2;
+    b.position.set(side * (SHREDDER_BODY.w / 2 + 0.004), side > 0 ? 0.5 : 0.62, 0);
+    return b;
+  });
   // 조각 통: 바닥 + 벽 4개를 한 덩어리로 합친다.
   const walls = [
     [BIN.w, BIN.wall, BIN.d, 0, BIN.wall / 2, 0], // 바닥
@@ -262,7 +323,7 @@ export function buildShredder(scene, shredder) {
   const tints = [0xffffff, 0xf3efe2, 0xe4e6ee, 0xfaf4dc];
   for (let i = 0; i < total; i++) strips.setColorAt(i, new THREE.Color(tints[i % tints.length]));
   strips.instanceColor.needsUpdate = true;
-  group.add(body, slot, outlet, lamp, bin, strips);
+  group.add(body, slot, outlet, lamp, plate, ...badges, bin, strips);
   group.position.set(shredder.x, 0, shredder.z);
   group.rotation.y = shredder.rotY;
   scene.add(group);

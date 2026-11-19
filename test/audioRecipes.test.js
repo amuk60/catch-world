@@ -511,3 +511,14 @@ test('질문 종소리(ding): 이전(gain 3.16)의 절반 크기 — 마스터 �
   assert.deepEqual(RECIPES.ding.duration, [0.6, 1.5]);
   assert.equal(RECIPES.ding.priority, 4);
 });
+
+test('파쇄기(shredder): 이전(gain 1.57)보다 +6dB — 마스터 체인(압축기)을 거친 측정(브라우저 오프라인 분석)에서 RMS 0.0387 -> 0.0767(1.98배), 100% 볼륨 최대 0.36 -> 0.66, 소리 자체는 그대로', () => {
+  const OLD_GAIN = 1.57;
+  assert.equal(RECIPES.shredder.gain, 3.25);
+  const ratio = RECIPES.shredder.gain / OLD_GAIN;
+  assert.ok(ratio > 1.9 && ratio < 2.3, `회로 앞 gain 배율 ${ratio}(압축기가 눌러서 RMS 는 약 1.98배)`);
+  assert.ok(RECIPES.shredder.gain <= 6, '레시피 gain 상한');
+  assert.deepEqual(RECIPES.shredder.duration, [0.6, 1.3]);
+  assert.equal(RECIPES.shredder.priority, 3);
+  assert.equal(RECIPES.shredder.minInterval, 0.5);
+});

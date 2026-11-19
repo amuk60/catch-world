@@ -32,3 +32,11 @@ test('SIGN_FACE_SPECS: 허용된 구글 폰트만 쓴다', () => {
   const allowed = ['Jua', 'Do Hyeon', 'Black Han Sans', 'Gugi', 'Gowun Dodum', 'Noto Sans KR'];
   for (const spec of Object.values(SIGN_FACE_SPECS)) assert.ok(allowed.includes(spec.family));
 });
+
+test('파쇄기 명판 "스트레스 파쇄기"·이정표 글씨(캠프파이어·파쇄기)의 글자가 부분 집합에 들어 있고 명판 글꼴은 굵은 각인체다', async () => {
+  const { SHREDDER_PLATE } = await import('../src/logic/signText.js');
+  assert.equal(SHREDDER_PLATE, '스트레스 파쇄기');
+  const g = signGlyphs(SIGN_STRINGS);
+  for (const s of [SHREDDER_PLATE, '캠프파이어', '파쇄기', 'STRESS  SHREDDER']) for (const ch of s) if (ch !== ' ') assert.ok(g.includes(ch), `${s}: ${ch}`);
+  assert.equal(SIGN_FACE_SPECS.plate.family, 'Black Han Sans');
+});
