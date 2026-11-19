@@ -1,6 +1,21 @@
 // 캐치 사이트 주소. 배포 전 브라우저에서 열어 캐치 사이트가 맞는지 확인한다.
 export const CATCH_URL = 'https://www.catch.co.kr';
 
+// 캐치 서비스 바로가기 표(팀이 고치는 단일 기준). CTA 버튼은 모두 여기 있는 id(link)를 가리키고, 누르면 해당 서비스 페이지가 새 탭으로 열린다.
+// 각 항목: id(고유), name(서비스 이름), desc(버튼 아래에 작게 보이는 한 줄 설명), url(https://www.catch.co.kr/ 로 시작, 대소문자 경로는 그대로 둔다).
+// 주소 뒤에는 utm_source=catchworld&utm_medium=<fortune|popup|chip|banner>&utm_campaign=<id> 가 붙는다(logic/catchUrl.js 의 linkCatchUrl).
+export const CATCH_LINKS = [
+  { id: 'jobs', name: '채용공고', desc: '연봉·기업 규모 등 조건별로 공고를 탐색해요', url: 'https://www.catch.co.kr/NCS/RecruitSearch' },
+  { id: 'company', name: '기업정보', desc: '초봉·연봉, 최근 이슈, 현직자 리뷰, 면접후기를 볼 수 있어요', url: 'https://www.catch.co.kr/Comp/CompMajor' },
+  { id: 'ai_match', name: 'AI 매칭', desc: '이력서와 행동 패턴을 바탕으로 공고를 추천해요', url: 'https://www.catch.co.kr/NCS/RecruitInformation' },
+  { id: 'interview_review', name: '면접 후기', desc: '합격자들의 실제 면접 후기를 볼 수 있어요', url: 'https://www.catch.co.kr/JobN/Interview/main' },
+  { id: 'ai_interview', name: 'AI 면접 튜터', desc: 'AI와 실전처럼 면접을 연습하고 피드백을 받아요', url: 'https://www.catch.co.kr/JobN/AIInterviewTutor/main' },
+  { id: 'cover_letter', name: '합격자소서', desc: '합격자들의 자기소개서를 참고할 수 있어요', url: 'https://www.catch.co.kr/JobN/CoverLetter/Main' },
+  { id: 'cafe', name: '캐치카페', desc: '회원에게 무료로 제공하는 오프라인 공간: 대학생·취준생 모두 무료, 매일 음료 1잔, 카페 좌석·스터디 공간 대여·채용설명회', url: 'https://www.catch.co.kr/CatchCafe/' },
+  { id: 'tv', name: '캐치TV', desc: '취준생의 영원한 친구 캐치TV, 취업 정보를 재미있게 풀어 주는 유튜브 채널', url: 'https://www.catch.co.kr/News/CatchCast' },
+  { id: 'home', name: '캐치', desc: '취업 준비에 필요한 모든 것, 캐치', url: CATCH_URL }, // 칩·배너·공유 카드 등 일반 용도
+];
+
 // GA4 측정 ID ('G-'로 시작). 비어 있으면 분석이 꺼진다. localhost 에서는 켜지지 않는다.
 export const GA_MEASUREMENT_ID = 'G-RN2Z8252B8';
 
@@ -13,15 +28,14 @@ export const COMFORT_MESSAGES = [
   '잠깐 쉬는 것도 스펙입니다. 휴식 경력 한 줄 추가!',
 ];
 
-// 포춘쿠키 운세 분류와 캐치로 가는 버튼 이름. 버튼은 모두 CATCH_URL 을 새 탭으로 열고(깊은 링크는 두지 않는다),
-// 주소 뒤에 utm_source=catchworld&utm_medium=fortune&utm_campaign=<분류 id> 가 붙는다. 버튼 이름은 20자 이내.
+// 포춘쿠키 운세 분류 이름(종이 위에 보인다). 버튼 이름과 이동할 서비스는 아래 FORTUNES 의 항목마다 cta: { label, link } 로 정한다.
 export const FORTUNE_CTA = {
-  interview: { name: '면접운', label: '캐치 면접 후기 보러가기' },
-  resume: { name: '서류운', label: '자소서·이력서 팁 둘러보기' },
-  growth: { name: '이직·성장운', label: '나에게 맞는 공고 찾아보기' },
-  rest: { name: '휴식운', label: '캐치에서 천천히 구경하기' },
-  confidence: { name: '자신감·멘탈운', label: '합격 후기에서 힘 얻기' },
-  luck: { name: '재물·행운운', label: '오늘의 추천 공고 확인하기' },
+  interview: { name: '면접운' },
+  resume: { name: '서류운' },
+  growth: { name: '이직·성장운' },
+  rest: { name: '휴식운' },
+  confidence: { name: '자신감·멘탈운' },
+  luck: { name: '재물·행운운' },
 };
 export const FORTUNE_UTM = { source: 'catchworld', medium: 'fortune' };
 
@@ -32,39 +46,40 @@ export const COOKIE_KINDS = [
   { id: 'matcha', label: '말차 쿠키', favors: ['resume', 'growth'] },
 ];
 
-// 포춘쿠키 문구. 팀이 자유롭게 수정한다. 각 항목: { text, category(FORTUNE_CTA 의 키), cta: { label } }
-const fortune = (category, text) => ({ text, category, cta: { label: FORTUNE_CTA[category].label } });
+// 포춘쿠키 문구. 팀이 자유롭게 수정한다. 각 항목: { text, category(FORTUNE_CTA 의 키), cta: { label(20자 이내, 가는 곳을 설명), link(CATCH_LINKS 의 id) } }
+// 문구의 뜻과 가는 곳이 자연스럽게 이어지도록 짝을 맞춘다.
+const fortune = (category, text, link, label) => ({ text, category, cta: { label, link } });
 export const FORTUNES = [
-  // 면접운
-  fortune('interview', '면접장에서 긴장되면 이렇게 생각하세요. 저쪽도 사람이고, 저쪽도 퇴근하고 싶다.'),
-  fortune('interview', "다음 면접의 첫 마디는 '안녕하세요, 잘 부탁드립니다.' 이미 절반은 해냈어요."),
-  fortune('interview', '오늘 운이 좋네요! 면접 대비를 미리 해 두시면 좋겠어요.'),
-  fortune('interview', '자기소개는 30초면 충분합니다. 나머지 30초는 미소 담당이에요.'),
-  // 서류운
-  fortune('resume', '오늘 보낸 지원서 중 하나는 반드시 읽힙니다. 그리고 그 사람은 당신 편입니다.'),
-  fortune('resume', '오늘의 합격 운세: 맑음. 단, 이력서 오타는 한 번 더 확인하세요.'),
-  fortune('resume', '행운의 아이템: 깨끗한 이력서와 깊은 심호흡.'),
-  fortune('resume', '자소서 첫 문장이 안 써질 땐 둘째 문장부터 쓰세요. 첫 문장은 나중에 알아서 옵니다.'),
-  // 이직·성장운
-  fortune('growth', "불합격은 거절이 아니라 '맞는 자리가 아직 아니었어요'의 다른 말입니다."),
-  fortune('growth', '지금 걷는 길이 돌아가는 길처럼 보여도, 풍경 구경하다 보면 도착합니다.'),
-  fortune('growth', '귀인은 멀리 있지 않아요. 오늘 열어 본 공고 속에 숨어 있을지도!'),
-  fortune('growth', '어제의 나보다 이력서 한 줄만큼 성장했다면 오늘도 대성공입니다.'),
-  // 휴식운
-  fortune('rest', '잠깐 쉬어가도 괜찮아요. 쉬는 시간도 이력에 들어갑니다.'),
-  fortune('rest', '오늘은 지원서 한 장만 써도 충분한 하루입니다.'),
-  fortune('rest', '커피 한 잔의 여유가 오늘의 합격 확률을 3% 올려줍니다. (제 마음속 통계)'),
-  fortune('rest', '급할수록 산책. 걷다 보면 막힌 문장도 슬슬 풀립니다.'),
-  // 자신감·멘탈운
-  fortune('confidence', '당신의 강점은 이미 충분합니다. 아직 그걸 알아볼 사람을 못 만났을 뿐.'),
-  fortune('confidence', '걱정의 90%는 일어나지 않고, 나머지 10%는 어떻게든 지나갑니다.'),
-  fortune('confidence', '합격한 사람들도 처음엔 다 떨리는 손으로 지원 버튼을 눌렀답니다.'),
-  fortune('confidence', '오늘의 나에게 한 마디. "여기까지 온 것만으로도 이미 잘하고 있어."'),
-  // 재물·행운운
-  fortune('luck', '행운의 숫자는 3. 이번 주에 세 번 웃으면 이미 반은 성공.'),
-  fortune('luck', '오늘의 행운 포인트는 새로고침. 어제 없던 공고가 오늘 올라왔을지도요.'),
-  fortune('luck', '곧 반가운 메일 한 통이 도착할 예정입니다. 스팸함도 꼭 확인하세요.'),
-  fortune('luck', '이번 달 재물운 상승 중. 첫 월급으로 먹을 메뉴를 미리 정해 두세요.'),
+  // 면접운 -> 면접 후기 / AI 면접 튜터
+  fortune('interview', '면접장에서 긴장되면 이렇게 생각하세요. 저쪽도 사람이고, 저쪽도 퇴근하고 싶다.', 'interview_review', '캐치 면접 후기 보러가기'),
+  fortune('interview', "다음 면접의 첫 마디는 '안녕하세요, 잘 부탁드립니다.' 이미 절반은 해냈어요.", 'ai_interview', 'AI 면접 튜터에게 연습하기'),
+  fortune('interview', '오늘 운이 좋네요! 면접 대비를 미리 해 두시면 좋겠어요.', 'ai_interview', 'AI 면접 튜터로 미리 연습하기'),
+  fortune('interview', '자기소개는 30초면 충분합니다. 나머지 30초는 미소 담당이에요.', 'interview_review', '합격자 면접 후기 보러가기'),
+  // 서류운 -> 합격자소서
+  fortune('resume', '오늘 보낸 지원서 중 하나는 반드시 읽힙니다. 그리고 그 사람은 당신 편입니다.', 'cover_letter', '합격 자소서 구경하기'),
+  fortune('resume', '오늘의 합격 운세: 맑음. 단, 이력서 오타는 한 번 더 확인하세요.', 'cover_letter', '합격 자소서 참고하기'),
+  fortune('resume', '행운의 아이템: 깨끗한 이력서와 깊은 심호흡.', 'cover_letter', '합격 자소서 보며 점검하기'),
+  fortune('resume', '자소서 첫 문장이 안 써질 땐 둘째 문장부터 쓰세요. 첫 문장은 나중에 알아서 옵니다.', 'cover_letter', '합격 자소서 첫 문장 보기'),
+  // 이직·성장운 -> AI 매칭 / 채용공고
+  fortune('growth', "불합격은 거절이 아니라 '맞는 자리가 아직 아니었어요'의 다른 말입니다.", 'ai_match', '나에게 맞는 공고 추천받기'),
+  fortune('growth', '지금 걷는 길이 돌아가는 길처럼 보여도, 풍경 구경하다 보면 도착합니다.', 'jobs', '조건별 공고 탐색하기'),
+  fortune('growth', '귀인은 멀리 있지 않아요. 오늘 열어 본 공고 속에 숨어 있을지도!', 'ai_match', '맞춤 공고 추천받기'),
+  fortune('growth', '어제의 나보다 이력서 한 줄만큼 성장했다면 오늘도 대성공입니다.', 'jobs', '조건별 공고 탐색하기'),
+  // 휴식운 -> 캐치카페 / 캐치TV
+  fortune('rest', '잠깐 쉬어가도 괜찮아요. 쉬는 시간도 이력에 들어갑니다.', 'cafe', '캐치카페 무료로 이용하기'),
+  fortune('rest', '오늘은 지원서 한 장만 써도 충분한 하루입니다.', 'tv', '캐치TV 보며 쉬어가기'),
+  fortune('rest', '커피 한 잔의 여유가 오늘의 합격 확률을 3% 올려줍니다. (제 마음속 통계)', 'cafe', '캐치카페 음료 1잔 받으러 가기'),
+  fortune('rest', '급할수록 산책. 걷다 보면 막힌 문장도 슬슬 풀립니다.', 'tv', '캐치TV로 머리 식히기'),
+  // 자신감·멘탈운 -> 캐치TV / 면접 후기
+  fortune('confidence', '당신의 강점은 이미 충분합니다. 아직 그걸 알아볼 사람을 못 만났을 뿐.', 'tv', '캐치TV에서 취업 팁 보기'),
+  fortune('confidence', '걱정의 90%는 일어나지 않고, 나머지 10%는 어떻게든 지나갑니다.', 'interview_review', '후기 보며 걱정 덜기'),
+  fortune('confidence', '합격한 사람들도 처음엔 다 떨리는 손으로 지원 버튼을 눌렀답니다.', 'interview_review', '합격자 면접 후기 읽기'),
+  fortune('confidence', '오늘의 나에게 한 마디. "여기까지 온 것만으로도 이미 잘하고 있어."', 'tv', '캐치TV로 힘 얻기'),
+  // 재물·행운운 -> 기업정보 / 채용공고
+  fortune('luck', '행운의 숫자는 3. 이번 주에 관심 기업 세 곳의 초봉을 알아보면 이미 반은 성공.', 'company', '기업 초봉·연봉 알아보기'),
+  fortune('luck', '오늘의 행운 포인트는 새로고침. 어제 없던 공고가 오늘 올라왔을지도요.', 'jobs', '오늘 올라온 공고 보기'),
+  fortune('luck', '곧 반가운 메일 한 통이 도착할 예정입니다. 스팸함도 꼭 확인하고, 면접후기도 미리 읽어 두세요.', 'company', '기업 면접후기 알아보기'),
+  fortune('luck', '이번 달 재물운 상승 중. 첫 월급으로 먹을 메뉴를 미리 정해 두세요.', 'company', '기업 연봉·후기 알아보기'),
 ];
 
 // ---- 3D 상수 (월드 단위) ----
@@ -114,7 +129,7 @@ export const ZONES = { forestMaxX: -1.5, cityMinX: 2.5 };
 export const INTERACT_RADIUS = 1.5;
 
 // 소각장 행동(태우기·파쇄)과 마시멜로 굽기. 거리는 월드 단위, 시간은 초.
-// ACTION_REDUCE: 모션 1회당 스트레스 감소량(사용자가 5로 정함).
+// REDUCE_RANGE: 행동(태우기·파쇄·세탁·널기·면접 답변·돌발행동) 1회당 스트레스 감소량의 범위. 행동마다 효과 순간에 이 범위(양끝 포함)에서 정수를 무작위로 한 번 뽑는다(평균 약 9.5, 팀 결정: 크게 잡아 빨리 닳게).
 // AUTO_GAP: 자동 버튼이 행동을 끝낸 뒤 다음 행동(태우기 -> 파쇄 -> 태우기 ...)을 시작하기까지 쉬는 시간.
 // FIRE_ZONE_RADIUS: 소각로 중심에서 이 거리 안에 있어야 행동 막대가 보인다(소각로 옆 벤치에 앉아 있어도 이 거리 안이면 마시멜로 굽기 막대가 뜬다).
 // FIRE_RANGE: 이 거리 안이면 태우기가 켜진다(소각로 중심 기준).
@@ -124,7 +139,8 @@ export const INTERACT_RADIUS = 1.5;
 // ACTION_EFFECT_AT: 던지기/치기 단계 길이 중 효과(종이가 불에 닿는 순간 등)가 일어나는 비율.
 // ACTION_TARGET_SECONDS: 행동 한 번의 총 길이 목표. 클립 합 + 회전이 이보다 짧으면 던지기/치기 클립만 천천히 재생해 맞춘다
 // (나머지는 원래 속도, 더 길면 늘리지 않는다).
-export const ACTION_REDUCE = 5;
+export const REDUCE_RANGE = { min: 7, max: 12 };
+export const ACTION_REDUCE = 5; // 더는 쓰지 않는다(옛 고정 감소량, 호환용). 실제 감소는 REDUCE_RANGE 의 무작위 값.
 export const AUTO_GAP = 1;
 export const FIRE_ZONE_RADIUS = 4.5;
 // 불멍: 소각로 옆 벤치에 앉아 있기만 해도(마시멜로를 굽는 중에도 같이) interval 초마다 amount 씩 지수가 천천히 자동으로 줄어든다(행동 하나보다 약하게, 행동 횟수에는 넣지 않는다).
@@ -410,9 +426,9 @@ export const INTERVIEW_INTERIOR = { origin: { x: 600, z: 0 }, width: 12, depth: 
 // 면접 구역(의자·책상 근처, 이 반경 안에서 행동 막대 [1 면접 보기] [2 돌발행동] 이 보인다. 자동 버튼은 없다).
 export const INTERVIEW_ZONE_RADIUS = 3.3;
 // INTERVIEW_ROUND: 질문에 이만큼 연속으로 답하면 면접관 3명이 일어나 박수를 치고 "최종 합격!" (공간을 나가거나 끝나면 처음부터).
-// INTERVIEW_BONUS: 완주 보너스로 한 번 더 줄어드는 지수(균형 조정 대상). 답변·돌발행동 한 번의 감소량은 언제나 ACTION_REDUCE 이다.
+// INTERVIEW_BONUS_RANGE: 완주 보너스로 한 번 더 줄어드는 지수의 범위(양끝 포함, 균형 조정 대상). 답변·돌발행동 한 번의 감소량은 다른 행동처럼 REDUCE_RANGE 에서 뽑는다.
 export const INTERVIEW_ROUND = 5;
-export const INTERVIEW_BONUS = 5;
+export const INTERVIEW_BONUS_RANGE = { min: 10, max: 12 };
 // 면접 연출 시간(초). 답변 한 번 = 답하는 동작 + 면접관 반응 합쳐 INTERVIEW_ANSWER_SECONDS, 돌발행동 하나 = INTERVIEW_IMPROV_SECONDS(다른 행동의 ACTION_TARGET_SECONDS 와 비슷하게).
 // INTERVIEW_FINALE_SECONDS: 5문항 완주 때 이어지는 "일어나 박수 + 최종 합격!" 연출. SPEECH_SECONDS: 말풍선 하나가 떠 있는 시간.
 export const INTERVIEW_ANSWER_SECONDS = 5;

@@ -4,7 +4,7 @@ import {
   createBagPicker, createRepeatFreePicker, createRound, openingFor, pickReactions, createTimeline,
   answerScript, improvScript, seatedImprov, EVENT_TYPES, validateInterview, IMPROV_IDS, remoteSayLine, remoteScene, finaleEvents, assignedImprov, ASK_CLIPS, REMOTE_BUBBLE_SECONDS, REMOTE_BUBBLE_AT,
 } from '../src/logic/interview.js';
-import { INTERVIEW, INTERVIEW_ROUND, INTERVIEW_BONUS, INTERVIEW_ANSWER_SECONDS, INTERVIEW_IMPROV_SECONDS, INTERVIEW_FINALE_SECONDS, SPEECH_SECONDS, ACTION_REDUCE } from '../src/config.js';
+import { INTERVIEW, INTERVIEW_ROUND, INTERVIEW_ANSWER_SECONDS, INTERVIEW_IMPROV_SECONDS, INTERVIEW_FINALE_SECONDS, SPEECH_SECONDS, REDUCE_RANGE, INTERVIEW_BONUS_RANGE } from '../src/config.js';
 import { mulberry32 } from '../src/logic/rng.js';
 
 // ---- 질문 뽑기: 묶음(bag)을 다 돌아야 반복, 바로 앞과는 절대 같지 않다 ----
@@ -305,10 +305,10 @@ test('validateInterview: 잘못된 설정은 문제 목록으로 알려 준다',
 });
 
 // ---- 감소량 규칙(설정) ----
-test('설정: 완주 보너스는 별도 상수이고 답변 감소량(ACTION_REDUCE)과 이름이 다르다', () => {
+test('설정: 완주 보너스는 별도 범위(10~12)이고 답변 감소량은 다른 행동과 같은 REDUCE_RANGE(7~12)', () => {
   assert.equal(INTERVIEW_ROUND, 5);
-  assert.equal(INTERVIEW_BONUS, 5);
-  assert.equal(ACTION_REDUCE, 5, '커밋된 감소량은 그대로');
+  assert.deepEqual(INTERVIEW_BONUS_RANGE, { min: 10, max: 12 });
+  assert.deepEqual(REDUCE_RANGE, { min: 7, max: 12 });
 });
 
 test('answerScript: 최종 합격! 말풍선만 큰 글씨(big)이고 다른 말풍선은 아니다', () => {

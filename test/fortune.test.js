@@ -49,27 +49,44 @@ test('pickFortune: 빈 목록은 오류', () => {
 });
 
 // ---- 분류가 있는 운세 ----
-import { FORTUNES, FORTUNE_CTA, COOKIE_KINDS } from '../src/config.js';
+import { FORTUNES, FORTUNE_CTA, COOKIE_KINDS, CATCH_LINKS } from '../src/config.js';
 import { pickFortuneFor } from '../src/logic/fortune.js';
 
-test('FORTUNES: 18개 이상, 6개 분류 모두 있고, 항목마다 문구·분류·캐치 버튼 이름이 있다', () => {
-  assert.ok(FORTUNES.length >= 18);
+test('FORTUNES: 24개 이상, 6개 분류 모두 있고, 항목마다 문구·분류·캐치 버튼(이름·서비스)이 있다', () => {
+  assert.ok(FORTUNES.length >= 24);
   assert.equal(Object.keys(FORTUNE_CTA).length, 6);
   for (const cat of Object.keys(FORTUNE_CTA)) assert.ok(FORTUNES.filter((f) => f.category === cat).length >= 3, cat);
   for (const f of FORTUNES) {
     assert.ok(typeof f.text === 'string' && f.text.length > 5);
     assert.ok(f.category in FORTUNE_CTA, f.category);
-    assert.ok(f.cta && typeof f.cta.label === 'string');
+    assert.ok(f.cta && typeof f.cta.label === 'string' && typeof f.cta.link === 'string');
   }
   assert.equal(new Set(FORTUNES.map((f) => f.text)).size, FORTUNES.length, '문구 중복');
 });
 
-test('FORTUNE_CTA: 모든 분류에 이름과 20자 이내 버튼 이름이 있고, 운세의 버튼 이름은 분류의 것과 같다', () => {
-  for (const [id, v] of Object.entries(FORTUNE_CTA)) {
-    assert.ok(v.name && v.label, id);
-    assert.ok(v.label.length <= 20, `${id} ${v.label.length}자`);
+test('FORTUNE_CTA: 모든 분류에 이름이 있고, 운세마다 20자 이내 버튼 이름이 있으며 서비스 id 가 CATCH_LINKS 에 있다', () => {
+  for (const [id, v] of Object.entries(FORTUNE_CTA)) assert.ok(v.name, id);
+  const ids = new Set(CATCH_LINKS.map((l) => l.id));
+  for (const f of FORTUNES) {
+    assert.ok(f.cta.label.length > 0 && f.cta.label.length <= 20, `${f.cta.label} ${f.cta.label.length}자`);
+    assert.ok(ids.has(f.cta.link), `${f.cta.link} 가 CATCH_LINKS 에 없다`);
   }
-  for (const f of FORTUNES) assert.equal(f.cta.label, FORTUNE_CTA[f.category].label);
+});
+
+test('FORTUNES: 분류별 목적지 규칙(면접운=면접 후기·AI 면접 튜터, 서류운=합격자소서, 휴식운=캐치카페·TV 등)', () => {
+  const allowed = {
+    interview: ['interview_review', 'ai_interview'],
+    resume: ['cover_letter'],
+    growth: ['jobs', 'ai_match'],
+    rest: ['cafe', 'tv'],
+    confidence: ['tv', 'interview_review'],
+    luck: ['company', 'jobs'],
+  };
+  for (const f of FORTUNES) assert.ok(allowed[f.category].includes(f.cta.link), `${f.category} -> ${f.cta.link}`);
+  for (const [cat, links] of Object.entries(allowed)) {
+    const used = new Set(FORTUNES.filter((f) => f.category === cat).map((f) => f.cta.link));
+    if (links.length > 1) assert.ok(used.size >= 2, `${cat} 는 목적지가 번갈아 나와야 한다`);
+  }
 });
 
 test('COOKIE_KINDS: 3종, favors 는 실제 분류', () => {

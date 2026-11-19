@@ -10,15 +10,23 @@ export function ctaMessage(stress) {
   };
 }
 
-// 측면 팝업(목표 달성) 문구.
-export const goalMessage = (stress) => ({ ...ctaMessage(stress), title: '목표 달성!' });
+// 측면 팝업(목표 달성) 문구와 버튼(cta) 이름, 버튼이 가는 서비스(link: CATCH_LINKS 의 id).
+export const goalMessage = (stress) => ({
+  ...ctaMessage(stress),
+  title: '목표 달성!',
+  line2: '다음 지원서는 캐치에서 조건별로 골라 볼까요?',
+  cta: '조건별 공고 탐색하기',
+  link: 'jobs',
+});
 
-// 가운데 팝업(지수 0) 문구.
+// 가운데 팝업(지수 0) 문구와 버튼(cta) 이름·서비스(link).
 export function emptyMessage() {
   return {
     title: '소각 완료!',
     line1: '스트레스 지수 0! 마음이 한결 가벼워졌죠?',
-    line2: '다음 지원서는 캐치가 같이 찾아드릴게요!',
+    line2: '다음 지원서는 캐치가 나에게 맞는 공고로 같이 찾아드릴게요!',
+    cta: '나에게 맞는 공고 추천받기',
+    link: 'ai_match',
   };
 }
 
@@ -46,13 +54,14 @@ export function shareFilename(date) {
 // 공유할 사이트 주소: 쿼리와 해시는 뺀다.
 export const shareUrl = (loc) => `${loc.origin}${loc.pathname}`;
 
-// 측면 팝업(새 와이셔츠를 입어 면접 갈 준비가 됐을 때) 문구와 두 버튼 이름(cta: 캐치 열기, later: 닫기).
+// 측면 팝업(새 와이셔츠를 입어 면접 갈 준비가 됐을 때) 문구와 두 버튼 이름(cta: 캐치 열기, later: 닫기), cta 가 가는 서비스(link).
 export function readyMessage() {
   return {
     title: '면접 갈 준비 완료!',
     line1: '빳빳한 새 와이셔츠로 갈아입었어요.',
-    line2: '이제 진짜 지원서를 낼 차례예요. 캐치에서 나에게 맞는 공고를 찾아볼까요?',
-    cta: '캐치에서 공고 보기',
+    line2: '이제 진짜 면접 볼 차례예요. 그 전에 AI 면접 튜터와 한 번 연습해 볼까요?',
+    cta: 'AI 면접 튜터로 연습하기',
+    link: 'ai_interview',
     later: '더 쉬다 가기',
   };
 }

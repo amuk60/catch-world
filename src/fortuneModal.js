@@ -23,7 +23,7 @@ export function cookieSvg(kind) {
   </svg>`;
 }
 
-// onPick(index): 쿠키를 골랐다, onTap(): 깨는 중 쿠키를 눌렀다, onMore(): 한 개 더, onClose(), onCta(category).
+// onPick(index): 쿠키를 골랐다, onTap(): 깨는 중 쿠키를 눌렀다, onMore(): 한 개 더, onClose(), onCta(category, linkId).
 export function createFortuneModal(container, { onPick = () => {}, onTap = () => {}, onMore = () => {}, onClose = () => {}, onCta = () => {} } = {}) {
   const root = document.createElement('div');
   root.id = 'fortune';
@@ -56,6 +56,7 @@ export function createFortuneModal(container, { onPick = () => {}, onTap = () =>
       <div class="fortune-cat"></div>
       <p class="fortune-text"></p>
       <button type="button" class="fortune-cta"></button>
+      <p class="fortune-dest"></p>
       <div class="fortune-more-row"><button type="button" class="fortune-more">🥠 한 개 더 깨기 <kbd>R</kbd></button></div>
       <p class="fortune-hint">Esc 또는 ✕ 로 닫기</p>
     </div>`;
@@ -69,6 +70,7 @@ export function createFortuneModal(container, { onPick = () => {}, onTap = () =>
   let stage = null; // null(닫힘) | 'pick' | 'crack' | 'burst' | 'card'
   let burstTimer = 0;
   let cardCategory = null;
+  let cardLink = null;
   let currentKind = 'gold';
 
   function setStage(next) {
@@ -106,7 +108,7 @@ export function createFortuneModal(container, { onPick = () => {}, onTap = () =>
     if (e.target === root && (stage === 'pick' || stage === 'card')) onClose();
   });
   crackCookie.addEventListener('pointerdown', (e) => { e.preventDefault(); if (stage === 'crack') onTap(); });
-  $('.fortune-cta').addEventListener('click', () => onCta(cardCategory));
+  $('.fortune-cta').addEventListener('click', () => onCta(cardCategory, cardLink));
   $('.fortune-more').addEventListener('click', () => onMore());
 
   return {
@@ -154,7 +156,8 @@ export function createFortuneModal(container, { onPick = () => {}, onTap = () =>
       this.setProgress(state);
     },
     // 깨졌다: 두 쪽으로 갈라지고 부스러기가 튄 뒤 종이 카드가 나온다.
-    burst(fortune, categoryName, ctaLabel, category) {
+    // link: 버튼이 가는 서비스 { id, name, desc }(CATCH_LINKS 항목). 버튼 아래에 "서비스 이름 · 한 줄 설명" 을 작게 보인다.
+    burst(fortune, categoryName, ctaLabel, category, link) {
       if (stage !== 'crack') return;
       setStage('burst');
       crackCookie.dataset.level = '4';
@@ -164,6 +167,8 @@ export function createFortuneModal(container, { onPick = () => {}, onTap = () =>
       spawnCrumbs(24, 1.6);
       $('.crack-label').textContent = '';
       cardCategory = category;
+      cardLink = link?.id ?? null;
+      $('.fortune-dest').textContent = link ? `${link.name} · ${link.desc}` : '';
       $('.fortune-cat').textContent = `🥠 ${categoryName}`;
       $('.fortune-text').textContent = fortune.text;
       $('.fortune-cta').textContent = ctaLabel;

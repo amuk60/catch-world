@@ -21,7 +21,8 @@ import { nextMode, holdsSeat, showPrompt as promptAllowed } from './logic/player
 import { occupiedSeats, seatOfRemote, seatPromptFor, SEAT_OCCUPIED_RADIUS } from './logic/seats.js';
 import { pickFortuneFor } from './logic/fortune.js';
 import { createCookieCrack } from './logic/cookieCrack.js';
-import { fortuneCatchUrl } from './logic/catchUrl.js';
+import { linkCatchUrl } from './logic/catchUrl.js';
+import { rollReduction } from './logic/stressRoll.js';
 import { buildFortuneStall } from './fortuneStall.js';
 import { createControls } from './controls.js';
 import { createGameState } from './logic/gameState.js';
@@ -46,7 +47,7 @@ import { createFireView, isFireViewKey } from './logic/fireView.js';
 import { createFpBlend, blendPose, lookFromPointer, followLook, lookDirection, sway, shouldHideBody } from './logic/fpCamera.js';
 import { computeFov } from './logic/camera.js';
 import { createOnce } from './logic/once.js';
-import { shareLines, shareFilename, shareUrl, resultPlan } from './logic/cta.js';
+import { shareLines, shareFilename, shareUrl, resultPlan, goalMessage, emptyMessage, readyMessage } from './logic/cta.js';
 import { createOutfit, outfitPrompt, laundryGuide } from './logic/outfit.js';
 import { createLine } from './logic/line.js';
 import { makeId } from './logic/net.js';
@@ -55,10 +56,10 @@ import { loadSignFonts } from './signFont.js';
 import { renderShareCard, saveShareCard, copyText } from './share.js';
 import { easeInOut } from './logic/burn.js';
 import {
-  ORBIT, CAMERA_CLEAR, TRANSITION, PLAYER, PLAYER_MODEL, FURNACE, STRESS, SPAWN, SEED, COMFORT_MESSAGES, FORTUNES, FORTUNE_CTA, FORTUNE_UTM, COOKIE_KINDS,
-  INCINERATOR, ACTION_REDUCE, ACTION_EFFECT_AT, ACTION_TARGET_SECONDS, ACTION_TURN_SECONDS, AUTO_GAP, PASSIVE, MARSHMALLOW, FIRST_PERSON,
-  FIRE_RANGE, SHREDDER_RANGE, WASHER_RANGE, CLOTHESLINE_RANGE, FIRE_ZONE_RADIUS, CATCH_URL, GA_MEASUREMENT_ID, WEAR_SECONDS, WEAR_SWAP_AT,
-  INTERVIEW, INTERVIEW_ROUND, INTERVIEW_BONUS, INTERVIEW_ZONE_RADIUS, INTERVIEW_ANSWER_SECONDS, INTERVIEW_IMPROV_SECONDS, INTERVIEW_FINALE_SECONDS, SPEECH_SECONDS,
+  ORBIT, CAMERA_CLEAR, TRANSITION, PLAYER, PLAYER_MODEL, FURNACE, STRESS, SPAWN, SEED, COMFORT_MESSAGES, FORTUNES, FORTUNE_CTA, CATCH_LINKS, COOKIE_KINDS,
+  INCINERATOR, REDUCE_RANGE, ACTION_EFFECT_AT, ACTION_TARGET_SECONDS, ACTION_TURN_SECONDS, AUTO_GAP, PASSIVE, MARSHMALLOW, FIRST_PERSON,
+  FIRE_RANGE, SHREDDER_RANGE, WASHER_RANGE, CLOTHESLINE_RANGE, FIRE_ZONE_RADIUS, GA_MEASUREMENT_ID, WEAR_SECONDS, WEAR_SWAP_AT,
+  INTERVIEW, INTERVIEW_ROUND, INTERVIEW_BONUS_RANGE, INTERVIEW_ZONE_RADIUS, INTERVIEW_ANSWER_SECONDS, INTERVIEW_IMPROV_SECONDS, INTERVIEW_FINALE_SECONDS, SPEECH_SECONDS,
   MULTIPLAYER, SUPABASE_URL, SUPABASE_ANON_KEY, CLOTHESLINE_SLOTS, QUICK_CHAT, LAUNDRY_ITEMS, LAUNDRY_FX,
 } from './config.js';
 import { isTypingTarget } from './logic/typing.js';
@@ -162,7 +163,7 @@ if (isMobileUA(navigator.userAgent)) {
       onPick: (i) => chooseCookie(i),
       onTap: () => pressCookie(false),
       onMore: () => fortuneMore(),
-      onCta: (category) => openFortuneCta(category),
+      onCta: (category, link) => openFortuneCta(category, link),
     },
     onClose: () => dispatch('close'),
   });
@@ -283,8 +284,8 @@ if (isMobileUA(navigator.userAgent)) {
     params: { round: INTERVIEW_ROUND, speech: SPEECH_SECONDS, answerSeconds: INTERVIEW_ANSWER_SECONDS, improvSeconds: INTERVIEW_IMPROV_SECONDS, finaleSeconds: INTERVIEW_FINALE_SECONDS },
     callbacks: {
       dispatch: (event) => dispatch(event),
-      reduce: () => applyReduction(ACTION_REDUCE), // 답변·돌발행동의 감소: 다른 행동과 같은 양, 같은 경로(gameState.apply -> 팝업)
-      bonus: () => applyReduction(INTERVIEW_BONUS, false), // 완주 보너스: 한 번 더(행동 횟수에는 넣지 않는다)
+      reduce: () => applyReduction(rollReduction(Math.random, REDUCE_RANGE)), // 답변·돌발행동의 감소: 다른 행동과 같은 범위에서 매번 뽑는다, 같은 경로(gameState.apply -> 팝업)
+      bonus: () => applyReduction(rollReduction(Math.random, INTERVIEW_BONUS_RANGE), false), // 완주 보너스: 한 번 더(행동 횟수에는 넣지 않는다)
       track,
       say: (msg) => net?.say(msg), // 멀티플레이: 내 답변·돌발행동을 같은 방의 다른 방문자에게 번호로 알린다(꺼져 있으면 아무 일 없다)
       outfitState: () => outfit.state,
@@ -579,12 +580,13 @@ if (isMobileUA(navigator.userAgent)) {
     held.visible = true;
   }
 
-  // 효과 순간: 지수 -ACTION_REDUCE, 그리고 행동별 연출(소품이 손을 떠난다 / 빨래가 줄에 걸린다).
+  // 효과 순간: 지수 -REDUCE_RANGE 안의 무작위 값(행동마다 한 번 뽑는다), 그리고 행동별 연출(소품이 손을 떠난다 / 빨래가 줄에 걸린다).
   // 소각장: 태우기는 물건이 불에 닿는 순간(주머니는 터지는 순간), 파쇄는 종이가 다 갈린 순간이다.
   function onItemEffect(id) {
-    track('action_done', { action: id });
+    const amount = rollReduction(Math.random, REDUCE_RANGE);
+    track('action_done', { action: id, amount });
     track(id === 'burn' ? 'burn_item' : 'shred_item', { id: chosen.id });
-    applyReduction(ACTION_REDUCE);
+    applyReduction(amount);
     changeOutfit(outfit.onAction(id));
     if (id === 'burn') {
       flight = null; // 종이는 불 속으로 들어갔다
@@ -602,9 +604,10 @@ if (isMobileUA(navigator.userAgent)) {
 
   function onEffect(id) {
     if (isItemAction(id)) { onItemEffect(id); return; }
-    track('action_done', { action: id });
+    const amount = rollReduction(Math.random, REDUCE_RANGE);
+    track('action_done', { action: id, amount });
     if (id === 'wash') track('wash_item', { id: stain.id });
-    applyReduction(ACTION_REDUCE);
+    applyReduction(amount);
     crumple = null;
     changeOutfit(outfit.onAction(id));
     if (id === 'hang') {
@@ -1220,9 +1223,11 @@ if (isMobileUA(navigator.userAgent)) {
   }
 
   // ---- 측면 팝업(목표 달성)·가운데 팝업(지수 0)과 캐치 칩 ----
-  function openCatch(place) {
-    window.open(CATCH_URL, '_blank', 'noopener');
-    track('banner_click', { place });
+  // 캐치 서비스(CATCH_LINKS 의 id)를 새 탭으로 연다. medium: popup | chip | banner (utm_medium), campaign 은 link id.
+  const catchLink = (id) => CATCH_LINKS.find((l) => l.id === id);
+  function openCatch(place, link = 'home', medium = place === 'chip' ? 'chip' : 'popup') {
+    window.open(linkCatchUrl(CATCH_LINKS, link, medium), '_blank', 'noopener');
+    track('banner_click', { place, link });
   }
 
   async function saveResultImage() {
@@ -1271,7 +1276,8 @@ if (isMobileUA(navigator.userAgent)) {
   function showSidePopup({ stress }) {
     hud.openSidePopup({
       stress,
-      onCta: () => openCatch('side'),
+      link: catchLink(goalMessage(stress).link),
+      onCta: () => openCatch('side', goalMessage(stress).link),
       onClose: () => { hud.closeSidePopup(); showChip(); },
     });
   }
@@ -1283,7 +1289,8 @@ if (isMobileUA(navigator.userAgent)) {
     if (hud.sidePopupKind() === 'goal') showChip();
     hud.closeSidePopup();
     hud.openReadyPopup({
-      onCta: () => { window.open(CATCH_URL, '_blank', 'noopener'); track('cta_click', { source: 'outfit_ready' }); },
+      link: catchLink(readyMessage().link),
+      onCta: () => { window.open(linkCatchUrl(CATCH_LINKS, readyMessage().link, 'popup'), '_blank', 'noopener'); track('cta_click', { source: 'outfit_ready', link: readyMessage().link }); },
       onLater: () => hud.closeSidePopup(),
       onClose: () => hud.closeSidePopup(),
     });
@@ -1299,7 +1306,7 @@ if (isMobileUA(navigator.userAgent)) {
     hud.hideBubble();
     showChip();
     hud.openResult({
-      onCta: () => openCatch('modal'), onSave: saveResultImage, onCopy: copyAddress, onContinue: closeResult, onRestart: restart,
+      link: catchLink(emptyMessage().link), onCta: () => openCatch('modal', emptyMessage().link), onSave: saveResultImage, onCopy: copyAddress, onContinue: closeResult, onRestart: restart,
     });
   }
 
@@ -1363,16 +1370,18 @@ if (isMobileUA(navigator.userAgent)) {
     const pick = pickFortuneFor(FORTUNES, Math.random, lastFortune, cookieKind.favors);
     lastFortune = pick.index;
     const { category, cta } = pick.fortune;
-    hud.fortune.burst(pick.fortune, FORTUNE_CTA[category].name, cta.label, category);
+    hud.fortune.burst(pick.fortune, FORTUNE_CTA[category].name, cta.label, category, catchLink(cta.link));
     track('fortune_crack', { cookie: cookieKind.id, category, presses: r.presses });
   }
   function fortuneMore() {
     if (mode === 'fortune' && hud.fortune.stage() === 'card') { cookieKind = null; hud.fortune.openPicker(COOKIE_KINDS); }
   }
-  function openFortuneCta(category) {
-    window.open(fortuneCatchUrl(CATCH_URL, FORTUNE_UTM, category), '_blank', 'noopener');
-    track('fortune_cta_click', { category });
-    track('cta_click', { source: 'fortune', category });
+  function openFortuneCta(category, link) {
+    const url = linkCatchUrl(CATCH_LINKS, link, 'fortune');
+    if (!url) return;
+    window.open(url, '_blank', 'noopener');
+    track('fortune_cta_click', { category, link });
+    track('cta_click', { source: 'fortune', category, link });
   }
 
   // E 키: 포춘 모달이면 깨기/닫기, 앉은 상태면 일어나기, 아니면 가장 가까운 대상의 동작(소각로는 E 동작이 없다).

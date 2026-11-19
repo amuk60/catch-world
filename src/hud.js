@@ -79,7 +79,8 @@ export function createHud(container, { fortuneHandlers = {}, onClose = () => {} 
     <div class="result-card" role="dialog" aria-modal="true" aria-labelledby="result-title">
       <h2 id="result-title" class="result-title"></h2>
       <p class="result-message"></p>
-      <button type="button" class="result-cta">캐치 구경하기</button>
+      <button type="button" class="result-cta"></button>
+      <p class="cta-hint result-hint"></p>
       <div class="result-row">
         <button type="button" class="result-sub" data-act="save">결과 이미지 저장</button>
         <button type="button" class="result-sub" data-act="copy">사이트 주소 복사</button>
@@ -93,6 +94,8 @@ export function createHud(container, { fortuneHandlers = {}, onClose = () => {} 
     </div>`;
   const resultTitle = result.querySelector('.result-title');
   const resultMessage = result.querySelector('.result-message');
+  const resultCta = result.querySelector('.result-cta');
+  const resultHint = result.querySelector('.result-hint');
   const resultFeedback = result.querySelector('.result-feedback');
   let resultHandlers = {};
   result.querySelector('.result-cta').addEventListener('click', () => resultHandlers.onCta?.());
@@ -109,11 +112,15 @@ export function createHud(container, { fortuneHandlers = {}, onClose = () => {} 
     <button type="button" class="side-close" aria-label="닫기">✕</button>
     <h2 id="side-title" class="side-title"></h2>
     <p class="side-message"></p>
-    <button type="button" class="side-cta">캐치 구경하기</button>
+    <button type="button" class="side-cta"></button>
+    <p class="cta-hint side-hint"></p>
     <button type="button" class="side-later" hidden></button>`;
   const sideTitle = side.querySelector('.side-title');
   const sideMessage = side.querySelector('.side-message');
   const sideCta = side.querySelector('.side-cta');
+  const sideHint = side.querySelector('.side-hint');
+  // 버튼이 가는 서비스를 알리는 작은 부제: "캐치 채용공고 · 한 줄 설명". link 는 { name, desc } (CATCH_LINKS 항목).
+  const hintText = (link) => (link ? `${link.name} · ${link.desc}` : '');
   const sideLater = side.querySelector('.side-later');
   let sideHandlers = {};
   let sideKind = null; // 'goal' | 'ready' | null
@@ -419,8 +426,10 @@ export function createHud(container, { fortuneHandlers = {}, onClose = () => {} 
       setTimeout(() => el.remove(), DELTA_MS + 100);
     },
     // 가운데 팝업(지수 0). 버튼 핸들러를 받는다.
-    openResult({ onCta, onSave, onCopy, onContinue, onRestart }) {
+    openResult({ onCta, onSave, onCopy, onContinue, onRestart, link }) {
       const m = emptyMessage();
+      resultCta.textContent = m.cta;
+      resultHint.textContent = hintText(link);
       resultTitle.textContent = m.title;
       resultMessage.replaceChildren(m.line1, document.createElement('br'), m.line2);
       resultFeedback.textContent = '';
@@ -437,11 +446,12 @@ export function createHud(container, { fortuneHandlers = {}, onClose = () => {} 
       resultFeedback.textContent = text;
     },
     // 측면 팝업. stress: 목표를 넘은 순간의 지수.
-    openSidePopup({ stress: value, onCta, onClose }) {
+    openSidePopup({ stress: value, onCta, onClose, link }) {
       const m = goalMessage(value);
       sideTitle.textContent = m.title;
       sideMessage.replaceChildren(m.line1, document.createElement('br'), m.line2);
-      sideCta.textContent = '캐치 구경하기';
+      sideCta.textContent = m.cta;
+      sideHint.textContent = hintText(link);
       sideLater.hidden = true;
       sideHandlers = { onCta, onClose };
       sideKind = 'goal';
@@ -449,11 +459,12 @@ export function createHud(container, { fortuneHandlers = {}, onClose = () => {} 
       sfx.play('popupSide');
     },
     // 측면 팝업(면접 갈 준비 완료): 같은 카드에 주 버튼(캐치 열기)과 보조 버튼(더 쉬다 가기)을 보여 준다.
-    openReadyPopup({ onCta, onLater, onClose }) {
+    openReadyPopup({ onCta, onLater, onClose, link }) {
       const m = readyMessage();
       sideTitle.textContent = m.title;
       sideMessage.replaceChildren(m.line1, document.createElement('br'), m.line2);
       sideCta.textContent = m.cta;
+      sideHint.textContent = hintText(link);
       sideLater.textContent = m.later;
       sideLater.hidden = false;
       sideHandlers = { onCta, onLater, onClose };
