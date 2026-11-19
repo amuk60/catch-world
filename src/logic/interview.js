@@ -3,19 +3,20 @@
 import { appearanceOf } from './outfit.js';
 
 const ID_LIST = ['leader', 'hr', 'mentor']; // 면접관 id(팀장 / 인사담당 / 예비 사수)
-const TYPES = ['정석', '솔직', '엉뚱', '속마음'];
-export const IMPROV_IDS = ['paperToss', 'reverse', 'dance', 'banzai', 'heart', 'stamp', 'plane', 'shades', 'bow', 'song']; // 돌발행동 연출 이름(코드에 대본이 있다)
+export const TYPES = ['모범형', '4차원형', '속마음형']; // 답변 3유형: 모범형(정석) / 4차원형(엉뚱) / 속마음형(현실 취준생의 속마음을 소리 내어)
+export const IMPROV_IDS = ['paperToss', 'reverse', 'dance', 'banzai', 'stamp', 'plane', 'shades', 'bow', 'song']; // 돌발행동 연출 이름(코드에 대본이 있다)
 export const INNER_AT = 0.6; // 답변 말풍선이 뜬 뒤 속마음(생각 구름)이 뜨기까지(초)
 export const INNER_SECONDS = 2.5; // 속마음이 떠 있는 시간
 export const INNER_MAX_LENGTH = 36; // 속마음 글자 수 상한
+export const REACTION_MAX_LENGTH = 28; // 면접관 반응 대사 글자 수 상한
 
 // 대본 이벤트 종류. who: 'player' | 면접관 id.
-// say(말풍선, big 이면 큰 글씨) clip(한 번짜리 동작) pose(자세 'clap' 또는 null) fx(튀기·돌기 같은 덧입힘) face(방향 돌기) move(플레이어 이동 'desk'|'home'|'stand'(의자에서 일어나 설 자리)|'seat'(의자))
+// say(말풍선, big 이면 큰 글씨) clip(한 번짜리 동작) pose(자세 'clap'|'flail'|'raise'|'drum' 또는 null) fx(튀기·돌기 같은 덧입힘) face(방향 돌기) move(플레이어 이동 'desk'|'home'|'stand'(의자에서 일어나 설 자리)|'seat'(의자))
 // stand/sit(면접관 일어나기·앉기. who 가 'player' 면 지원자가 의자에서 일어나 서는 자세 / 다시 앉는 자세) papers(종이 흩날리기) effect(지수 감소 순간) bonus(완주 보너스 순간) end(끝)
 // 담당 면접관제: light(who 가 담당이 아닌 면접관 — 한가할 때만 하는 가벼운 반응 spec: { clip, clap?, bounce?, seconds, text? }) finale(마지막 문항: 이 순간 최종 합격 연출을 이어 붙인다)
 // remoteBubble(다른 방문자의 장면에서, 보낸 방문자의 답변 말풍선이 뜰 순간)
-// think(플레이어의 속마음 구름) prop(소품 mic·stamp·shades·plane 을 seconds 동안) slam(도장 쾅) plane(종이비행기가 팀장에게 날아감) notes(음표가 떠오름) remoteThink(다른 방문자 머리 위 속마음 구름)
-export const EVENT_TYPES = ['say', 'clip', 'pose', 'fx', 'face', 'move', 'stand', 'sit', 'papers', 'effect', 'bonus', 'end', 'light', 'finale', 'remoteBubble', 'think', 'prop', 'slam', 'plane', 'notes', 'remoteThink'];
+// emote(면접관 머리 위 작은 효과: 느낌표·땀방울·커피 뿜기·펜 떨어뜨리기·종이 name) think(플레이어의 속마음 구름: 모범형·4차원형 답변 뒤에만) prop(소품 stamp·shades·plane 을 seconds 동안) slam(도장 쾅) plane(종이비행기가 팀장에게 날아감) notes(음표가 떠오름) remoteThink(다른 방문자 머리 위 속마음 구름)
+export const EVENT_TYPES = ['say', 'clip', 'pose', 'fx', 'face', 'move', 'stand', 'sit', 'papers', 'effect', 'bonus', 'end', 'light', 'finale', 'remoteBubble', 'think', 'prop', 'slam', 'plane', 'notes', 'remoteThink', 'emote'];
 
 // ---- 뽑기 ----
 // 0..n-1 을 섞은 묶음에서 하나씩 뽑는다. 묶음을 다 쓰면 다시 섞되, 직전에 나온 것이 맨 앞에 오지 않게 한다(한 바퀴 안에서는 반복 없음).
@@ -83,12 +84,15 @@ export function createRound(total) {
 // 옷 상태(clean/dirty/tank/drying/dry)에 맞는 팀장의 첫 대사. openings 는 겉모습(suit/soot/tank)을 키로 한다.
 export const openingFor = (openings, outfitState) => openings[appearanceOf(outfitState)];
 
-// 답변 종류별로 면접관마다 반응 대사 하나씩(후보 중 무작위).
+// 답변 종류별로 면접관마다 반응 하나씩: { text(대사), family(스타일), move(동작 이름) }. 스타일은 REACTION_MIX 가중치로, 대사는 그 스타일의 후보 중 무작위로 뽑는다.
 export function pickReactions(reactions, type, rng = Math.random) {
   const row = reactions[type];
   if (!row) throw new Error(`알 수 없는 답변 종류: ${type}`);
   const out = {};
-  for (const id of ID_LIST) out[id] = row[id][Math.min(row[id].length - 1, Math.floor(rng() * row[id].length))];
+  for (const id of ID_LIST) {
+    const { family, move } = pickReaction(type, id, rng, Object.keys(row[id]));
+    out[id] = { text: pickOne(row[id][family], rng), family, move };
+  }
   return out;
 }
 
@@ -125,27 +129,87 @@ const LIGHT_SECONDS = 1.4; // 가벼운 반응(곁들임)이 이어지는 시간
 const LIGHT_LINE_CHANCE = 0.35; // 가벼운 반응에 아주 짧은 한마디가 붙을 확률
 const LIGHT_BOUNCE_SCALE = 0.5; // 가벼운 반응은 담당 면접관보다 작게 튄다
 const pickOne = (list, rng) => list[Math.min(list.length - 1, Math.floor(rng() * list.length))];
-// 담당이 아닌 면접관의 가벼운 반응 spec. react: { clip, clap?, bounce? }, key: 아주 짧은 한마디 후보(interjections)의 열쇠.
+// 담당이 아닌 면접관의 가벼운 반응 spec. react: 반응 동작(MOVES 의 하나), key: 아주 짧은 한마디 후보(interjections)의 열쇠.
+// 담당보다 작게(튀기·기울임 절반, 효과는 첫 하나만, 팔 자세는 박수·손 번쩍만).
 function lightSpec(react, key, { interjections, rng }) {
-  const spec = { clip: react.clip, seconds: LIGHT_SECONDS };
-  if (react.clap) spec.clap = true;
+  const spec = { seconds: LIGHT_SECONDS };
+  if (react.clip) spec.clip = react.clip;
+  if (react.pose === 'clap') spec.clap = true;
+  else if (react.pose === 'raise') spec.pose = 'raise';
   if (react.bounce) spec.bounce = { amp: react.bounce.amp * LIGHT_BOUNCE_SCALE, freq: react.bounce.freq };
-  if (react.tilt) spec.tilt = react.tilt; // 큰절에 맞절(숙이기)
+  if (react.tilt) spec.tilt = react.tilt; // 큰절에 맞절(숙이기)·반응 기울임
+  if (react.yaw) spec.yaw = react.yaw;
+  if (react.emotes?.length) spec.emote = react.emotes[0][0];
   const pool = interjections?.[key];
   if (pool?.length && rng() < LIGHT_LINE_CHANCE) spec.text = pickOne(pool, rng);
   return spec;
 }
-const PLAYER_CLIP = { 정석: 'emote-yes', 솔직: 'interact-right', 엉뚱: 'jump', 속마음: 'jump' }; // 당당하게 답하는 동작(엉뚱은 더 크게)
-// 의자에 앉은 채 답할 때: 서서 하는 동작 클립은 앉은 높이에서 어색하므로 쓰지 않고, 앉은 자세 그대로 몸통을 튀기며(위아래 + 앞으로 숙임) 당당함을 나타낸다. 엉뚱이 가장 크다.
-const SEATED_BOB = { 정석: { amp: 0.06, freq: 3, lean: 0.12, seconds: 1.0 }, 솔직: { amp: 0.05, freq: 2.5, lean: 0.09, seconds: 0.9 }, 엉뚱: { amp: 0.12, freq: 3, lean: 0.25, seconds: 1.6 }, 속마음: { amp: 0.1, freq: 3.5, lean: 0.22, seconds: 1.4 } };
-const REACT = {
-  정석: { clip: 'emote-yes', clap: true }, // 박수
-  솔직: { clip: 'emote-no' }, // 당황
-  엉뚱: { clip: 'emote-yes', bounce: { amp: 0.07, freq: 5 } }, // 폭소
-  // 속마음형: 면접관 성격대로 — 팀장은 얼어붙고(당황), 인사담당은 폭소, 예비 사수는 몰래 끄덕(소리 없는 작은 튀기).
-  속마음: { byId: { leader: { clip: 'emote-no' }, hr: { clip: 'emote-yes', bounce: { amp: 0.1, freq: 6 } }, mentor: { clip: 'emote-yes', bounce: { amp: 0.04, freq: 2 } } } },
+const PLAYER_CLIP = { 모범형: 'emote-yes', '4차원형': 'jump', 속마음형: 'jump' }; // 당당하게 답하는 동작(4차원형은 더 크게)
+// 의자에 앉은 채 답할 때: 서서 하는 동작 클립은 앉은 높이에서 어색하므로 쓰지 않고, 앉은 자세 그대로 몸통을 튀기며(위아래 + 앞으로 숙임) 당당함을 나타낸다. 4차원형이 가장 크다.
+const SEATED_BOB = { 모범형: { amp: 0.06, freq: 3, lean: 0.12, seconds: 1.0 }, '4차원형': { amp: 0.12, freq: 3, lean: 0.25, seconds: 1.6 }, 속마음형: { amp: 0.1, freq: 3.5, lean: 0.22, seconds: 1.4 } };
+
+// ---- 면접관 반응 스타일 ----
+// 반응 스타일(family): 당황(허둥지둥) / 당혹(얼어붙음) / 황당(턱이 빠짐) / 유쾌(폭소·박수·엄지척) / 감탄("어?").
+export const FAMILIES = ['당황', '당혹', '황당', '유쾌', '감탄'];
+// 반응 동작(move) 하나 = 기존 클립 + 절차적 자세·기울임·튀기 + 작은 효과(emotes: [이름, 시작 지연(초)]). 새 소리는 없다(기존 박수·웃음·당황 소리가 동작에서 정해진다).
+// bounce.freq 5 이상이면 폭소 소리(logic/audioPolicy.js)이므로 웃는 동작만 그렇게 하고, 떠는 동작은 5 미만이다. tilt: 음수면 의자째 뒤로 젖힘, 양수면 앞으로 숙임. yaw: 천천히 몸(고개)을 돌림(라디안).
+export const MOVES = {
+  shuffle: { family: '당황', clip: 'emote-no', bounce: { amp: 0.05, freq: 4 }, emotes: [['papers', 0.05], ['sweat', 0.4]] }, // 서류를 뒤적이다 쏟는다
+  flail: { family: '당황', clip: 'emote-no', pose: 'flail', poseSeconds: 1.8, bounce: { amp: 0.04, freq: 4 }, emotes: [['sweat', 0.2], ['exclaim', 0.5]] }, // 팔을 허우적
+  shake: { family: '당황', clip: 'emote-no', bounce: { amp: 0.08, freq: 4.5 }, emotes: [['sweat', 0.1], ['exclaim', 0.4]] }, // 덜덜 떤다
+  freeze: { family: '당혹', emotes: [['dots', 0.1], ['sweat', 0.6]] }, // 동작 없이 얼어붙는다
+  turn: { family: '당혹', yaw: 0.5, emotes: [['question', 0.2], ['sweat', 0.7]] }, // 천천히 고개를 돌린다
+  cough: { family: '당혹', tilt: 0.1, bounce: { amp: 0.03, freq: 4 }, emotes: [['cough', 0.1], ['sweat', 0.5]] }, // 헛기침
+  jaw: { family: '황당', clip: 'emote-no', tilt: -0.5, bounce: { amp: 0.14, freq: 1.2 }, emotes: [['exqu', 0.05], ['sweat', 0.8]] }, // 턱이 빠져 의자째 뒤로 젖혀진다
+  spit: { family: '황당', clip: 'emote-no', tilt: -0.4, bounce: { amp: 0.08, freq: 1.5 }, emotes: [['puff', 0.1], ['exclaim', 0.3]] }, // 커피를 뿜는다
+  pen: { family: '황당', clip: 'emote-no', tilt: -0.3, bounce: { amp: 0.06, freq: 1.5 }, emotes: [['pen', 0.05], ['exqu', 0.35]] }, // 펜을 떨어뜨린다
+  laugh: { family: '유쾌', clip: 'emote-yes', bounce: { amp: 0.1, freq: 6 }, emotes: [['laugh', 0.1]] }, // 폭소
+  clap: { family: '유쾌', clip: 'emote-yes', pose: 'clap' }, // 박수
+  drum: { family: '유쾌', clip: 'emote-yes', pose: 'drum', poseSeconds: 1.6, emotes: [['laugh', 0.3]] }, // 책상을 두드리며 웃는다
+  highfive: { family: '유쾌', clip: 'emote-yes', pose: 'raise', poseSeconds: 1.4, bounce: { amp: 0.05, freq: 3 }, emotes: [['sparkle', 0.2]] }, // 손을 번쩍(하이파이브)
+  thumb: { family: '유쾌', clip: 'emote-yes', bounce: { amp: 0.04, freq: 2 }, emotes: [['thumb', 0.15]] }, // 몰래 엄지척
+  wow: { family: '감탄', clip: 'emote-yes', tilt: 0.12, emotes: [['exclaim', 0.05]] }, // 감탄
+  huh: { family: '감탄', clip: 'emote-no', tilt: 0.1, emotes: [['question', 0.05]] }, // "어?"
 };
-const reactFor = (type, id) => REACT[type].byId?.[id] ?? REACT[type];
+// 면접관 성격별로 나올 동작과 가중치: 팀장은 체면(서류·헛기침·얼어붙음), 인사담당은 호들갑(허우적·폭소·하이파이브), 예비 사수는 조용히(펜·고개·엄지척).
+export const MOVE_WEIGHTS = {
+  당황: { leader: { shuffle: 3, shake: 2 }, hr: { flail: 3, shake: 1, shuffle: 1 }, mentor: { shake: 2, shuffle: 1, flail: 1 } },
+  당혹: { leader: { freeze: 3, turn: 2, cough: 1 }, hr: { cough: 2, freeze: 1, turn: 1 }, mentor: { turn: 2, freeze: 2, cough: 1 } },
+  황당: { leader: { jaw: 3, spit: 2, pen: 1 }, hr: { jaw: 2, spit: 2, pen: 1 }, mentor: { pen: 3, jaw: 2, spit: 1 } },
+  유쾌: { leader: { clap: 2, laugh: 2 }, hr: { laugh: 3, drum: 2, highfive: 2, clap: 2 }, mentor: { thumb: 3, laugh: 1, clap: 1, highfive: 1 } },
+  감탄: { leader: { huh: 2, wow: 2 }, hr: { wow: 3, huh: 1 }, mentor: { wow: 2, huh: 1 } },
+};
+// 답변 종류에서 빼는 동작: 모범형에는 웃음 폭발·책상 두드림이 어색하고, 4차원형은 박수·엄지척·하이파이브가 어색하다.
+const TYPE_EXCLUDE = { 모범형: ['laugh', 'drum'], '4차원형': ['clap', 'thumb', 'highfive'], 속마음형: ['clap'] };
+// 종류 > 면접관 > 스타일 가중치(합이 1). 모범형: 유쾌·박수가 대부분이고 가끔 감탄. 4차원형: 황당·당혹이 대부분이고 가끔 유쾌한 폭소. 속마음형: 당황·당혹이 가장 세고 가끔 유쾌("저도 그래요!").
+export const REACTION_MIX = {
+  모범형: { leader: { 유쾌: 0.7, 감탄: 0.3 }, hr: { 유쾌: 0.7, 감탄: 0.3 }, mentor: { 유쾌: 0.7, 감탄: 0.3 } },
+  '4차원형': { leader: { 황당: 0.4, 당혹: 0.4, 유쾌: 0.2 }, hr: { 황당: 0.4, 당혹: 0.3, 유쾌: 0.3 }, mentor: { 황당: 0.35, 당혹: 0.4, 유쾌: 0.25 } },
+  속마음형: { leader: { 당황: 0.4, 당혹: 0.35, 황당: 0.25 }, hr: { 당황: 0.35, 당혹: 0.3, 황당: 0.1, 유쾌: 0.25 }, mentor: { 당황: 0.3, 당혹: 0.35, 황당: 0.1, 유쾌: 0.25 } },
+};
+const DEFAULT_MOVE = { 모범형: 'clap', '4차원형': 'laugh', 속마음형: 'shake' }; // 대사만 문자열로 넘긴 경우의 기본 동작
+
+function weightedPick(table, rng) { // table: { 키: 가중치 } -> 키 하나
+  const keys = Object.keys(table).filter((k) => table[k] > 0);
+  const total = keys.reduce((n, k) => n + table[k], 0);
+  let r = rng() * total;
+  for (const k of keys) { r -= table[k]; if (r < 0) return k; }
+  return keys[keys.length - 1];
+}
+// 면접관 id 가 type 답변에 보일 스타일(family)과 동작(move 이름). families: 고를 수 있는 스타일 목록(없으면 가중치표 그대로).
+export function pickReaction(type, id, rng = Math.random, families) {
+  const mix = REACTION_MIX[type]?.[id];
+  if (!mix) throw new Error(`알 수 없는 답변 종류: ${type}`);
+  const allowed = Object.fromEntries(Object.entries(mix).filter(([f]) => !families || families.includes(f)));
+  const family = weightedPick(allowed, rng);
+  const moves = Object.fromEntries(Object.entries(MOVE_WEIGHTS[family][id]).filter(([m]) => !TYPE_EXCLUDE[type].includes(m)));
+  return { family, move: weightedPick(Object.keys(moves).length ? moves : MOVE_WEIGHTS[family][id], rng) };
+}
+// 반응을 { text, move } 로 맞춘다(문자열이면 그 종류의 기본 동작). 동작 정의(MOVES 의 값)를 돌려준다.
+const asReaction = (r, type) => (typeof r === 'string' ? { text: r, move: DEFAULT_MOVE[type] } : r);
+const moveDef = (name, type) => MOVES[name] ?? MOVES[DEFAULT_MOVE[type]];
+// 담당이 아닌 면접관이 이 종류 답변에 하는 가벼운 반응 동작(스타일을 가중치로 뽑는다).
+const lightMove = (type, id, rng) => MOVES[pickReaction(type, id, rng).move];
 
 // 답변 한 번의 대본. line: 플레이어가 하는 말, lines: 면접관별 반응 대사, speech: 말풍선 최소 시간, total: 최소 전체 길이.
 // 담당 면접관제: assigned(내가 앉은 의자의 담당 면접관)가 전체 반응(동작·대사)을 하고, 나머지 둘은 light 이벤트(동작 위주의 가벼운 반응, 한가할 때만 그리는 쪽이 실행)다.
@@ -172,23 +236,27 @@ export function answerScript({
     ev.push(fx(SAY_AT, 'player', { bounce: bob }), fx(SAY_AT + Math.min(seconds, sayDur), 'player', { bounce: null }));
   } else {
     ev.push(clip(SAY_AT, 'player', PLAYER_CLIP[type]));
-    if (type === '엉뚱') ev.push(fx(SAY_AT, 'player', { bounce: { amp: 0.1, freq: 3 } }), fx(SAY_AT + sayDur, 'player', { bounce: null }));
+    if (type === '4차원형') ev.push(fx(SAY_AT, 'player', { bounce: { amp: 0.1, freq: 3 } }), fx(SAY_AT + sayDur, 'player', { bounce: null }));
   }
-  const reactEnd = pushReaction(ev, assigned, reactAt, lines[assigned], reactFor(type, assigned), speech);
-  ID_LIST.filter((id) => id !== assigned).forEach((id, i) => ev.push({ t: reactAt + 0.2 * (i + 1), type: 'light', who: id, spec: lightSpec(reactFor(type, id), type, { interjections, rng }) }));
+  const reaction = asReaction(lines[assigned], type);
+  const reactEnd = pushReaction(ev, assigned, reactAt, reaction.text, moveDef(reaction.move, type), speech);
+  ID_LIST.filter((id) => id !== assigned).forEach((id, i) => ev.push({ t: reactAt + 0.2 * (i + 1), type: 'light', who: id, spec: lightSpec(lightMove(type, id, rng), type, { interjections, rng }) }));
   const base = Math.max(total, reactEnd + 0.2);
   if (!finale) return sortStable([...ev, { t: base, type: 'end' }]);
   if (deferFinale) return sortStable([...ev, { t: base, type: 'finale' }]);
   return sortStable([...ev, ...finaleEvents({ ids: finaleIds, speaker: assigned, t0: base, finaleSeconds, finaleText })]);
 }
 
-// 면접관 한 명의 전체 반응(동작 + 대사 + 박수/튀기) 이벤트를 ev 에 더하고 말풍선이 닫히는 시각을 돌려준다.
-function pushReaction(ev, id, t, text, react, speech) {
+// 면접관 한 명의 전체 반응(동작 클립 + 대사 + 자세·튀기·기울임·고개 돌리기 + 머리 위 효과)의 이벤트를 ev 에 더하고 말풍선이 닫히는 시각을 돌려준다. move: MOVES 의 값.
+function pushReaction(ev, id, t, text, move, speech) {
   const dur = readSeconds(text, speech);
-  ev.push(clip(t, id, react.clip), say(t, id, text, dur));
-  if (react.clap) ev.push(pose(t, id, 'clap'), pose(t + dur, id, null));
-  if (react.bounce) ev.push(fx(t, id, { bounce: react.bounce }), fx(t + dur, id, { bounce: null }));
-  if (react.tilt) ev.push(fx(t, id, { tilt: react.tilt }), fx(t + dur, id, { tilt: 0 }));
+  if (move.clip) ev.push(clip(t, id, move.clip));
+  ev.push(say(t, id, text, dur));
+  if (move.pose) ev.push(pose(t, id, move.pose), pose(t + Math.min(dur, move.poseSeconds ?? dur), id, null));
+  if (move.bounce) ev.push(fx(t, id, { bounce: move.bounce }), fx(t + dur, id, { bounce: null }));
+  if (move.tilt) ev.push(fx(t, id, { tilt: move.tilt }), fx(t + dur, id, { tilt: 0 }));
+  if (move.yaw) ev.push(fx(t, id, { yaw: move.yaw }), fx(t + dur - 0.4, id, { yaw: 0 }));
+  for (const [name, delay] of move.emotes ?? []) ev.push({ t: t + delay, type: 'emote', who: id, name });
   return t + dur;
 }
 
@@ -212,9 +280,7 @@ export function improvScript(improv, { total = 5 } = {}) {
   let last = 0; // 마지막으로 말풍선이 닫히는 시각
   const talk = (t, who, text, min = 2) => { const d = read(text, min); ev.push(say(t, who, text, d)); last = Math.max(last, t + d); };
   const gasp = (t, who, text, clipName = 'emote-no') => { ev.push(clip(t, who, clipName)); talk(t, who, text); };
-  const think = (t, text, seconds = INNER_SECONDS) => { ev.push({ t, type: 'think', who: 'player', text, seconds }); last = Math.max(last, t + seconds); };
   const prop = (t, name, seconds) => ev.push({ t, type: 'prop', name, seconds });
-  const I = improv.inner ?? [];
   const reactAll = (t0, step, clipName) => ID_LIST.forEach((id, i) => gasp(t0 + step * i, id, improv[id], clipName));
   let tail = 0.3; // 마지막 말풍선이 닫힌 뒤 여유
 
@@ -269,20 +335,6 @@ export function improvScript(improv, { total = 5 } = {}) {
       ev.push(fx(3.9, 'player', { bounce: null }), { t: 3.9, type: 'move', who: 'player', to: 'home', seconds: 0.6 }, face(4.5, 'desk', 0.4));
       tail = 0.6;
       break;
-    case 'heart': // 속마음 방송: 상상의 마이크를 쥐고 진짜 마음을 외친다
-      ev.push(face(0, 'camera', 0.3), clip(0.2, 'player', 'interact-right'), { t: 0.6, type: 'effect' });
-      prop(0.1, 'mic', 5.3);
-      talk(0.3, 'player', P[0], 2.3);
-      ev.push(clip(2.6, 'player', 'interact-left'));
-      talk(2.6, 'player', P[1], 2.3);
-      if (I[0]) think(3.3, I[0], 2.2);
-      ev.push(clip(2.8, 'leader', 'emote-no'), fx(2.8, 'leader', { bounce: { amp: 0.04, freq: 4 } }), fx(3.6, 'leader', { bounce: null }));
-      talk(2.8, 'leader', improv.leader);
-      ev.push(clip(3.2, 'hr', 'emote-yes'), pose(3.2, 'hr', 'clap'), pose(5.0, 'hr', null));
-      talk(3.2, 'hr', improv.hr);
-      ev.push(clip(3.6, 'mentor', 'emote-yes'), fx(3.6, 'mentor', { bounce: { amp: 0.04, freq: 2 } }), fx(5.2, 'mentor', { bounce: null }));
-      talk(3.6, 'mentor', improv.mentor);
-      break;
     case 'stamp': // 합격 도장 쾅: 책상 위 서류에 합격 도장을 마구 찍는다
       ev.push(face(0, 'desk', 0.2), clip(0, 'player', 'pick-up'));
       prop(0.3, 'stamp', 3.6);
@@ -290,7 +342,6 @@ export function improvScript(improv, { total = 5 } = {}) {
       [0.9, 1.6, 2.3].forEach((t) => ev.push(clip(t - 0.25, 'player', 'attack-melee-right'), { t, type: 'slam' }));
       ev.push({ t: 0.9, type: 'effect' });
       talk(1.7, 'player', P[1], 2.2);
-      if (I[0]) think(2.8, I[0]);
       gasp(2.3, 'leader', improv.leader);
       ev.push(clip(2.6, 'hr', 'emote-yes'), pose(2.6, 'hr', 'clap'), pose(4.6, 'hr', null));
       talk(2.6, 'hr', improv.hr);
@@ -303,7 +354,6 @@ export function improvScript(improv, { total = 5 } = {}) {
       talk(0.2, 'player', P[0], 2.0);
       ev.push(clip(0.95, 'player', 'attack-melee-right'), { t: 1.2, type: 'plane', seconds: 1.1 }, { t: 1.3, type: 'effect' });
       talk(3.0, 'player', P[1], 2.3);
-      if (I[0]) think(3.5, I[0]);
       ev.push(clip(2.4, 'leader', 'jump'), fx(2.4, 'leader', { bounce: { amp: 0.1, freq: 4 } }), fx(3.1, 'leader', { bounce: null }));
       talk(2.4, 'leader', improv.leader);
       ev.push(clip(2.9, 'hr', 'emote-yes'), fx(2.9, 'hr', { bounce: { amp: 0.07, freq: 5 } }), fx(4.3, 'hr', { bounce: null }));
@@ -318,7 +368,6 @@ export function improvScript(improv, { total = 5 } = {}) {
       ev.push(fx(0.5, 'player', { spin: { turns: 1, seconds: 1.6 } }), fx(0.5, 'player', { bounce: { amp: 0.06, freq: 2.5 } }), fx(2.2, 'player', { bounce: null }));
       ev.push(face(2.3, 'camera', 0.3), clip(2.4, 'player', 'interact-right'));
       talk(2.4, 'player', P[1], 2.4);
-      if (I[0]) think(3.2, I[0]);
       gasp(2.6, 'leader', improv.leader);
       ev.push(clip(3.0, 'hr', 'emote-yes'), pose(3.0, 'hr', 'clap'), pose(4.8, 'hr', null));
       talk(3.0, 'hr', improv.hr);
@@ -330,7 +379,6 @@ export function improvScript(improv, { total = 5 } = {}) {
       talk(0.2, 'player', P[0], 1.4);
       ev.push(fx(0.5, 'player', { tilt: 1.2, lower: -0.28 }), { t: 0.8, type: 'effect' });
       talk(1.5, 'player', P[1], 2.0);
-      if (I[0]) think(2.1, I[0], 2.2);
       ID_LIST.forEach((id, i) => {
         const t = 2.3 + 0.3 * i;
         ev.push(clip(t, id, 'emote-yes'), fx(t, id, { tilt: 0.5 }), fx(t + 1.6, id, { tilt: 0 }));
@@ -345,7 +393,6 @@ export function improvScript(improv, { total = 5 } = {}) {
       talk(0.3, 'player', P[0], 2.3);
       [1.3, 2.3, 3.3, 4.2].forEach((t, k) => ev.push(clip(t, 'player', k % 2 ? 'interact-left' : 'interact-right')));
       talk(2.7, 'player', P[1], 2.3);
-      if (I[0]) think(1.6, I[0], 2.0);
       gasp(2.0, 'leader', improv.leader);
       ev.push(clip(2.4, 'hr', 'emote-yes'), pose(2.4, 'hr', 'clap'), pose(4.6, 'hr', null));
       talk(2.4, 'hr', improv.hr);
@@ -387,7 +434,7 @@ export function assignedImprov(events, assigned, { interjections, rng = Math.ran
     if (!mine.length) continue;
     const bounce = mine.find((e) => e.type === 'fx' && e.fx.bounce)?.fx.bounce;
     const tilt = mine.find((e) => e.type === 'fx' && e.fx.tilt)?.fx.tilt;
-    const react = { clip: mine.find((e) => e.type === 'clip')?.name ?? 'emote-no', clap: mine.some((e) => e.type === 'pose' && e.name === 'clap'), bounce, tilt };
+    const react = { clip: mine.find((e) => e.type === 'clip')?.name ?? 'emote-no', pose: mine.some((e) => e.type === 'pose' && e.name === 'clap') ? 'clap' : undefined, bounce, tilt };
     lights.push({ t: Math.min(...mine.map((e) => e.t)), type: 'light', who: id, spec: lightSpec(react, 'improv', { interjections, rng }) });
   }
   return sortStable([...kept, ...lights]);
@@ -395,7 +442,7 @@ export function assignedImprov(events, assigned, { interjections, rng = Math.ran
 
 // ---- 설정 검증 ----
 // INTERVIEW 설정 모양과 글자 길이를 확인해 문제 목록(비어 있으면 정상)을 돌려준다. 팀이 글을 고친 뒤 테스트로 실수를 잡는다.
-export function validateInterview(cfg, { questions = 12, improvs = 10, maxLength = 40, innerMax = INNER_MAX_LENGTH } = {}) {
+export function validateInterview(cfg, { questions = 12, improvs = 9, maxLength = 38, innerMax = INNER_MAX_LENGTH } = {}) {
   const problems = [];
   const ids = (cfg.interviewers ?? []).map((i) => i.id);
   if (ids.join() !== ID_LIST.join()) problems.push(`면접관은 ${ID_LIST.join(', ')} 순서로 3명이어야 합니다.`);
@@ -405,16 +452,24 @@ export function validateInterview(cfg, { questions = 12, improvs = 10, maxLength
     if (!ID_LIST.includes(q.asker)) problems.push(`${name}: 질문자 ${q.asker} 를 모릅니다.`);
     if (!q.text || q.text.length > maxLength) problems.push(`${name}: 질문 글이 비었거나 ${maxLength}자를 넘습니다.`);
     const types = (q.answers ?? []).map((a) => a.type).sort().join();
-    if (types !== [...TYPES].sort().join()) problems.push(`${name}: 답변은 정석·솔직·엉뚱·속마음 하나씩(모두 4개)이어야 합니다.`);
+    if (types !== [...TYPES].sort().join() || (q.answers ?? []).length !== TYPES.length) problems.push(`${name}: 답변은 모범형·4차원형·속마음형 하나씩(모두 3개)이어야 합니다.`);
     for (const a of q.answers ?? []) {
       if (!a.text || a.text.length > maxLength) problems.push(`${name}: ${a.type} 답변 글이 비었거나 ${maxLength}자를 넘습니다.`);
-      if (a.type !== '속마음' && (typeof a.inner !== 'string' || !a.inner || a.inner.length > innerMax)) problems.push(`${name}: ${a.type} 답변에 속마음(inner)이 없거나 ${innerMax}자를 넘습니다.`);
+      if (a.type !== '속마음형' && (typeof a.inner !== 'string' || !a.inner || a.inner.length > innerMax)) problems.push(`${name}: ${a.type} 답변에 속마음(inner)이 없거나 ${innerMax}자를 넘습니다.`);
     }
   });
-  for (const type of TYPES) {
+  for (const type of TYPES) { // 반응 대사: 종류 > 면접관 > 스타일(그 종류에서 나올 수 있는 스타일마다 2개 이상, 면접관·종류당 4개 이상, 28자 이내)
     for (const id of ID_LIST) {
-      const list = cfg.reactions?.[type]?.[id];
-      if (!Array.isArray(list) || list.length === 0 || list.some((t) => !t)) problems.push(`반응 대사: ${type}/${id} 후보가 필요합니다.`);
+      const row = cfg.reactions?.[type]?.[id];
+      if (!row || typeof row !== 'object' || Array.isArray(row)) { problems.push(`반응 대사: ${type}/${id} 가 필요합니다.`); continue; }
+      let count = 0;
+      for (const family of Object.keys(REACTION_MIX[type][id])) {
+        const list = row[family];
+        if (!Array.isArray(list) || list.length < 2 || list.some((t) => !t || t.length > REACTION_MAX_LENGTH)) problems.push(`반응 대사: ${type}/${id}/${family} 는 ${REACTION_MAX_LENGTH}자 이내 후보가 2개 이상 필요합니다.`);
+        else count += list.length;
+      }
+      for (const family of Object.keys(row)) if (!FAMILIES.includes(family)) problems.push(`반응 대사: ${type}/${id} 의 스타일 ${family} 를 모릅니다.`);
+      if (count < 4) problems.push(`반응 대사: ${type}/${id} 는 합쳐 4개 이상 필요합니다.`);
     }
   }
   const imps = cfg.improvs ?? [];
@@ -440,7 +495,7 @@ export const REMOTE_BUBBLE_AT = 1.2; // 질문을 던진 뒤 이만큼(초) 지�
 const REMOTE_ASK_SECONDS = 1.4; // 담당 면접관이 던진 질문 말풍선이 떠 있는 시간
 const REMOTE_REACT_AFTER = 0.9; // 답변 말풍선이 뜬 뒤 담당 면접관이 반응하기까지
 
-// 방문자 머리 위에 띄울 글: { text, type('정석'|'솔직'|'엉뚱'|'속마음'|null), asker(질문 설정상의 질문자 id | null), improvId(돌발행동 id | null), inner(속마음 글 | null) }.
+// 방문자 머리 위에 띄울 글: { text, type('모범형'|'4차원형'|'속마음형'|null), asker(질문 설정상의 질문자 id | null), improvId(돌발행동 id | null), inner(속마음 글 | null) }.
 export function remoteSayLine(config, say) {
   if (!say) return null;
   if (say.ty === 'ans') {
@@ -460,7 +515,7 @@ export function remoteSayLine(config, say) {
 
 // 다른 방문자 한 명의 한마디에 대한 담당 면접관(assigned)의 장면: { line(remoteSayLine), bubbleAt(보낸 방문자의 말풍선이 뜰 시각, 0 이면 바로), events, duration }.
 // events 는 시간표(createTimeline)에 넣는 이벤트들이다: 담당 면접관의 질문·반응·돌발행동 연기(who 가 assigned), 다른 면접관의 light, 시각 bubbleAt 의 remoteBubble.
-// 답변: 담당이 질문 글(q 번호로 찾는다)을 말풍선으로 던지고 -> bubbleAt 에 답변 말풍선 -> 곧이어 담당이 종류에 맞는 반응(박수 / 당황 / 폭소)과 반응 대사.
+// 답변: 담당이 질문 글(q 번호로 찾는다)을 말풍선으로 던지고 -> bubbleAt 에 답변 말풍선 -> 곧이어 담당이 종류에 맞는 반응(스타일은 가중치로: 박수·폭소 / 당황 / 당혹 / 황당 / 감탄)과 반응 대사.
 // 돌발행동: 돌발행동 대본에서 담당 면접관의 연기를 그대로 쓰고(대사·동작·튀기·돌기 모두) 다른 면접관은 light 만 한다. 잘못된 입력이면 null.
 export function remoteScene(config, msg, assigned, { rng = Math.random, speech = 2.3 } = {}) {
   const line = remoteSayLine(config, msg);
@@ -474,8 +529,9 @@ export function remoteScene(config, msg, assigned, { rng = Math.random, speech =
     bubbleAt = REMOTE_BUBBLE_AT;
     const reactAt = bubbleAt + REMOTE_REACT_AFTER;
     events = [clip(0, assigned, ASK_CLIPS[assigned]), say(0, assigned, question.text, REMOTE_ASK_SECONDS)];
-    pushReaction(events, assigned, reactAt, lines[assigned], reactFor(line.type, assigned), speech);
-    ID_LIST.filter((id) => id !== assigned).forEach((id, i) => events.push({ t: reactAt + 0.2 * (i + 1), type: 'light', who: id, spec: lightSpec(reactFor(line.type, id), line.type, { interjections, rng }) }));
+    const reaction = asReaction(lines[assigned], line.type);
+    pushReaction(events, assigned, reactAt, reaction.text, moveDef(reaction.move, line.type), speech);
+    ID_LIST.filter((id) => id !== assigned).forEach((id, i) => events.push({ t: reactAt + 0.2 * (i + 1), type: 'light', who: id, spec: lightSpec(lightMove(line.type, id, rng), line.type, { interjections, rng }) }));
     if (line.inner) events.push({ t: bubbleAt + INNER_AT, type: 'remoteThink', text: line.inner, seconds: INNER_SECONDS }); // 보낸 방문자 머리 위 속마음 구름
   } else {
     const improv = config.improvs.find((im) => im.id === line.improvId);

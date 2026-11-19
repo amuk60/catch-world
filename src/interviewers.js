@@ -2,6 +2,7 @@
 // 캐릭터 모델은 config 의 INTERVIEW.interviewers 에서 온다. 모델을 못 불러오면 색 막대 대체물(말풍선·연출 신호는 그대로 동작).
 import * as THREE from 'three';
 import { createActor, createFx } from './actor.js';
+import { createReactionFx } from './reactionFx.js';
 
 const ONE_SHOTS = ['emote-yes', 'emote-no', 'interact-left', 'interact-right', 'jump', 'pick-up'];
 const CHAIR_PUSH = 0.7; // 일어설 때 의자가 뒤(북쪽)로 밀리는 거리
@@ -39,6 +40,7 @@ export function createInterviewers({ root, interior, gltfs, chairs, cfg }) {
     };
   });
   const byId = Object.fromEntries(list.map((m) => [m.id, m]));
+  let reactionFx = null; // 머리 위 반응 효과(느낌표·땀방울·커피 뿜기 ...). headPoint 를 쓰므로 api 가 만들어진 뒤에 붙인다
 
   function moveChair(m, toOffset) {
     if (!m.chair) return;
@@ -74,6 +76,7 @@ export function createInterviewers({ root, interior, gltfs, chairs, cfg }) {
       m.actor.setPose(null);
       m.actor.fx.setBounce(null);
       m.actor.fx.setTilt?.(0);
+      m.actor.fx.setYaw?.(0);
       m.standing = false;
       m.actor.setBase('sit');
       m.actor.fx.setAnchor({ y: m.seat.y });
@@ -85,7 +88,10 @@ export function createInterviewers({ root, interior, gltfs, chairs, cfg }) {
     // 모두 즉시 되돌린다(방을 나갈 때).
     reset() {
       for (const m of list) api.resetOne(m.id);
+      reactionFx?.clear();
     },
+    // 머리 위 작은 효과 하나(대본의 emote 이벤트): name 은 reactionFx.js 참고.
+    emote(id, name) { reactionFx?.emote(id, name); },
     // 말풍선이 옆 면접관과 겹치지 않게 비켜 놓는 가로 거리(px): 서쪽 면접관은 왼쪽, 동쪽 면접관은 오른쪽, 가운데는 그대로.
     bubbleShift(id) {
       return Math.sign(Math.round((byId[id].seat.x - interior.origin.x) * 10)) * BUBBLE_SHIFT;
@@ -97,6 +103,7 @@ export function createInterviewers({ root, interior, gltfs, chairs, cfg }) {
       return out.set(group.position.x, group.position.y + top * (m.standing ? 1 : 0.62) + 0.45, group.position.z);
     },
     update(dt) {
+      reactionFx?.update(dt);
       for (const m of list) {
         m.actor.update(dt);
         if (m.chair && m.chairT < 1) {
@@ -107,5 +114,6 @@ export function createInterviewers({ root, interior, gltfs, chairs, cfg }) {
       }
     },
   };
+  reactionFx = createReactionFx({ root, interviewers: api, interior });
   return api;
 }

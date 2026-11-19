@@ -35,50 +35,50 @@ test('answerScript(assigned): 어느 면접관이 담당이든 반응 말풍선�
         const lights = ev.filter((e) => e.type === 'light' && e.who === other);
         assert.equal(lights.length, 1);
         assert.ok(lights[0].t >= says[1].t - 1e-9, '담당이 반응하기 시작한 뒤에 곁들인다');
-        assert.ok(lights[0].spec.clip && lights[0].spec.seconds > 0 && lights[0].spec.seconds <= 2);
+        assert.ok((lights[0].spec.clip || lights[0].spec.emote || lights[0].spec.yaw) && lights[0].spec.seconds > 0 && lights[0].spec.seconds <= 2, '동작이나 효과가 있는 가벼운 반응');
       }
       assert.equal(ev.filter((e) => e.type === 'effect').length, 1);
       assert.equal(ev.filter((e) => e.type === 'end').length, 1);
     }
   }
-  assert.throws(() => answerScript({ type: '정석', line: 'x', lines: LINES, assigned: 'nobody', ...opts }), /nobody/);
+  assert.throws(() => answerScript({ type: '모범형', line: 'x', lines: LINES, assigned: 'nobody', ...opts }), /nobody/);
 });
 
 test('answerScript: 가벼운 반응의 짧은 한마디는 interjections 후보 중에서 가끔만(rng), 후보가 없으면 동작만', () => {
-  const lightOf = (rng, interjections) => answerScript({ type: '엉뚱', line: '대사', lines: LINES, assigned: 'hr', interjections, rng, ...opts }).filter((e) => e.type === 'light');
+  const lightOf = (rng, interjections) => answerScript({ type: '4차원형', line: '대사', lines: LINES, assigned: 'hr', interjections, rng, ...opts }).filter((e) => e.type === 'light');
   const sometimes = lightOf(() => 0, INTERVIEW.interjections);
-  assert.ok(sometimes.every((e) => INTERVIEW.interjections.엉뚱.includes(e.spec.text)), '짧은 한마디가 붙는 경우');
+  assert.ok(sometimes.every((e) => INTERVIEW.interjections['4차원형'].includes(e.spec.text)), '짧은 한마디가 붙는 경우');
   assert.ok(lightOf(() => 0.99, INTERVIEW.interjections).every((e) => e.spec.text === undefined), '대부분은 동작만');
   assert.ok(lightOf(() => 0, undefined).every((e) => e.spec.text === undefined));
 });
 
 test('answerScript(finale): 담당이 "최종 합격!" 을 말하고 finaleIds 만 일어나 박수 친다 — 담당 혼자일 수도, 셋 모두일 수도 있다', () => {
-  const one = answerScript({ type: '정석', line: '대사', lines: LINES, assigned: 'hr', finale: true, finaleIds: ['hr'], ...opts });
+  const one = answerScript({ type: '모범형', line: '대사', lines: LINES, assigned: 'hr', finale: true, finaleIds: ['hr'], ...opts });
   assertSorted(one, 'finale one');
   assert.deepEqual(one.filter((e) => e.type === 'stand').map((e) => e.who), ['hr']);
   assert.deepEqual(one.filter((e) => e.type === 'sit').map((e) => e.who), ['hr']);
   assert.equal(one.find((e) => e.type === 'say' && e.text === INTERVIEW.finale).who, 'hr');
   assert.equal(one.filter((e) => e.type === 'bonus').length, 1);
-  const all = answerScript({ type: '정석', line: '대사', lines: LINES, assigned: 'mentor', finale: true, ...opts });
+  const all = answerScript({ type: '모범형', line: '대사', lines: LINES, assigned: 'mentor', finale: true, ...opts });
   assert.deepEqual(all.filter((e) => e.type === 'stand').map((e) => e.who).sort(), IDS3.slice().sort());
   assert.equal(all.find((e) => e.type === 'say' && e.text === INTERVIEW.finale).who, 'mentor');
 });
 
 test('answerScript(deferFinale): 끝에 finale 신호만 두고(end 없음) finaleEvents 가 그 뒤를 이어 붙인다 — 합치면 deferFinale 없는 대본과 같다', () => {
   for (const finaleIds of [['leader'], IDS3]) {
-    const deferred = answerScript({ type: '솔직', line: '대사', lines: LINES, assigned: 'leader', finale: true, deferFinale: true, finaleIds, ...opts });
+    const deferred = answerScript({ type: '속마음형', line: '대사', lines: LINES, assigned: 'leader', finale: true, deferFinale: true, finaleIds, ...opts });
     assert.ok(!deferred.some((e) => e.type === 'end' || e.type === 'bonus' || e.type === 'stand'));
     const marker = deferred[deferred.length - 1];
     assert.equal(marker.type, 'finale');
     const tail = finaleEvents({ ids: finaleIds, speaker: 'leader', finaleSeconds: INTERVIEW_FINALE_SECONDS, finaleText: INTERVIEW.finale });
     assert.equal(tail[0].t, 0);
     assert.deepEqual([tail[tail.length - 1].type, tail[tail.length - 1].t], ['end', INTERVIEW_FINALE_SECONDS]);
-    const whole = answerScript({ type: '솔직', line: '대사', lines: LINES, assigned: 'leader', finale: true, finaleIds, ...opts });
+    const whole = answerScript({ type: '속마음형', line: '대사', lines: LINES, assigned: 'leader', finale: true, finaleIds, ...opts });
     const joined = [...deferred.slice(0, -1), ...tail.map((e) => ({ ...e, t: e.t + marker.t }))];
     const key = (e) => JSON.stringify([e.t.toFixed(6), e.type, e.who ?? '', e.name ?? '']);
     assert.deepEqual(joined.map(key).sort(), whole.map(key).sort());
   }
-  assert.equal(answerScript({ type: '정석', line: '대사', lines: LINES, ...opts, deferFinale: true }).slice(-1)[0].type, 'end', '완주가 아니면 평소처럼 end');
+  assert.equal(answerScript({ type: '모범형', line: '대사', lines: LINES, ...opts, deferFinale: true }).slice(-1)[0].type, 'end', '완주가 아니면 평소처럼 end');
 });
 
 test('assignedImprov: 담당 면접관의 대사·동작은 그대로, 다른 면접관은 첫 이벤트 시각에 light 하나로 줄어든다(입력 불변, 돌기·긴 대사 없음)', () => {
@@ -113,7 +113,7 @@ test('assignedImprov: 담당 면접관의 대사·동작은 그대로, 다른 �
 test('remoteScene(답변): 담당이 q 번 질문 글을 묻고 -> REMOTE_BUBBLE_AT 에 보낸 사람의 답변 말풍선 -> 담당의 종류별 반응과 대사, 다른 둘은 light', () => {
   const q = 5;
   for (const assigned of IDS3) {
-    for (const [a, type] of [[0, '정석'], [1, '솔직'], [2, '엉뚱'], [3, '속마음']]) {
+    for (const [a, type] of [[0, '모범형'], [1, '4차원형'], [2, '속마음형']]) {
       const sc = remoteScene(INTERVIEW, { ty: 'ans', q, a }, assigned, { rng: mulberry32(3) });
       assert.equal(sc.line.text, INTERVIEW.questions[q].answers[a].text);
       assert.equal(sc.line.type, type);
@@ -122,13 +122,10 @@ test('remoteScene(답변): 담당이 q 번 질문 글을 묻고 -> REMOTE_BUBBLE
       assert.deepEqual([says[0].who, says[0].text, says[0].t], [assigned, INTERVIEW.questions[q].text, 0], '질문자는 설정의 asker 가 아니라 담당');
       assert.equal(sc.events.find((e) => e.type === 'clip').name, ASK_CLIPS[assigned]);
       assert.equal(says[1].who, assigned);
-      assert.ok(INTERVIEW.reactions[type][assigned].includes(says[1].text), '그 종류의 반응 대사 후보');
+      assert.ok(Object.values(INTERVIEW.reactions[type][assigned]).flat().includes(says[1].text), '그 종류의 반응 대사 후보');
       assert.ok(says[1].t > sc.bubbleAt, '답변 말풍선 뒤에 반응');
       assert.equal(sc.events.find((e) => e.type === 'remoteBubble').t, sc.bubbleAt);
-      if (type === '정석') assert.ok(sc.events.some((e) => e.type === 'pose' && e.who === assigned && e.name === 'clap'));
-      if (type === '솔직') assert.ok(sc.events.some((e) => e.type === 'clip' && e.who === assigned && e.name === 'emote-no'));
-      if (type === '엉뚱') assert.ok(sc.events.some((e) => e.type === 'fx' && e.who === assigned && e.fx.bounce));
-      if (type === '속마음') assert.ok(sc.events.some((e) => e.type === 'clip' && e.who === assigned), '속마음형 반응 동작');
+      assert.ok(sc.events.some((e) => e.who === assigned && ['clip', 'emote', 'fx', 'pose'].includes(e.type)), `${type} 반응 동작·효과`);
       assert.deepEqual(sc.events.filter((e) => e.type === 'light').map((e) => e.who).sort(), IDS3.filter((x) => x !== assigned).sort());
       assert.ok(!sc.events.some((e) => DIRECT.includes(e.type) && e.who !== assigned), '다른 면접관의 직접 연기는 없다');
       assert.ok(sc.events.every((e) => !['effect', 'bonus', 'end', 'papers'].includes(e.type)), '지수·라운드와 무관');
@@ -164,10 +161,10 @@ test('remoteScene: 모르는 번호·id·면접관은 null', () => {
 
 test('설정 검증: interjections(정석·솔직·엉뚱·improv 별 12자 이내 후보)가 필요하다', () => {
   assert.deepEqual(validateInterview(INTERVIEW), []);
-  for (const key of ['정석', 'improv']) {
+  for (const key of ['모범형', 'improv']) {
     const bad = { ...INTERVIEW, interjections: { ...INTERVIEW.interjections, [key]: [] } };
     assert.ok(validateInterview(bad).some((p) => p.includes(`짧은 한마디: ${key}`)), key);
   }
   assert.ok(validateInterview({ ...INTERVIEW, interjections: undefined }).length >= 4);
-  assert.ok(validateInterview({ ...INTERVIEW, interjections: { ...INTERVIEW.interjections, 솔직: ['이건 열두 글자를 훌쩍 넘기는 아주 긴 한마디입니다'] } }).some((p) => p.includes('솔직')));
+  assert.ok(validateInterview({ ...INTERVIEW, interjections: { ...INTERVIEW.interjections, 속마음형: ['이건 열두 글자를 훌쩍 넘기는 아주 긴 한마디입니다'] } }).some((p) => p.includes('속마음형')));
 });

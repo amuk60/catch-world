@@ -368,7 +368,7 @@ test('session: 서 있는 사람의 하트비트(heartbeatMs)에도 지워지지
 });
 
 // ---- 면접 답변·돌발행동 한마디(k: 'say') ----
-const sayLimits = { questions: 12, answers: 4, improvs: ['paperToss', 'reverse', 'dance', 'banzai', 'heart', 'stamp', 'plane', 'shades', 'bow', 'song'] };
+const sayLimits = { questions: 12, answers: 3, improvs: ['paperToss', 'reverse', 'dance', 'banzai', 'stamp', 'plane', 'shades', 'bow', 'song'] };
 const sayMsg = (id, o = {}) => ({ k: 'say', id, space: 'interview', ty: 'ans', q: 2, a: 1, ...o });
 async function hall({ limits = sayLimits, c = cfg } = {}) {
   const tr = fakeTransport();
