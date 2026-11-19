@@ -146,6 +146,7 @@ export function createMultiplayer(ctx) {
     // 닉네임 바꾸기(검사 통과해야 함). 지금 닉네임은 self.nick.
     setNick,
     openNickCard() { nickCard.open(self.nick); },
+    get nickCardOpen() { return nickCard.isOpen; }, // 닉네임 카드가 열려 있는가(튜토리얼이 끝나기를 기다린다)
     // 세탁소 메시지 보내기: { k:'line', slot, c, t } | { k:'lines', e } | { k:'fx', i }. 보냈으면 true. 다른 방문자의 것은 onRoom(fn) 으로 받는다(fn({ k, id, ... })).
     sendRoom(msg) { return session ? session.sendRoom(msg) : false; },
     onRoom(fn) { roomHandlers.add(fn); return () => roomHandlers.delete(fn); },

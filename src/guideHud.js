@@ -15,6 +15,9 @@ const CSS = `
 #guide .guide-sep { opacity: 0.6; }
 #guide .guide-close { position: absolute; top: 6px; right: 8px; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 999px;
   background: transparent; color: #cfcfe6; font-size: 18px; line-height: 1; cursor: pointer; pointer-events: auto; }
+#guide .guide-replay { display: block; margin-top: 8px; padding: 6px 10px; border: 1px solid rgba(255, 255, 255, 0.28); border-radius: 999px; background: rgba(255, 255, 255, 0.1); color: #fff; font: inherit; font-size: 13px; cursor: pointer; pointer-events: auto; }
+#guide .guide-replay:hover { background: rgba(255, 255, 255, 0.22); }
+#guide .guide-replay:focus-visible { outline: 2px solid #ffd9a8; outline-offset: 2px; }
 #guide .guide-close:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
 #guide-btn { position: absolute; top: 54px; right: 12px; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
   padding: 0; border: 0; border-radius: 999px; background: rgba(18, 18, 31, 0.78); color: #fff; font: inherit; font-size: 17px; font-weight: 700;
@@ -42,7 +45,8 @@ function rows(spaceId) {
   ].join('');
 }
 
-export function createGuideHud(container, { storage = null } = {}) {
+// opts: { storage, autoShow(처음 방문에 자동으로 띄울까: 튜토리얼이 먼저 할 때는 false), onReplay(튜토리얼 다시 보기 버튼), suppressed()(true 면 카드를 열지 않는다: 튜토리얼 중) }
+export function createGuideHud(container, { storage = null, autoShow = true, onReplay = null, suppressed = () => false } = {}) {
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.append(style);
@@ -59,7 +63,17 @@ export function createGuideHud(container, { storage = null } = {}) {
   closeBtn.className = 'guide-close';
   closeBtn.setAttribute('aria-label', '조작 안내 닫기');
   closeBtn.textContent = '×';
-  card.append(title, list, closeBtn);
+  card.append(title, list);
+  let replayBtn = null;
+  if (onReplay) {
+    replayBtn = document.createElement('button');
+    replayBtn.type = 'button';
+    replayBtn.className = 'guide-replay';
+    replayBtn.textContent = '튜토리얼 다시 보기';
+    replayBtn.addEventListener('pointerdown', (e) => e.preventDefault());
+    card.append(replayBtn);
+  }
+  card.append(closeBtn);
 
   const btn = document.createElement('button');
   btn.id = 'guide-btn';
@@ -73,7 +87,7 @@ export function createGuideHud(container, { storage = null } = {}) {
   let isOpen = false;
   let space = 'yard';
   const render = () => { list.innerHTML = rows(space); };
-  const show = () => { isOpen = true; timer.reset(); render(); card.classList.add('open'); btn.classList.add('on'); btn.setAttribute('aria-pressed', 'true'); };
+  const show = () => { if (suppressed()) return; isOpen = true; timer.reset(); render(); card.classList.add('open'); btn.classList.add('on'); btn.setAttribute('aria-pressed', 'true'); };
   const hide = () => { isOpen = false; card.classList.remove('open'); btn.classList.remove('on'); btn.setAttribute('aria-pressed', 'false'); };
   const toggle = () => (isOpen ? hide() : show());
 
@@ -86,12 +100,15 @@ export function createGuideHud(container, { storage = null } = {}) {
     toggle();
   });
 
-  if (isFirstVisit(storage)) { show(); markSeen(storage); } else hide();
+  replayBtn?.addEventListener('click', () => { hide(); onReplay(); });
+  if (autoShow && isFirstVisit(storage)) { show(); markSeen(storage); } else hide();
 
   return {
     isOpen: () => isOpen,
     open: show,
     close: hide,
+    // 튜토리얼이 끝난 뒤: 처음 방문이었다면 지금 한 번 보여 준다(자동으로 띄우지 않았던 경우).
+    showIfFirst() { if (isFirstVisit(storage)) { show(); markSeen(storage); } },
     update(dt, moving, spaceId) {
       if (spaceId !== space) { space = spaceId; if (isOpen) render(); }
       if (isOpen && timer.update(dt, moving)) hide();

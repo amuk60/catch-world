@@ -51,7 +51,9 @@ import { shareLines, shareFilename, shareUrl, resultPlan, goalMessage, emptyMess
 import { createOutfit, outfitPrompt, laundryGuide } from './logic/outfit.js';
 import { createLine } from './logic/line.js';
 import { makeId } from './logic/net.js';
-import { initAnalytics, track, trackCatchClick } from './analytics.js';
+import { initAnalytics, track as gaTrack, trackCatchClick } from './analytics.js';
+import { createTutorialUi } from './tutorialHud.js';
+import { isTutorialSeen } from './logic/tutorial.js';
 import { loadSignFonts } from './signFont.js';
 import { renderShareCard, saveShareCard, copyText } from './share.js';
 import { easeInOut } from './logic/burn.js';
@@ -60,7 +62,7 @@ import {
   INCINERATOR, REDUCE_RANGE, ACTION_EFFECT_AT, ACTION_TARGET_SECONDS, ACTION_TURN_SECONDS, AUTO_GAP, PASSIVE, MARSHMALLOW, FIRST_PERSON,
   FIRE_RANGE, SHREDDER_RANGE, WASHER_RANGE, CLOTHESLINE_RANGE, FIRE_ZONE_RADIUS, GA_MEASUREMENT_ID, WEAR_SECONDS, WEAR_SWAP_AT,
   INTERVIEW, INTERVIEW_ROUND, INTERVIEW_BONUS_RANGE, INTERVIEW_ZONE_RADIUS, INTERVIEW_ANSWER_SECONDS, INTERVIEW_IMPROV_SECONDS, INTERVIEW_FINALE_SECONDS, SPEECH_SECONDS,
-  MULTIPLAYER, SUPABASE_URL, SUPABASE_ANON_KEY, CLOTHESLINE_SLOTS, QUICK_CHAT, LAUNDRY_ITEMS, LAUNDRY_FX,
+  MULTIPLAYER, SUPABASE_URL, SUPABASE_ANON_KEY, CLOTHESLINE_SLOTS, QUICK_CHAT, LAUNDRY_ITEMS, LAUNDRY_FX, TUTORIAL,
 } from './config.js';
 import { isTypingTarget } from './logic/typing.js';
 import { createQuickChat } from './quickChat.js';
@@ -72,6 +74,10 @@ import { sfx } from './audio/sfx.js';
 import { createSoundButton } from './audio/soundButton.js';
 import { createKeyState, isMoveKey, isArrowKey, shouldIgnoreKey } from './logic/keyMove.js';
 import { createGuideHud } from './guideHud.js';
+
+// 분석 이벤트 보내기. 같은 이벤트를 튜토리얼·힐링 코스 체크리스트에도 알린다(태우기·세탁·면접 답변 등이 스스로 체크된다).
+let tutorialUi = null;
+const track = (name, params) => { const sent = gaTrack(name, params); tutorialUi?.onTrack(name, params); return sent; };
 
 const MAX_DT = 0.1; // 한 프레임에 진행하는 최대 시간(초). 탭이 멈췄다 돌아와도 행동·애니메이션이 한꺼번에 튀지 않게 한다.
 const FALLBACK_RAW_DURATIONS = { 'emote-no': 0.667, 'pick-up': 0.333, 'attack-melee-right': 0.417, 'interact-right': 0.667, 'interact-left': 0.667, 'emote-yes': 0.667, 'holding-right': 0.167, 'holding-both': 0.167 }; // 캐릭터 모델이 없을 때(모델의 실제 클립 길이)
@@ -171,7 +177,33 @@ if (isMobileUA(navigator.userAgent)) {
   createSoundButton(document.getElementById('game'), sfx); // 우상단 효과음 켜기/끄기(M 키도 같다). 소리는 첫 입력 뒤에야 난다
   let guideStorage = null;
   try { guideStorage = window.localStorage; } catch { /* 저장소 접근 불가: 안내는 매번 처음처럼 */ }
-  const helpGuide = createGuideHud(document.getElementById('game'), { storage: guideStorage }); // 조작 안내 카드와 "?" 버튼(H 키)
+  // 조작 안내 카드와 "?" 버튼(H 키). 처음 방문에는 튜토리얼이 먼저라 튜토리얼 중에는 열리지 않고, 끝난 뒤에 보인다("튜토리얼 다시 보기" 버튼 포함).
+  const helpGuide = createGuideHud(document.getElementById('game'), { storage: guideStorage, autoShow: isTutorialSeen(guideStorage), onReplay: () => tutorialUi?.replay(), suppressed: () => Boolean(tutorialUi?.active) });
+  // 첫 접속 튜토리얼(소개 -> 움직이기 -> 모닥불 -> 태우기)과 "오늘의 힐링 코스" 체크리스트, 길안내 화살표(logic/tutorial.js 가 상태 기계).
+  const tPt = (i) => ({ x: i.x, z: i.z });
+  const tDoor = (list, to) => tPt(list.find((i) => i.kind === 'door' && i.to === to));
+  const tLog = layout.interactables.filter((i) => i.kind === 'seat' && Math.hypot(i.x - FURNACE.x, i.z - FURNACE.z) <= FIRE_ZONE_RADIUS).sort((a, b) => Math.hypot(a.x - SPAWN.x, a.z - SPAWN.z) - Math.hypot(b.x - SPAWN.x, b.z - SPAWN.z))[0];
+  tutorialUi = createTutorialUi(document.getElementById('game'), {
+    storage: guideStorage, track: gaTrack, config: TUTORIAL,
+    places: {
+      burn: { yard: { x: FURNACE.x, z: FURNACE.z } },
+      laundry: { yard: tDoor(layout.interactables, 'laundry'), laundry: zones.find((z) => z.id === 'laundry').center },
+      interview: { yard: tDoor(layout.interactables, 'interview'), interview: zones.find((z) => z.id === 'interview').center },
+      fortune: { yard: tPt(layout.interactables.find((i) => i.kind === 'fortune')) },
+      marshmallow: { yard: tPt(tLog) },
+    },
+    exits: { laundry: tDoor(interior.interactables, 'yard'), interview: tDoor(interviewData.interactables, 'yard') },
+    onStart: () => helpGuide.close(),
+    onEnd: ({ replay }) => { if (!replay) helpGuide.showIfFirst(); },
+  });
+  const tutProj = new THREE.Vector3();
+  const tutView = new THREE.Vector3();
+  const tutorialProject = (x, y, z) => { // 월드 점 -> 화면(-1..1)과 카메라 뒤인지
+    tutProj.set(x, y, z);
+    tutView.copy(tutProj).applyMatrix4(camera.matrixWorldInverse);
+    tutProj.project(camera);
+    return { x: tutProj.x, y: tutProj.y, behind: tutView.z >= 0 };
+  };
   sfx.setFire(FURNACE); // 모닥불 지글거림은 소각로에 가까울수록 커진다
 
   // 공간별 데이터: 클릭 레이캐스트 바닥, 클릭/호버 판정 부피, 상호작용 대상, 장애물. 이동·클릭·E 안내는 항상 지금 공간의 것을 쓴다.
@@ -1717,6 +1749,13 @@ if (isMobileUA(navigator.userAgent)) {
       camera.lookAt(targetPos);
       if (fpFovDirty) { camera.fov = baseFov; camera.updateProjectionMatrix(); fpFovDirty = false; }
     }
+    camera.updateMatrixWorld();
+    tutorialUi.update(dt, {
+      blocked: Boolean(net?.nickCardOpen) || (mode !== 'free' && mode !== 'seated') || transition.active || hud.isResultOpen() || hud.isSidePopupOpen(), // 다른 창이 떠 있으면 튜토리얼은 숨고 기다린다
+      busy: runner.isBusy(), guideOpen: helpGuide.isOpen(), free: mode === 'free', zoneId: currentZone?.id ?? null, spaceId,
+      player: { x: player.position.x, z: player.position.z },
+      view: { width: renderer.domElement.clientWidth, height: renderer.domElement.clientHeight }, project: tutorialProject,
+    });
     if (spaceId === 'yard') updateTreeOcclusion(fpK > 0 ? fpTmp.set(...orbitPos) : camera.position, targetPos, dt); // 나무 가림 축소는 마당에서만
     else interiorViews[spaceId].updateWalls(camera.position); // 실내: 카메라 쪽 벽을 숨긴다
   });

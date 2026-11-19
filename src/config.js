@@ -732,3 +732,43 @@ export const MULTIPLAYER = {
 // 둘 중 하나라도 비어 있으면 멀티플레이는 조용히 꺼진다.
 export const SUPABASE_URL = 'https://gwdyiczmxdzbtenhtlsd.supabase.co';
 export const SUPABASE_ANON_KEY = 'sb_publishable_idHVy3M8kBSOIxkIvAMgCA_I5sQnMvN';
+
+// 첫 접속 튜토리얼과 "오늘의 힐링 코스" 체크리스트 문구·수치. 팀이 자유롭게 고친다(글은 짧게: 카드는 두 줄 안팎). {keys}·{key1} 은 키 모양 그림으로 바뀐다.
+export const TUTORIAL = {
+  intro: {
+    title: '캐치 월드에 오신 걸 환영해요!',
+    lines: [
+      '이곳은 취업 준비로 쌓인 스트레스를 풀어 주는 번아웃 소각장이에요.',
+      '하기 싫었던 서류와 걱정을 태우고, 빨고, 받아치며 마음껏 힐링해 보세요.',
+      '지수가 줄어들수록 마음이 가벼워져요.',
+    ],
+    note: '(캐치와 무관한 학사 과제용 비공식 프로젝트예요)',
+    start: '시작하기',
+    skip: '건너뛰기',
+  },
+  steps: {
+    move: '바닥을 클릭하거나 {keys} 로 움직여 보세요',
+    fire: '저 모닥불 쪽으로 가 보세요',
+    burn: '{key1} 키를 눌러 태울 물건을 골라 보세요',
+    congrats: '스트레스 지수가 줄었어요!',
+    congratsSub: '위쪽 지수가 낮아질수록 마음이 가벼워져요',
+    skip: '건너뛰기',
+  },
+  moveDistance: 2.5, // 걸어서 이만큼(월드 단위) 움직이면 1단계 완료
+  congratsSeconds: 4.5, // 축하 줄을 보여 주는 시간
+  arriveRadius: 2.2, // 체크리스트 길안내 화살표: 목표에 이만큼 가까워지면 사라진다
+  pinHeight: 3.0, // 목표 위에 뜨는 화살표 높이
+  course: {
+    title: '오늘의 힐링 코스',
+    sub: '눌러 보면 가는 방향을 알려 줘요',
+    celebrate: '힐링 코스 완주! 오늘도 수고했어요, 마음이 한결 가벼워졌길 바라요.',
+    celebrateSeconds: 7,
+    items: [
+      { id: 'burn', icon: '🔥', label: '소각장 태우기', hint: '모닥불 앞에서 1 키로 서류 태우기', needs: ['burn'] },
+      { id: 'laundry', icon: '🧺', label: '마음 세탁소', hint: '세탁 → 널기 → 새 셔츠 입기', needs: ['wash', 'hang', 'wear'] },
+      { id: 'interview', icon: '🎤', label: '캐치 면접장', hint: '의자에 앉아 면접 보기', needs: ['interview'] },
+      { id: 'fortune', icon: '🥠', label: '포춘쿠키 상점', hint: '쿠키를 깨 보기', needs: ['fortune'] },
+      { id: 'marshmallow', icon: '🍡', label: '마시멜로 굽기', hint: '통나무에 앉아 마시멜로 굽기', needs: ['marshmallow'] },
+    ],
+  },
+};
