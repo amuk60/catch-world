@@ -1,7 +1,8 @@
 // 브라우저 전용: 마시멜로 굽기 소품(긴 나무 막대 + 막대 끝 하얀 마시멜로 + 김 한 줄기). 외부 파일 없이 도형·재질로만 만든다.
 // group 은 막대 시작점(손 뒤쪽)에 놓이고 +z 가 막대 끝을 향한다. place(start, tip) 이 두 월드 점에 막대를 맞춘다. wisps 는 월드 위치만 따라가는 별도 그룹(김이 위로 오르게).
 import * as THREE from 'three';
-import { colorAt, shapeAt } from './logic/marshmallow.js';
+import { colorAt, shapeAt, sideStep } from './logic/marshmallow.js';
+import { MARSHMALLOW } from './config.js';
 
 const STICK_RADIUS = 0.024;
 const MALLOW_RADIUS = 0.12;
@@ -83,8 +84,29 @@ export function createRoastStick() {
   group.add(stick);
 
   // 마시멜로: 막대 축(z)을 따라 놓인 둥근 원통(캡슐). 색은 굽기 정도로 바뀐다.
-  const mallowMat = new THREE.MeshStandardMaterial({ color: '#fffdf6', roughness: 0.75, emissive: '#000000' });
-  const mallow = new THREE.Mesh(new THREE.CapsuleGeometry(MALLOW_RADIUS, MALLOW_LENGTH, 4, 14), mallowMat);
+  // 면마다 색이 다르다: 정점 색을 막대 축 둘레 각도에 따라 이웃한 두 면의 색으로 섞는다(면 i 의 한가운데가 각도 i * 360/sides, 0번 면이 처음 불을 마주 본다).
+  const mallowMat = new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: 0.75, emissive: '#000000' });
+  const mallowGeo = new THREE.CapsuleGeometry(MALLOW_RADIUS, MALLOW_LENGTH, 4, 14);
+  const sides = MARSHMALLOW.sides;
+  const vertexBlend = []; // 정점마다 [면 a, 면 b, b 의 비율] (축 위의 극점은 모든 면의 평균)
+  {
+    const pos = mallowGeo.attributes.position;
+    const step = sideStep(MARSHMALLOW);
+    for (let v = 0; v < pos.count; v++) {
+      const x = pos.getX(v);
+      const z = pos.getZ(v);
+      if (Math.hypot(x, z) < 1e-4) { vertexBlend.push(null); continue; }
+      let a = Math.atan2(x, z);
+      if (a < 0) a += Math.PI * 2;
+      const f = a / step;
+      const i0 = Math.floor(f) % sides;
+      const k = f - Math.floor(f);
+      vertexBlend.push([i0, (i0 + 1) % sides, k * k * (3 - 2 * k)]);
+    }
+    mallowGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(pos.count * 3).fill(1), 3));
+  }
+  const sideColors = Array.from({ length: sides }, () => [1, 1, 1]);
+  const mallow = new THREE.Mesh(mallowGeo, mallowMat);
   mallow.rotation.x = Math.PI / 2;
   mallow.castShadow = true;
   const mallowHolder = new THREE.Group(); // 처짐·부풂을 주는 자리(막대 끝)
@@ -116,14 +138,32 @@ export function createRoastStick() {
     mallow,
     // 굽는 정도(0..1)에 맞춘 색·부풂·처짐. eaten(0..1)은 먹어서 줄어든 정도.
     // fx: { glow(0..1: 좋음 띠 전체에 걸친 아주 은은한 밝기 힌트), blush(0..1: 가짜 신호, 잠깐 노릇해 보임), steam(0..1: 김의 세기) }. 완벽 한가운데만 알리는 반짝임은 일부러 없다.
+    // fx.sides: 면별 굽기(없으면 모든 면이 level). 색은 면마다 따로 칠하고, 은은한 빛·모양은 평균 level 을 따른다.
     setLevel(level, eaten = 0, fx = {}) {
-      const [r0, g0, b0] = colorAt(level);
-      const blush = (level < 0.45 ? 1 : 0) * 0.45 * (fx.blush ?? 0);
       const [br, bg, bb] = colorAt(0.5);
-      const r = r0 + (br - r0) * blush;
-      const g = g0 + (bg - g0) * blush;
-      const b = b0 + (bb - b0) * blush;
-      mallowMat.color.setRGB(r, g, b);
+      const blushOf = (l) => (l < 0.45 ? 1 : 0) * 0.45 * (fx.blush ?? 0);
+      for (let i = 0; i < sides; i++) {
+        const l = fx.sides?.[i] ?? level;
+        const [r0, g0, b0] = colorAt(l);
+        const k = blushOf(l);
+        sideColors[i] = [r0 + (br - r0) * k, g0 + (bg - g0) * k, b0 + (bb - b0) * k];
+      }
+      const col = mallowGeo.attributes.color;
+      for (let v = 0; v < vertexBlend.length; v++) {
+        const vb = vertexBlend[v];
+        let r; let g; let b;
+        if (vb) {
+          const A = sideColors[vb[0]]; const B = sideColors[vb[1]]; const k = vb[2];
+          r = A[0] + (B[0] - A[0]) * k; g = A[1] + (B[1] - A[1]) * k; b = A[2] + (B[2] - A[2]) * k;
+        } else {
+          r = g = b = 0;
+          for (const c of sideColors) { r += c[0] / sides; g += c[1] / sides; b += c[2] / sides; }
+        }
+        col.setXYZ(v, r, g, b);
+      }
+      col.needsUpdate = true;
+      const [r0, g0, b0] = colorAt(level);
+      const r = r0; const g = g0; const b = b0;
       const warm = Math.max(0, 1 - Math.abs(level - 0.55) / 0.35) + 0.35 * (fx.blush ?? 0); // 노릇해질 때 은은히 달아오른 빛
       const glow = 0.05 * (fx.glow ?? 0);
       mallowMat.emissive.setRGB(0.32 * warm * (r + 0.2) + glow, 0.12 * warm + glow * 0.7, 0.02 * warm + glow * 0.3);
@@ -133,6 +173,8 @@ export function createRoastStick() {
       mallowHolder.position.y = -0.045 * sag; // 아래로 처진다
       steam = Math.min(1, fx.steam ?? 0);
     },
+    // 마시멜로를 막대 축 둘레로 angle(라디안) 돌린 모습: 0번 면이 아래(불 쪽)를 보고, 늘어날수록 다음 면이 아래로 온다.
+    setSpin(angle) { mallow.rotation.y = -angle; },
     // 막대를 start(손 뒤쪽)에서 tip(끝)까지 맞춘다. visible 이 false 면 숨긴다.
     place(start, tip, visible = true) {
       group.visible = visible;

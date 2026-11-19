@@ -3,6 +3,7 @@
 // update(dt, time) 를 매 프레임 부르고, flare() 로 잠깐 커지게 한다(종이가 불에 닿았을 때: 더 높고 밝아지고 불티가 터진 뒤 가라앉는다).
 // setTint('aurora', seconds): 오로라 가루가 닿았을 때 불꽃이 청록·초록·보라 그라데이션으로 바뀌고 반짝이 불티가 터졌다가 seconds 뒤 원래 색으로 돌아온다(null 이면 바로 끈다).
 import * as THREE from 'three';
+import { createAuroraTint } from './logic/aurora.js';
 
 const BASE_Y = 0.22; // 불 바닥 높이(돌 두둑 위)
 const LIGHT_INTENSITY = 3;
@@ -274,7 +275,7 @@ export function createFire(scene, furnacePos) {
   light.castShadow = false;
   scene.add(group, light);
 
-  let tint = null; // { dur, t } 오로라 불꽃 진행(없으면 null)
+  const tint = createAuroraTint(); // 오로라 불꽃 진행(번짐·사그라듦·클릭 되돌리기는 logic/aurora.js)
   let flareT = -1; // 불이 커진 뒤 경과 초(-1 이면 없음)
   let sparkAcc = 0;
   let smokeAcc = 0;
@@ -333,21 +334,21 @@ export function createFire(scene, furnacePos) {
       for (let i = 0; i < SPARK_BURST; i++) spawnSpark(1.9);
     },
     // 불꽃 색 효과. 'aurora' 만 있다(알 수 없는 이름이나 null 은 끈다). 시작할 때 반짝이 불티가 한꺼번에 터진다.
+    // 이미 켜져 있으면 지금 세기에서 이어서 다시 시작하고(번쩍이지 않게 불티도 덜 터뜨린다) seconds 가 새로 센다.
     setTint(name, seconds = 4) {
-      if (name !== 'aurora' || !(seconds > 0)) { tint = null; return; }
-      tint = { dur: seconds, t: 0 };
-      for (let i = 0; i < 28; i++) spawnSpark(1.5 + Math.random() * 0.8);
+      if (name !== 'aurora' || !(seconds > 0)) { tint.stop(); return; }
+      const burst = Math.round(28 * (1 - tint.amount));
+      tint.start(seconds);
+      for (let i = 0; i < burst; i++) spawnSpark(1.5 + Math.random() * 0.8);
     },
+    // 불꽃을 클릭해 원래 색으로 되돌린다(약 1초). 오로라가 켜져 있었으면 true.
+    clearTint() { return tint.clear(); },
+    tintActive: () => tint.active && !tint.returning,
     // 불티 몇 개를 느리게 띄운다(타는 걸 지켜보는 동안의 불씨).
     embers(count = 4) { for (let i = 0; i < count; i++) spawnSpark(0.8 + Math.random() * 0.5); },
     tintAmount: () => flameUniforms.uAurora.value,
     update(dt, time) {
-      let aur = 0; // 오로라 정도(0..1): 0.3초에 번지고 끝나기 1.2초 전부터 사그라든다
-      if (tint) {
-        tint.t += dt;
-        aur = Math.min(1, tint.t / 0.3) * Math.min(1, Math.max(0, (tint.dur - tint.t) / 1.2));
-        if (tint.t >= tint.dur) tint = null;
-      }
+      const aur = tint.update(dt); // 오로라 정도(0..1): 0.6초에 번지고 끝나기 2초 전부터 사그라든다
       flameUniforms.uAurora.value = aur;
       sparks.points.material.uniforms.uAurora.value = aur;
       // 커졌다 가라앉는 정도(0..1): 빠르게 올라가 느리게 내려온다.

@@ -6,8 +6,8 @@ import { createFortuneModal } from './fortuneModal.js';
 
 const BUBBLE_MS = 3000;
 const DELTA_MS = 800; // index.html 의 delta-rise 애니메이션 길이와 같게 둔다.
-const MEDITATE_TEXT = '불멍 중… 가만히 있어도 지수가 줄어요 · V 시점 전환';
-const MEDITATE_TEXT_FP = '불멍 중… V 시점 전환';
+const MEDITATE_TEXT = '불멍 중… 가만히 있어도 지수가 줄어요 · V 불멍 시점';
+const MEDITATE_TEXT_FP = '불멍 중… V 원래 시점';
 const AUTO_BUTTON = { id: 'auto', key: 'R', label: '자동' };
 const TOO_FAR = '더 가까이 가세요';
 const PORTAL_OPEN_PERCENT = 112; // 구멍이 완전히 열렸을 때의 반지름(%): 가장 먼 모서리(100%)와 빛의 띠가 화면 밖으로 나가는 값
@@ -25,7 +25,12 @@ export function createHud(container, { fortuneHandlers = {}, onClose = () => {} 
   keycap.className = 'keycap';
   keycap.textContent = 'E';
   const promptLabel = document.createElement('span');
-  prompt.append(keycap, promptLabel);
+  const keycapV = document.createElement('span'); // E 키캡 옆 두 번째 안내(V 불멍 시점)
+  keycapV.className = 'keycap';
+  keycapV.textContent = 'V';
+  const promptLabelV = document.createElement('span');
+  keycapV.style.display = promptLabelV.style.display = 'none'; // .keycap 의 display 가 hidden 속성을 이기므로 style 로 숨긴다
+  prompt.append(keycap, promptLabel, keycapV, promptLabelV);
 
   // 전역 스트레스 바(상단 중앙).
   const stress = document.createElement('div');
@@ -65,12 +70,15 @@ export function createHud(container, { fortuneHandlers = {}, onClose = () => {} 
   roastPanel.id = 'roast-panel';
   roastPanel.innerHTML = `
     <div class="roast-gauge"><div class="roast-fill"></div></div>
-    <div class="roast-row"><button type="button" class="roast-pull"><span class="keycap">1</span><span class="label">꺼내기</span></button><span class="roast-hint"></span></div>`;
+    <div class="roast-row"><button type="button" class="roast-turn"><span class="keycap">Space</span><span class="label">돌리기</span></button><button type="button" class="roast-pull"><span class="keycap">1</span><span class="label">꺼내기</span></button><span class="roast-hint"></span></div>`;
   const roastFill = roastPanel.querySelector('.roast-fill');
   const roastPull = roastPanel.querySelector('.roast-pull');
+  const roastTurn = roastPanel.querySelector('.roast-turn');
   const roastHint = roastPanel.querySelector('.roast-hint');
-  let roastHandlers = { onPull: () => {} };
+  let roastHandlers = { onPull: () => {}, onTurn: () => {} };
   roastPull.addEventListener('pointerdown', (e) => e.preventDefault());
+  roastTurn.addEventListener('pointerdown', (e) => e.preventDefault());
+  roastTurn.addEventListener('click', () => { if (roastTurn.getAttribute('aria-disabled') !== 'true') roastHandlers.onTurn(); });
   roastPull.addEventListener('click', () => { if (roastPull.getAttribute('aria-disabled') !== 'true') roastHandlers.onPull(); });
   // 클리어 팝업(종료 화면): 흐린 배경 + 카드. 문구는 열 때 채운다.
   const result = document.createElement('div');
@@ -340,9 +348,12 @@ export function createHud(container, { fortuneHandlers = {}, onClose = () => {} 
       bubble.style.top = `${screenY}px`;
     },
     // actionable 이 false 면 E 키캡 없이 글자만(눌러도 아무 일 없는 힌트).
-    showPrompt(text, actionable = true) {
+    // extra({ key, label })가 있으면 E 옆에 두 번째 키캡 안내(예: V 불멍 시점)를 덧붙인다.
+    showPrompt(text, actionable = true, extra = null) {
       promptLabel.textContent = text;
       keycap.hidden = !actionable;
+      keycapV.style.display = promptLabelV.style.display = extra ? '' : 'none';
+      if (extra) { keycapV.textContent = extra.key; promptLabelV.textContent = extra.label; }
       prompt.classList.add('visible');
     },
     hidePrompt() {
@@ -402,13 +413,14 @@ export function createHud(container, { fortuneHandlers = {}, onClose = () => {} 
     },
     // 마시멜로 굽기 패널. state: { fill(0..1 가는 시간 줄), color('rgb(..)'), canPull(꺼내기 버튼 켜짐), hint(안내 글) } — 완벽 구간은 알려 주지 않는다.
     showRoast(handlers = {}) {
-      roastHandlers = { onPull: () => {}, ...handlers };
+      roastHandlers = { onPull: () => {}, onTurn: () => {}, ...handlers };
       roastPanel.classList.add('visible');
     },
     updateRoast({ fill = 0, color = '#fff', canPull = false, hint = '' } = {}) {
       roastFill.style.width = `${fill * 100}%`;
       roastFill.style.background = color;
       roastPull.setAttribute('aria-disabled', canPull ? 'false' : 'true');
+      roastTurn.setAttribute('aria-disabled', canPull ? 'false' : 'true');
       roastHint.textContent = hint;
     },
     hideRoast() {

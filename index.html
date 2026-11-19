@@ -128,9 +128,10 @@
     #roast-panel.visible { display: flex; }
     .roast-gauge { position: relative; width: 260px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.16); overflow: hidden; }
     .roast-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 2px; opacity: 0.85; }
-    .roast-row { display: flex; align-items: center; gap: 10px; }
+    .roast-row { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 10px; }
     .roast-pull { display: flex; align-items: center; gap: 8px; padding: 6px 14px; border: 0; border-radius: 999px; background: #e8833a; color: #fff; font: inherit; font-size: 15px; white-space: nowrap; cursor: pointer; }
-    .roast-pull[aria-disabled="true"] { opacity: 0.38; cursor: default; }
+    .roast-turn { display: flex; align-items: center; gap: 8px; padding: 6px 14px; border: 0; border-radius: 999px; background: rgba(255, 255, 255, 0.16); color: #fff; font: inherit; font-size: 15px; white-space: nowrap; cursor: pointer; }
+    .roast-turn[aria-disabled="true"], .roast-pull[aria-disabled="true"] { opacity: 0.38; cursor: default; }
     .roast-hint { font-size: 13px; color: #d8d8ea; white-space: nowrap; }
     /* 감소량 팝업(-4): 머리 위에서 40px 올라가며 사라진다. */
     .delta { position: absolute; left: 0; top: 0; transform: translate(-50%, -100%); color: #ffe9a8; font-size: 22px; font-weight: 800;
