@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   makeRound, toastLevel, effectiveTime, flareAmount, cueAt, stageAt, classify, inGoodBand, shouldAutoPull, gaugeMap, rewardFor, colorAt, shapeAt, resultLine, stageLine, canRoast, createRoast,
+  sideWeights, sideStep, averageLevel, spreadOf, classifyRoast, roastInputAction, roastHint,
 } from '../src/logic/marshmallow.js';
 import { mulberry32 } from '../src/logic/rng.js';
 import { MARSHMALLOW as M, ACTION_REDUCE, FIRE_ZONE_RADIUS, FURNACE, SEED, PASSIVE } from '../src/config.js';
@@ -165,8 +166,8 @@ test('gaugeMap: 황금 구간 표시 없이 고정 길이에 대한 시간 비�
   assert.deepEqual(Object.keys(gaugeMap(3)), ['fill']);
 });
 
-test('rewardFor: 완벽 8 · 좋음 6 · 덜 익음/살짝 탐 4 · 숯덩이 3 (config 표)', () => {
-  assert.deepEqual(M.rewards, { perfect: 8, good: 6, under: 4, over: 4, burnt: 3 });
+test('rewardFor: 완벽 12 · 좋음 10 · 덜 익음/너무 익음/한쪽 탐 8 · 숯덩이 7 (config 표)', () => {
+  assert.deepEqual(M.rewards, { perfect: 12, good: 10, under: 8, over: 8, uneven: 8, burnt: 7 });
   for (const [k, v] of Object.entries(M.rewards)) assert.equal(rewardFor(k), v);
   assert.equal(rewardFor('nope'), 0);
 });
@@ -177,7 +178,7 @@ test('설정: 단계는 오름차순, 모든 결과에 멘트·감소량이 있�
   assert.equal(froms[0], 0);
   assert.ok(froms.includes(M.burntAt));
   for (const s of M.stages) { assert.ok(s.line.length > 0); assert.ok(!s.line.includes('지금이다')); }
-  for (const key of ['perfect', 'good', 'under', 'over', 'burnt']) { assert.ok(resultLine(key).length > 0); assert.ok(typeof M.rewards[key] === 'number'); }
+  for (const key of ['perfect', 'good', 'under', 'over', 'uneven', 'burnt']) { assert.ok(resultLine(key).length > 0); assert.ok(typeof M.rewards[key] === 'number'); }
   assert.ok(M.flareLine.includes('불이 튀었다'));
   assert.ok(R.perfectWidth[0] >= 0.06 && R.perfectWidth[1] <= 0.09);
 });
@@ -212,7 +213,9 @@ test('shapeAt: 부풀었다 쪼그라들고, 익은 뒤부터 처진다', () => 
 });
 
 test('resultLine: 결과별 멘트(완벽은 축하 멘트)', () => {
-  assert.equal(resultLine('perfect'), '완벽한 굽기다! 겉바속촉~ 스트레스가 녹는다!');
+  assert.equal(resultLine('perfect'), '골고루 노릇노릇, 완벽한 굽기다! 스트레스가 녹는다!');
+  assert.ok(resultLine('perfect').includes('골고루'));
+  assert.equal(resultLine('uneven'), '앗, 한쪽만 숯이 됐네! 돌려줄걸~');
   assert.equal(resultLine('good'), '거의 완벽! 쫀득하고 달콤하다');
   assert.equal(resultLine('under'), '조금 덜 익었지만 맛있다');
   assert.equal(resultLine('over'), '살짝 탔지만 이것도 매력!');
@@ -231,7 +234,9 @@ const fixedRound = (flares = []) => ({
   perfect: [0.55, 0.63], good: [0.51, 0.67], perfectSeconds: 0.7, flares, falseCues: [],
   knots: [{ tau: 0, level: 0 }, { tau: 5, level: 0.3 }, { tau: 10, level: 0.55 }, { tau: 10.7, level: 0.63 }, { tau: 13, level: 0.92 }], burntTau: 13,
 });
-const roastWith = (round) => createRoast(M, Math.random, round);
+// 돌리기 없는 옛 굽기(면 1개, 속도 1)와 같은 설정: 시간 진행·불 튐·단계 이벤트를 그대로 시험한다.
+const ONE = { ...M, sides: 1, sideSpeed: 1 };
+const roastWith = (round, cfg = ONE) => createRoast(cfg, Math.random, round);
 
 test('createRoast: take -> reach -> toast 로 이어지고 stage 이벤트가 구간마다 한 번씩 난다', () => {
   const r = roastWith(fixedRound());
@@ -244,7 +249,7 @@ test('createRoast: take -> reach -> toast 로 이어지고 stage 이벤트가 �
   assert.deepEqual(ev.concat(more).filter((e) => e.type === 'stage').map((e) => e.id), ['white', 'pale', 'golden']);
 });
 
-test('createRoast: 완벽 구간에 꺼내면 perfect, 감소(reduce)는 후련 단계에서 정확히 한 번(8)', () => {
+test('createRoast: 완벽 구간에 꺼내면 perfect, 감소(reduce)는 후련 단계에서 정확히 한 번(12)', () => {
   const r = roastWith(fixedRound());
   toToast(r);
   run(r, 10.35);
@@ -254,7 +259,7 @@ test('createRoast: 완벽 구간에 꺼내면 perfect, 감소(reduce)는 후련 
   assert.equal(pulled[0].auto, false);
   const ev = run(r, 10);
   assert.equal(ev.filter((e) => e.type === 'reduce').length, 1);
-  assert.deepEqual(ev.filter((e) => e.type === 'reduce')[0], { type: 'reduce', result: 'perfect', amount: 8 });
+  assert.deepEqual(ev.filter((e) => e.type === 'reduce')[0], { type: 'reduce', result: 'perfect', amount: 12 });
   assert.deepEqual(ev.filter((e) => e.type === 'phase').map((e) => e.phase), ['chew', 'relief']);
   assert.deepEqual(ev.at(-1), { type: 'done', result: 'perfect' });
   assert.equal(r.active, false);
@@ -262,9 +267,9 @@ test('createRoast: 완벽 구간에 꺼내면 perfect, 감소(reduce)는 후련 
   assert.equal(r.pull(), null);
 });
 
-test('createRoast: 시간대별 결과와 감소량(under 4 / good 6 / perfect 8 / good 6 / over 4)', () => {
+test('createRoast: 시간대별 결과와 감소량(under 8 / good 10 / perfect 12 / good 10 / over 8)', () => {
   const round = fixedRound();
-  const expect = [[3, 'under', 4], [9.9, 'good', 6], [10.35, 'perfect', 8], [10.9, 'good', 6], [11.5, 'over', 4]];
+  const expect = [[3, 'under', 8], [9.9, 'good', 10], [10.35, 'perfect', 12], [10.9, 'good', 10], [11.5, 'over', 8]];
   for (const [seconds, result, amount] of expect) {
     const r = roastWith(round);
     toToast(r); run(r, seconds);
@@ -275,14 +280,14 @@ test('createRoast: 시간대별 결과와 감소량(under 4 / good 6 / perfect 8
   }
 });
 
-test('createRoast: 아무것도 안 하면 burnt 에서 자동으로 빼내고 감소는 3, 한 번만', () => {
+test('createRoast: 아무것도 안 하면 burnt 에서 자동으로 빼내고 감소는 7, 한 번만', () => {
   const r = roastWith(fixedRound());
   r.start();
   const ev = run(r, 40);
   const pulled = ev.find((e) => e.type === 'pulled');
   assert.equal(pulled.result, 'burnt');
   assert.equal(pulled.auto, true);
-  assert.deepEqual(ev.filter((e) => e.type === 'reduce'), [{ type: 'reduce', result: 'burnt', amount: 3 }]);
+  assert.deepEqual(ev.filter((e) => e.type === 'reduce'), [{ type: 'reduce', result: 'burnt', amount: 7 }]);
   assert.equal(ev.at(-1).type, 'done');
 });
 
@@ -433,4 +438,192 @@ test('불멍: 굽는 동안에도 끊기지 않고 interval 마다 줄고, 굽�
   assert.equal(rewardEvents, 1);
   assert.equal(passiveTotal, PASSIVE.amount * 6); // 30초 / 5초 = 6번, 굽기가 끝나도 앉아 있는 동안 계속
   assert.equal(ACTION_REDUCE, 5); // 다른 행동의 감소량은 그대로
+});
+
+// ---- 돌리기·고르게 굽기 ----
+const toastWith = (round = fixedRound()) => { const r = createRoast(M, Math.random, round); toToast(r); return r; };
+
+test('설정: 면 3개, 돌리기 0.25초, 불을 안 보는 면은 천천히 익는다', () => {
+  assert.equal(M.sides, 3);
+  assert.equal(M.rotateSeconds, 0.25);
+  assert.ok(M.ambientRate > 0 && M.ambientRate < 0.5);
+  assert.ok(Math.abs(sideStep() - Math.PI * 2 / 3) < 1e-12);
+});
+
+test('sideWeights: 불을 마주 보는 면이 가장 크고 나머지는 ambientRate, 돌아가는 중에는 두 면이 나눈다', () => {
+  const [a, b, c] = sideWeights(0);
+  assert.ok(Math.abs(a - 1) < 1e-9);
+  assert.ok(Math.abs(b - M.ambientRate) < 1e-9 && Math.abs(c - M.ambientRate) < 1e-9);
+  const w = sideWeights(sideStep());
+  assert.ok(w[1] > 0.99 && w[0] < 0.4);
+  const mid = sideWeights(sideStep() / 2);
+  assert.ok(mid[0] > M.ambientRate + 0.2 && Math.abs(mid[0] - mid[1]) < 1e-9);
+});
+
+test('averageLevel / spreadOf: 평균과 (최대-최소)', () => {
+  assert.ok(Math.abs(averageLevel([0.2, 0.5, 0.8]) - 0.5) < 1e-12);
+  assert.ok(Math.abs(spreadOf([0.2, 0.5, 0.8]) - 0.6) < 1e-12);
+  assert.equal(spreadOf([0.4, 0.4, 0.4]), 0);
+});
+
+test('classifyRoast: 평균이 완벽이고 고르면 perfect, 평균은 완벽인데 한 면만 탔으면 uneven(한쪽 탐)', () => {
+  const round = fixedRound(); // 완벽 [0.55, 0.63], 좋음 [0.51, 0.67]
+  const even = classifyRoast([0.58, 0.59, 0.6], round);
+  assert.equal(even.result, 'perfect');
+  assert.equal(even.even, true);
+  const a = classifyRoast([0.3, 0.6, 0.85], round); // 평균 0.583 = 완벽 구간, 차이 0.55
+  assert.equal(a.result, 'uneven');
+  assert.equal(a.even, false);
+  assert.equal(classifyRoast([0.4, 0.58, 0.77], round).result, 'uneven'); // 평균 0.583
+  assert.equal(classifyRoast([0.4, 0.62, 0.65], round).result, 'good'); // 평균 0.557 완벽인데 차이 0.25 > 0.2, 탄 면은 없다 -> 좋음으로 내려간다
+});
+
+test('classifyRoast: 평균 기준 분류(덜 익음·좋음·너무 익음)와 숯덩이(어느 면이든 탄 단계)', () => {
+  const round = fixedRound();
+  assert.equal(classifyRoast([0.2, 0.25, 0.3], round).result, 'under');
+  assert.equal(classifyRoast([0.52, 0.53, 0.52], round).result, 'good');
+  assert.equal(classifyRoast([0.7, 0.72, 0.7], round).result, 'over');
+  assert.equal(classifyRoast([0.3, 0.3, M.burntAt], round).result, 'burnt');
+  assert.equal(classifyRoast([0.8, 0.2, 0.2], round).result, 'uneven'); // 한쪽만 거의 탔다: 평균은 덜 익음
+  assert.equal(classifyRoast([0.6, 0.6, 0.6], round).even, true);
+});
+
+test('createRoast: 돌리지 않으면 불을 마주 본 0번 면만 빨리 익고 나머지는 천천히 익는다', () => {
+  const r = toastWith();
+  run(r, 4);
+  const [s0, s1, s2] = r.sideLevels;
+  assert.ok(s0 > s1 * 2 && s0 > s2 * 2, `${s0} ${s1} ${s2}`);
+  assert.ok(s1 > 0, '불을 안 봐도 조금은 익는다');
+  assert.ok(Math.abs(s1 - s2) < 1e-9);
+  assert.equal(r.facing, 0);
+  assert.ok(Math.abs(r.level - averageLevel(r.sideLevels)) < 1e-12);
+});
+
+test('createRoast: rotate 는 한 면(120도)씩 0.25초 동안 부드럽게 돌고 다음 면이 불을 마주 본다', () => {
+  const r = toastWith();
+  assert.deepEqual(r.rotate(), [{ type: 'rotate', side: 1 }]);
+  assert.equal(r.turning, true);
+  assert.equal(r.angle, 0);
+  run(r, 0.125, 0.025);
+  assert.ok(r.angle > 0.4 * sideStep() && r.angle < 0.6 * sideStep(), `중간 ${r.angle}`);
+  run(r, 0.13, 0.025);
+  assert.equal(r.turning, false);
+  assert.ok(Math.abs(r.angle - sideStep()) < 1e-9);
+  assert.equal(r.facing, 1);
+  run(r, 4);
+  const [s0, s1, s2] = r.sideLevels;
+  assert.ok(s1 > s2 && s1 > 0.3);
+  assert.ok(s0 > s2, '처음 마주 봤던 면이 더 익어 있다');
+});
+
+test('createRoast: 세 번 돌리면 한 바퀴(0번 면으로 돌아옴), 돌아가는 중 또 누르면 그만큼 더 간다', () => {
+  const r = toastWith();
+  r.rotate(); r.rotate();
+  run(r, 0.6);
+  assert.ok(Math.abs(r.angle - 2 * sideStep()) < 1e-9);
+  assert.equal(r.facing, 2);
+  r.rotate();
+  run(r, 0.6);
+  assert.equal(r.facing, 0);
+});
+
+test('createRoast: 돌리기는 굽는 중에만(굽기 전·꺼낸 뒤에는 null)', () => {
+  const r = createRoast(M, Math.random, fixedRound());
+  r.start();
+  assert.equal(r.rotate(), null);
+  run(r, M.takeSeconds + M.reachSeconds + 0.01);
+  assert.ok(r.rotate());
+  run(r, 5);
+  r.pull();
+  assert.equal(r.rotate(), null);
+  assert.equal(r.canRotate, false);
+});
+
+test('createRoast: 같은 시간을 가만히 굽는 것보다 골고루 돌리면 면 차이가 훨씬 작다', () => {
+  const still = toastWith(); run(still, 6);
+  const turned = toastWith();
+  for (let i = 0; i < 6; i++) { run(turned, 1); turned.rotate(); }
+  run(turned, 0.3);
+  assert.ok(spreadOf(turned.sideLevels) < spreadOf(still.sideLevels) / 2, `${spreadOf(turned.sideLevels)} vs ${spreadOf(still.sideLevels)}`);
+});
+
+test('createRoast: 한 면이 탄 단계에 닿으면 자동으로 빼내고 burnt(고르지 않음)', () => {
+  const r = toastWith();
+  const ev = run(r, 40);
+  const pulled = ev.find((e) => e.type === 'pulled');
+  assert.equal(pulled.result, 'burnt');
+  assert.equal(pulled.auto, true);
+  assert.equal(pulled.even, false);
+  assert.equal(Math.max(...r.sideLevels), M.burntAt);
+});
+
+test('createRoast: 한쪽만 오래 구우면 꺼냈을 때 uneven(한쪽 탐)이고 감소는 8', () => {
+  let seen = 0;
+  for (let n = 0; n < 40; n++) {
+    const r = createRoast(M, Math.random, makeRound(mulberry32(n * 17 + 3)));
+    toToast(r);
+    // 불 쪽 면이 unevenAt 에 닿기 직전까지만 굽고 꺼낸다(돌리지 않음).
+    while (r.phase === 'toast' && Math.max(...r.sideLevels) < M.unevenAt + 0.01) run(r, 0.02, 0.02);
+    if (r.phase !== 'toast') continue;
+    const p = r.pull()[0];
+    assert.ok(['uneven', 'burnt'].includes(p.result), p.result);
+    if (p.result === 'uneven') {
+      seen++;
+      assert.equal(p.even, false);
+      assert.equal(run(r, 10).find((e) => e.type === 'reduce').amount, 8);
+    }
+  }
+  assert.ok(seen >= 30, `uneven ${seen}`);
+});
+
+test('createRoast: 주기적으로 돌려 가며 구우면 평균이 완벽 구간에서 perfect(고름)가 대부분이다', () => {
+  let perfect = 0;
+  let uneven = 0;
+  for (let n = 0; n < 60; n++) {
+    const r = createRoast(M, Math.random, makeRound(mulberry32(n * 31 + 5)));
+    toToast(r);
+    const mid = (r.round.perfect[0] + r.round.perfect[1]) / 2;
+    for (let i = 0; r.phase === 'toast' && i < 2000; i++) {
+      if (r.level >= mid) { const p = r.pull()[0]; if (p.result === 'perfect') perfect++; if (p.result === 'uneven') uneven++; break; }
+      run(r, 0.02, 0.02);
+      if (i % 75 === 74) r.rotate(); // 1.5초마다
+    }
+  }
+  assert.ok(perfect >= 30, `perfect ${perfect}/60`);
+  assert.ok(uneven <= 15);
+});
+
+test('createRoast: 돌리기와 큰 dt 를 섞어도 dt 쪼개기와 같은 결과(0.05초 걸음으로 적분)', () => {
+  const a = toastWith(); a.rotate(); a.update(3);
+  const b = toastWith(); b.rotate(); run(b, 3, 0.01);
+  for (let i = 0; i < 3; i++) assert.ok(Math.abs(a.sideLevels[i] - b.sideLevels[i]) < 0.01);
+});
+
+test('roastInputAction: 굽는 중 클릭·Space 는 돌리기, 1·E 는 꺼내기, Esc 는 취소', () => {
+  const key = (code) => ({ type: 'key', code });
+  assert.equal(roastInputAction({ type: 'click' }, 'toast'), 'rotate');
+  assert.equal(roastInputAction(key('Space'), 'toast'), 'rotate');
+  for (const code of ['Digit1', 'Numpad1', 'KeyE']) assert.equal(roastInputAction(key(code), 'toast'), 'pull');
+  assert.equal(roastInputAction(key('Escape'), 'toast'), 'cancel');
+  for (const code of ['KeyW', 'KeyR', 'Digit2', 'KeyV', 'Enter']) assert.equal(roastInputAction(key(code), 'toast'), null);
+});
+
+test('roastInputAction: 꺼내 드는 중(take·reach)에는 Esc·E 가 취소, 클릭·Space·1 은 아무 일 없고, 먹는 중에는 모두 무시', () => {
+  for (const phase of ['take', 'reach']) {
+    assert.equal(roastInputAction({ type: 'key', code: 'Escape' }, phase), 'cancel');
+    assert.equal(roastInputAction({ type: 'key', code: 'KeyE' }, phase), 'cancel');
+    assert.equal(roastInputAction({ type: 'click' }, phase), null);
+    assert.equal(roastInputAction({ type: 'key', code: 'Space' }, phase), null);
+    assert.equal(roastInputAction({ type: 'key', code: 'Digit1' }, phase), null);
+  }
+  for (const phase of ['bring', 'chew', 'relief', 'done', undefined]) {
+    assert.equal(roastInputAction({ type: 'click' }, phase), null);
+    assert.equal(roastInputAction({ type: 'key', code: 'Escape' }, phase), null);
+    assert.equal(roastInputAction({ type: 'key', code: 'KeyE' }, phase), null);
+  }
+});
+
+test('roastHint: 굽는 중에는 돌리기·꺼내기·취소를 모두 알려 준다', () => {
+  assert.equal(roastHint(true), '클릭/Space: 돌리기 · 1/E: 꺼내기 · Esc: 취소');
+  assert.equal(roastHint(false), 'Esc: 취소');
 });

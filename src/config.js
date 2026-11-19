@@ -161,7 +161,16 @@ export const MARSHMALLOW = {
     falseCues: [2, 3],
     cueSeconds: [0.6, 1.0],
   },
-  rewards: { perfect: 8, good: 6, under: 4, over: 4, burnt: 3 },
+  // 돌리기: 마시멜로는 sides 개의 면을 가진다. 불을 마주 보는 면이 가장 빨리(속도 sideSpeed) 익고 나머지 면은 ambientRate 비율로 천천히 익는다.
+  // 클릭·Space 한 번에 한 면(360/sides 도)씩 rotateSeconds 동안 부드럽게 돈다. 결과는 면들의 평균 굽기로 가르고, 면 사이 차이(최댓값-최솟값)가 evenSpread 이하여야 "고르게"다.
+  // 한쪽 탐: 고르지 않은데 가장 많이 익은 면이 unevenAt 이상(평균이 숯 전이면).
+  sides: 3,
+  rotateSeconds: 0.25,
+  ambientRate: 0.3,
+  sideSpeed: 1.7,
+  evenSpread: 0.2,
+  unevenAt: 0.75,
+  rewards: { perfect: 12, good: 10, under: 8, over: 8, uneven: 8, burnt: 7 },
   gaugeSeconds: 20,
   stages: [
     { id: 'white', from: 0, line: '천천히… 천천히…' },
@@ -174,10 +183,11 @@ export const MARSHMALLOW = {
   shape: { sagFrom: 0.45, puffPeak: 0.65 },
   eat: { bringSeconds: 1, chewSeconds: 1.4, reliefSeconds: 1 },
   results: {
-    perfect: '완벽한 굽기다! 겉바속촉~ 스트레스가 녹는다!',
+    perfect: '골고루 노릇노릇, 완벽한 굽기다! 스트레스가 녹는다!',
     good: '거의 완벽! 쫀득하고 달콤하다',
     under: '조금 덜 익었지만 맛있다',
     over: '살짝 탔지만 이것도 매력!',
+    uneven: '앗, 한쪽만 숯이 됐네! 돌려줄걸~',
     burnt: '앗, 숯덩이가 됐다… 그래도 후련!',
   },
   flareLine: '앗, 불이 튀었다!',
@@ -273,8 +283,10 @@ export const ACTION_TARGET_SECONDS = 5;
 //   burn / shred: 그 행동으로 할 수 있으면 { lines: [멘트들] }(주머니에서 꺼낸 뒤 말풍선으로 한 줄 중얼거린다). 없으면 그 행동 목록에 나오지 않는다. 오로라 가루는 파쇄 못 한다.
 //   prop: 손에 드는 물건의 겉모습. kind('letter' 자소서 | 'resume' 이력서 | 'notice' 불합격 통지서 | 'mail' 탈락 메일 | 'pouch' 가루 주머니), title(머리글), accent(색), ball(구긴 공에 남는 표식 색).
 //   flame: 불 색 효과 { tint: 'aurora', seconds } (오로라 가루: 불꽃이 오로라 빛으로 바뀌었다가 seconds 뒤 돌아온다).
+// auroraFade: 오로라 불꽃의 번짐(in 초)·사그라듦(out 초: 끝나기 전)·클릭해서 되돌릴 때 걸리는 시간(returnSeconds).
 export const INCINERATOR = {
   targetSeconds: 7.4,
+  auroraFade: { in: 0.6, out: 2, returnSeconds: 1 },
   auroraChance: 0.12,
   // 물건 5종(선택 창의 1~5번 순서). 물건 하나: id, label(선택 창 이름), burn/shred(있는 행동만 한다: lines = 멘트 3~5개, 32자 이하), prop(손에 드는 그림: kind·제목·색, solid 가 true 면 두툼해서 구기지 않고 통째로 던진다), flame(태울 때 불꽃 색을 잠깐 바꾼다).
   // shred 가 없는 물건은 파쇄 목록에 나오지 않는다(두꺼운 교재·주머니).
@@ -306,7 +318,7 @@ export const INCINERATOR = {
       id: 'aurora', label: '오로라 가루',
       burn: { lines: ['근심아, 오로라로 날아가라~', '반짝반짝 오로라 한 줌!', '스트레스야, 빛이 되어라~', '통째로 던진다, 오로라 주머니!'] },
       prop: { kind: 'pouch', title: '오로라 가루', accent: '#7a5cc8', ball: '#7a5cc8', solid: true },
-      flame: { tint: 'aurora', seconds: 4.5 },
+      flame: { tint: 'aurora', seconds: 15 },
     },
   ],
 };

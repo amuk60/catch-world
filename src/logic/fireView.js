@@ -11,6 +11,16 @@ export const canToggleFireView = ({ mode, meditating, typing }) => mode === 'sea
 // 키 입력 하나가 시점 토글인가(V, 반복 입력·수식키 조합 제외).
 export const isFireViewKey = (e) => e?.code === 'KeyV' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey;
 
+// 앉았을 때 하단 안내(E 일어나기 옆 V 안내): 앉아 있을 때만 E 일어나기를 보이고, V 는 V 가 실제로 먹히는 곳(불 옆에서 앉아 불멍 중, 굽는 중·글자 입력 중 아님)에서만 덧붙인다.
+// 궤도 시점이면 "불멍 시점"으로 1인칭이 되고, 1인칭이면 "원래 시점"으로 돌아온다. 앉아 있지 않으면 null(다른 안내가 정한다).
+export const SEAT_PROMPT_E = '일어나기';
+export const FIRE_VIEW_LABELS = { enter: '불멍 시점', exit: '원래 시점' };
+export function seatPromptKeys({ mode, meditating, typing = false, fireViewOn = false }) {
+  if (mode !== 'seated') return null;
+  const canV = canToggleFireView({ mode, meditating, typing }) || (Boolean(fireViewOn) && !typing && Boolean(meditating));
+  return { e: SEAT_PROMPT_E, v: canV ? (fireViewOn ? FIRE_VIEW_LABELS.exit : FIRE_VIEW_LABELS.enter) : null };
+}
+
 export function createFireView() {
   let on = false;
   return {

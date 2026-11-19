@@ -39,10 +39,10 @@ import { createSpaces } from './spaces.js';
 import { buildLaundryInterior, buildInterviewInterior } from './logic/interiors.js';
 import { arrivalPoint, clampToSpace } from './logic/spaces.js';
 import { createTransition } from './logic/transition.js';
-import { createRoast, canRoast, gaugeMap, colorAt, inGoodBand, stageLine, resultLine } from './logic/marshmallow.js';
+import { createRoast, canRoast, gaugeMap, colorAt, inGoodBand, stageLine, resultLine, roastInputAction, roastHint } from './logic/marshmallow.js';
 import { createRoastStick, createConfetti } from './marshmallowProps.js';
 import { createPassive, isMeditating } from './logic/passive.js';
-import { createFireView, isFireViewKey } from './logic/fireView.js';
+import { createFireView, isFireViewKey, seatPromptKeys } from './logic/fireView.js';
 import { createFpBlend, blendPose, lookFromPointer, followLook, lookDirection, sway, shouldHideBody } from './logic/fpCamera.js';
 import { computeFov } from './logic/camera.js';
 import { createOnce } from './logic/once.js';
@@ -77,6 +77,7 @@ const FALLBACK_RAW_DURATIONS = { 'emote-no': 0.667, 'pick-up': 0.333, 'attack-me
 const SHRED_SCALE = 1.1; // 투입구 위에 세운 종이의 크기 배율
 const SHRED_PALETTE = ['#fffefa', '#f2f1ec', '#e8e6dc']; // 조각 색의 바탕(종이 흰색). 물건의 표식 색이 여기에 섞인다
 const STAND_HOLD = 0.35; // 걸어가는 단계의 끝부분(비율): 이때 파쇄기 쪽으로 몸을 돌려 선다
+const AURORA_RETURN_HINT = '클릭하면 원래 불꽃으로'; // 오로라 불꽃에 마우스를 올렸을 때
 const SPEECH_KEY = 'line-self'; // 소각장 멘트 말풍선 id
 const LINE_SECONDS = 2.2; // 멘트가 떠 있는 시간(초)
 const SHOW_SCALE = 1.5; // 물건을 들여다볼 때 종이를 키우는 배율(멀리서도 읽히게)
@@ -914,6 +915,7 @@ if (isMobileUA(navigator.userAgent)) {
   let roast = null; // 진행 중인 굽기(createRoast)
   let roastClock = 0; // 지금 단계에서 지난 시간(초): 자세·소품 보간용
   let roastEmberAt = 0; // 다음 불씨를 띄울 시각
+  let roastEven = false; // 꺼낼 때 면이 고르게 익었는가(분석용)
   let roastGlow = 0; // 좋음 띠 안에 있는 동안 아주 은은히 오르는 밝기 힌트(0..1)
   let flareEmberAt = 0;
   let swayClock = 0;
@@ -955,7 +957,7 @@ if (isMobileUA(navigator.userAgent)) {
     roastGlow = 0;
     flareEmberAt = 0;
     character?.beginAction();
-    hud.showRoast({ onPull: roastPull });
+    hud.showRoast({ onPull: roastPull, onTurn: roastTurn });
     if (once('game_start')) track('game_start');
     for (const e of roast.start()) onRoastEvent(e);
     return true;
@@ -976,7 +978,12 @@ if (isMobileUA(navigator.userAgent)) {
     finishRoast();
     return true;
   }
-  // 1·E·Space·꺼내기 버튼: 굽는 중이면 꺼내고 먹기 시작한다.
+  // 클릭·Space·돌리기 버튼: 굽는 중이면 마시멜로(막대)를 한 면 돌린다.
+  function roastTurn() {
+    if (!roast || !roast.canRotate) return;
+    roast.rotate();
+  }
+  // 1·E·꺼내기 버튼: 굽는 중이면 꺼내고 먹기 시작한다.
   function roastPull() {
     if (!roast || !roast.canPull) return;
     for (const e of roast.pull()) onRoastEvent(e);
@@ -998,10 +1005,11 @@ if (isMobileUA(navigator.userAgent)) {
       flareEmberAt = 0;
       hud.say(SPEECH_KEY, MARSHMALLOW.flareLine, { seconds: LINE_SECONDS, silent: true });
     } else if (e.type === 'pulled') {
+      roastEven = e.even;
       hud.hideRoast(); // 이제 먹는다: 꺼내기·취소는 끝
     } else if (e.type === 'reduce') {
-      applyReduction(e.amount); // 결과별 감소량(config 의 MARSHMALLOW.rewards: 완벽 8 · 좋음 6 · 덜 익음/살짝 탐 4 · 숯덩이 3). 한 번만, 다른 행동과 같은 경로(행동 횟수에 들어간다)
-      track('marshmallow', { result: e.result }); // perfect | good | under | over | burnt
+      applyReduction(e.amount); // 결과별 감소량(config 의 MARSHMALLOW.rewards: 완벽 12 · 좋음 10 · 덜 익음/너무 익음/한쪽 탐 8 · 숯덩이 7). 한 번만, 다른 행동과 같은 경로(행동 횟수에 들어간다)
+      track('marshmallow', { result: e.result, even: roastEven }); // perfect | good | under | over | uneven | burnt, even: 면이 고르게 익었는가
       hud.say(SPEECH_KEY, resultLine(e.result, MARSHMALLOW), { seconds: 3, silent: true });
       if (e.result === 'perfect') { // 완벽: 작은 색종이와 불티
         player.updateMatrixWorld(true);
@@ -1042,7 +1050,7 @@ if (isMobileUA(navigator.userAgent)) {
     if (phase === 'take' || phase === 'reach' || phase === 'toast') {
       hud.updateRoast({
         ...gaugeMap(roast.toastSeconds, MARSHMALLOW), color: roastCss(roast.level), canPull: roast.canPull,
-        hint: roast.canPull ? '1·E·Space 꺼내기 / Esc 취소' : 'Esc 취소',
+        hint: roastHint(roast.canPull),
       });
     }
   }
@@ -1120,12 +1128,20 @@ if (isMobileUA(navigator.userAgent)) {
       rStart.lerp(fpStart, fpK);
       rTip.lerp(fpTip, fpK);
     }
+    const twirl = phase === 'toast' ? Math.sin(Math.PI * (roast.turning ? roast.turnProgress : 0)) : 0; // 돌리는 순간 막대 끝이 작게 원을 그린다
+    if (twirl > 0) {
+      fpTmp.crossVectors(rDir, UP).normalize();
+      const ang = Math.PI * 2 * roast.turnProgress;
+      rTip.addScaledVector(fpTmp, 0.07 * twirl * Math.cos(ang)).addScaledVector(UP, 0.05 * twirl * Math.sin(ang));
+      rStart.addScaledVector(fpTmp, -0.02 * twirl * Math.cos(ang));
+    }
     const eaten = phase === 'chew' ? easeInOut(Math.min(1, roastClock / cfg.eat.chewSeconds)) : phase === 'relief' ? 1 : 0;
     const level = roast.level;
     const inBand = phase === 'toast' && inGoodBand(level, roast.round);
     roastGlow += ((inBand ? 1 : 0) - roastGlow) * (1 - Math.exp(-5 * dt));
     const cue = roast.cue;
-    roastProp.setLevel(level, eaten, { glow: roastGlow, blush: cue.blush, steam: phase === 'toast' ? 0.4 * roastGlow + 0.9 * cue.steam + 0.5 * roast.flare : 0 });
+    roastProp.setSpin(roast.angle);
+    roastProp.setLevel(level, eaten, { sides: roast.sideLevels, glow: roastGlow, blush: cue.blush, steam: phase === 'toast' ? 0.4 * roastGlow + 0.9 * cue.steam + 0.5 * roast.flare : 0 });
     roastProp.place(rStart, rTip, phase !== 'relief');
     roastProp.update(dt);
   }
@@ -1413,14 +1429,13 @@ if (isMobileUA(navigator.userAgent)) {
       else if (e.code in CHOICE_KEYS && !e.repeat) interviewScene.pick(CHOICE_KEYS[e.code]);
       return;
     }
-    if (mode === 'roasting') { // 마시멜로 굽는 중: 1·E·Space 로 꺼내고, Esc(굽기 전에는 E 도)로 취소한다. 그 밖의 키(이동·R·2)는 무시.
-      if (e.repeat) return;
-      if (e.code === 'Escape') cancelRoast();
-      else if (e.code === 'Digit1' || e.code === 'Numpad1' || e.code === 'KeyE' || e.code === 'Space') {
-        if (roast?.canPull) roastPull();
-        else if (e.code === 'KeyE') cancelRoast(); // 아직 굽기 전(꺼내 드는 중): E 는 취소
-      }
+    if (mode === 'roasting') { // 마시멜로 굽는 중: Space 로 돌리고, 1·E 로 꺼내고, Esc(굽기 전에는 E 도)로 취소한다(logic/marshmallow.js 의 roastInputAction). 그 밖의 키(이동·R·2)는 무시.
       if (e.code === 'Space') e.preventDefault();
+      if (e.repeat) return;
+      const act = roastInputAction({ type: 'key', code: e.code }, roast?.phase);
+      if (act === 'rotate') roastTurn();
+      else if (act === 'pull') roastPull();
+      else if (act === 'cancel') cancelRoast();
       return;
     }
     if (mode === 'fortune') { // 포춘쿠키: 고르기는 1·2·3, 깨기는 Space·E·Enter 연타(키 반복은 세지 않는다), 종이가 나온 뒤에는 R(한 개 더)·Esc. 이동 키는 아래 이동 핸들러가 모드로 막는다.
@@ -1495,6 +1510,14 @@ if (isMobileUA(navigator.userAgent)) {
     // 클릭하면 그 지점/오브젝트로 걸어간다(도착해도 아무 일도 일어나지 않는다. 동작은 E 키). 앉아 있으면 먼저 일어난다.
     // 행동 중에는 이동 클릭을 무시하고, 쉬는 중의 이동 클릭은 자동을 끈다.
     onClick: (ndc) => {
+      if (mode === 'roasting') { // 굽는 중 클릭: 막대를 한 면 돌린다(이동·다른 클릭은 없다)
+        if (roastInputAction({ type: 'click' }, roast?.phase) === 'rotate') roastTurn();
+        return;
+      }
+      if (mode !== 'transition' && !runner.isBusy() && fire.tintActive()) { // 오로라 불꽃을 클릭하면 원래 불꽃으로 돌아온다(스트레스에는 영향 없음)
+        const hit = pickInteractable(ndc);
+        if (hit?.kind === 'furnace' && fire.clearTint()) return;
+      }
       if (mode === 'fortune' || mode === 'transition' || mode === 'wearing' || mode === 'interview-choice' || mode === 'interview-play' || mode === 'item-choice' || mode === 'roasting' || runner.isBusy()) return;
       const item = pickInteractable(ndc);
       let target = item && interactTarget(item);
@@ -1510,10 +1533,10 @@ if (isMobileUA(navigator.userAgent)) {
       walkTo(target);
     },
     onHover: (ndc, clientX, clientY) => {
-      const item = ndc && mode !== 'transition' && pickInteractable(ndc);
+      const item = ndc && mode !== 'transition' && mode !== 'roasting' && pickInteractable(ndc); // 굽는 중에는 클릭이 돌리기라서 가리키는 안내를 띄우지 않는다
       if (item) {
         renderer.domElement.style.cursor = 'pointer';
-        hud.showTooltip(hoverLabel(item), clientX, clientY);
+        hud.showTooltip(item.kind === 'furnace' && spaceId === 'yard' && fire.tintActive() ? AURORA_RETURN_HINT : hoverLabel(item), clientX, clientY);
       } else {
         renderer.domElement.style.cursor = '';
         hud.hideTooltip();
@@ -1616,9 +1639,14 @@ if (isMobileUA(navigator.userAgent)) {
     // E 키 안내: 포춘 모달 중에는 숨기고, 앉아 있으면 "일어나기", 아니면 가장 가까운 대상의 문구.
     // 빨랫줄 곁은 옷 상태가 정한다: 마른 새 셔츠가 있을 때만 E, 마르는 중이면 누를 수 없는 힌트, 그 밖에는 안내 없음.
     let nextPrompt = null;
+    let promptExtra = null;
     let actionable = true;
     if (promptAllowed(mode)) {
-      if (mode === 'seated') nextPrompt = '일어나기';
+      if (mode === 'seated') {
+        const keys = seatPromptKeys({ mode, meditating: fireMeditating(), typing: false, fireViewOn: fireView.on });
+        nextPrompt = keys.e;
+        promptExtra = keys.v && { key: 'V', label: keys.v }; // 불 옆에서만: E 키캡 옆에 V 안내
+      }
       else {
         const near = nearestInRange(player.position, here().interactables);
         const act = near && actionOf(near);
@@ -1638,10 +1666,10 @@ if (isMobileUA(navigator.userAgent)) {
         if (guide) { nextPrompt = guide; actionable = false; }
       }
     }
-    const promptKey = nextPrompt && (actionable ? nextPrompt : `~${nextPrompt}`);
+    const promptKey = nextPrompt && ((actionable ? nextPrompt : `~${nextPrompt}`) + (promptExtra ? `|${promptExtra.label}` : ''));
     if (promptKey !== promptText) {
       promptText = promptKey;
-      if (nextPrompt) hud.showPrompt(nextPrompt, actionable);
+      if (nextPrompt) hud.showPrompt(nextPrompt, actionable, promptExtra);
       else hud.hidePrompt();
     }
     character?.update(dt);

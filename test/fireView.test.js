@@ -88,3 +88,14 @@ test('1인칭 불멍 중에도 불멍 감소는 계속 흐르고(5초마다), �
   assert.equal(total, PASSIVE.amount * 2);
   assert.equal(passive.update(1 / 60, false), 0);
 });
+
+import { seatPromptKeys } from '../src/logic/fireView.js';
+test('seatPromptKeys: 불 옆에 앉아 불멍 중이면 E 일어나기 + V 불멍 시점, 1인칭이면 V 원래 시점', () => {
+  assert.deepEqual(seatPromptKeys({ mode: 'seated', meditating: true }), { e: '일어나기', v: '불멍 시점' });
+  assert.deepEqual(seatPromptKeys({ mode: 'seated', meditating: true, fireViewOn: true }), { e: '일어나기', v: '원래 시점' });
+});
+test('seatPromptKeys: V 가 먹히지 않는 곳(불에서 먼 자리·글자 입력 중)에는 E 만, 앉아 있지 않거나 굽는 중이면 null', () => {
+  assert.deepEqual(seatPromptKeys({ mode: 'seated', meditating: false }), { e: '일어나기', v: null });
+  assert.deepEqual(seatPromptKeys({ mode: 'seated', meditating: true, typing: true }), { e: '일어나기', v: null });
+  for (const mode of ['free', 'roasting', 'fortune', 'transition', 'item-choice']) assert.equal(seatPromptKeys({ mode, meditating: true }), null);
+});
