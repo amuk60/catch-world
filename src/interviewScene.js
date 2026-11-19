@@ -275,7 +275,7 @@ export function createInterviewScene(ctx) {
       return true;
     },
 
-    // 선택지를 골랐다(0~3): 답변 연출이 시작된다. 지수 감소는 연출의 effect 순간에 일어난다.
+    // 선택지를 골랐다(0~2): 답변 연출이 시작된다. 지수 감소는 연출의 effect 순간에 일어난다.
     pick(i) {
       if (!asking || !asking.question.answers[i]) return false;
       const { question, index, assigned } = asking;

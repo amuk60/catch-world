@@ -35,9 +35,11 @@ export function createCrew({ hud, interviewers, names, ids }) {
         const fx = actorOf(e.who).fx;
         if ('bounce' in e.fx) fx.setBounce(e.fx.bounce);
         if ('tilt' in e.fx) fx.setTilt(e.fx.tilt);
+        if ('yaw' in e.fx) fx.setYaw?.(e.fx.yaw);
         if (e.fx.spin) fx.startSpin(e.fx.spin);
         break;
       }
+      case 'emote': interviewers.emote?.(e.who, e.name); break; // 머리 위 작은 효과(느낌표·땀방울·커피 뿜기 ...)
       case 'stand': interviewers.stand(e.who); break;
       case 'sit': interviewers.sit(e.who); break;
       default: break;
@@ -53,6 +55,7 @@ export function createCrew({ hud, interviewers, names, ids }) {
     actor.setPose(null);
     actor.fx.setBounce(null);
     actor.fx.setTilt(0);
+    actor.fx.setYaw?.(0);
     hud.clearSpeech(id);
     if (job.kind === 'remote' && !job.bubbleShown) showBubble(job); // 끝까지 못 보였으면 보낸 방문자의 말풍선은 지금이라도
   }
@@ -83,10 +86,13 @@ export function createCrew({ hud, interviewers, names, ids }) {
   function startLight(id, spec, owner) {
     jobs.set(id, { kind: 'light', owner, spec });
     const actor = actorOf(id);
-    actor.play(spec.clip);
+    if (spec.clip) actor.play(spec.clip);
     if (spec.clap) actor.setPose('clap');
+    else if (spec.pose) actor.setPose(spec.pose);
     if (spec.bounce) actor.fx.setBounce(spec.bounce);
     if (spec.tilt) actor.fx.setTilt(spec.tilt);
+    if (spec.yaw) actor.fx.setYaw?.(spec.yaw);
+    if (spec.emote) interviewers.emote?.(id, spec.emote);
     if (spec.text) hud.say(id, spec.text, { name: names[id], seconds: spec.textSeconds ?? LIGHT_LINE_SECONDS });
     const name = lightCue(spec);
     if (name) sfx.play(name, owner === 'me' ? { gain: 0.6 } : { remote: true });

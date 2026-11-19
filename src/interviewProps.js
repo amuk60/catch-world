@@ -1,4 +1,4 @@
-// 브라우저 전용: 면접장 돌발행동의 소품·효과(싸고 절차적으로 만든 도형): 마이크·합격 도장·선글라스·종이비행기·"합격" 도장 자국·음표.
+// 브라우저 전용: 면접장 돌발행동의 소품·효과(싸고 절차적으로 만든 도형): 합격 도장·선글라스·종이비행기·"합격" 도장 자국·음표.
 // 면접 장면(interviewScene.js)이 대본의 prop / slam / plane / notes 이벤트를 이 모듈에 넘기고 매 프레임 update(dt) 를 불러 준다. 새 소리는 없다.
 import * as THREE from 'three';
 
@@ -8,7 +8,7 @@ const RING_LIFE = 0.45;
 
 const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.6, ...extra });
 
-function canvasTexture(draw, w, h) {
+export function canvasTexture(draw, w, h) {
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
@@ -38,12 +38,6 @@ export function createInterviewProps({ root, player, interior, interviewers }) {
   player.traverse((o) => { if (!headBone && o.isBone && /^head$/i.test(o.name)) headBone = o; });
 
   // ---- 손에 드는 소품 ----
-  const micGroup = new THREE.Group();
-  const micHandle = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.03, 0.2, 10), mat(0x2b2b33));
-  const micHead = new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 10), mat(0xc9ced6, { metalness: 0.5, roughness: 0.35 }));
-  micHead.position.y = 0.13;
-  micGroup.add(micHandle, micHead);
-
   const stampGroup = new THREE.Group();
   const stampBase = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.04, 0.15), mat(0xb82820));
   const stampGrip = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.12, 10), mat(0x5a2d14));
@@ -62,8 +56,8 @@ export function createInterviewProps({ root, player, interior, interviewers }) {
   }
   shadesGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.025, 0.03), lensMat)); // 코받침(렌즈 사이)
 
-  const holds = { mic: micGroup, stamp: stampGroup, plane: handPlane, shades: shadesGroup };
-  const HAND_OFFSET = { mic: { pos: [0, 0.05, 0], rot: [0.5, 0, 0] }, stamp: { pos: [0, 0.04, 0], rot: [0, 0, 0] }, plane: { pos: [0, 0.05, 0], rot: [0, 0, 0] } };
+  const holds = { stamp: stampGroup, plane: handPlane, shades: shadesGroup };
+  const HAND_OFFSET = { stamp: { pos: [0, 0.04, 0], rot: [0, 0, 0] }, plane: { pos: [0, 0.05, 0], rot: [0, 0, 0] } };
   const shown = new Map(); // 이름 -> 남은 초
 
   function attach(name) {

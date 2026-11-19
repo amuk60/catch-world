@@ -22,9 +22,10 @@ function rig() {
       actor: {
         play: (name) => log.push(['clip', id, name]),
         setPose: (p) => { state[id].pose = p; log.push(['pose', id, p]); },
-        fx: { setTilt: (r) => { state[id].tilt = r; log.push(['tilt', id, r]); }, setBounce: (b) => { state[id].bounce = b; log.push(['bounce', id, b]); }, startSpin: () => log.push(['spin', id]) },
+        fx: { setTilt: (r) => { state[id].tilt = r; log.push(['tilt', id, r]); }, setBounce: (b) => { state[id].bounce = b; log.push(['bounce', id, b]); }, startSpin: () => log.push(['spin', id]), setYaw: (r) => { state[id].yaw = r; log.push(['yaw', id, r]); } },
       },
     }])),
+    emote: (id, name) => log.push(['emote', id, name]),
     stand: (id) => log.push(['stand', id]),
     sit: (id) => log.push(['sit', id]),
   };
@@ -49,8 +50,7 @@ test('crew: 다른 방문자의 답변 — 담당이 질문을 묻고, 1.2초쯤
   assert.equal(says('hr').length, 1, '아직 반응 전');
   run(1.5);
   assert.equal(says('hr').length, 2);
-  assert.ok(INTERVIEW.reactions['정석'].hr.includes(says('hr')[1][2]), '정석 반응 대사');
-  assert.equal(state.hr.pose, 'clap');
+  assert.ok(Object.values(INTERVIEW.reactions['모범형'].hr).flat().includes(says('hr')[1][2]), '모범형 반응 대사');
   run(4);
   assert.equal(state.hr.pose, null, '끝나면 자세를 되돌린다');
   assert.equal(crew.state('hr').kind, 'idle');
@@ -207,7 +207,7 @@ test('crew: clear 는 모든 일을 접고, 기다리던 방문자 말풍선은 
 });
 
 test('crew: 속마음 — 보낸 방문자 머리 위 구름(onThink)이 답변 말풍선 뒤에, 속마음형은 구름 없이 반응만', () => {
-  for (const [a, expectThink] of [[0, true], [3, false]]) {
+  for (const [a, expectThink] of [[0, true], [2, false]]) {
     const { crew, run } = rig();
     const calls = [];
     const scene = ans('hr', 1, a);
@@ -229,4 +229,28 @@ test('crew: 큰절 — 담당 면접관이 숙였다가(tilt) 돌아오고, 끝�
   assert.ok(log.some((e) => e[0] === 'tilt' && e[1] !== 'leader' && e[2] > 0), '다른 면접관의 가벼운 맞절');
   run(6);
   for (const id of IDS) assert.ok(!state[id].tilt, `${id} 숙임 해제`);
+});
+
+// 반응 스타일: 어떤 가중치 뽑기 결과가 나오든 효과(emote)가 면접관 이름으로 그려지고 끝나면 자세·기울임·고개가 모두 돌아온다.
+test('crew: 반응 스타일 — 여러 번 뽑아도 효과·자세·기울임·고개가 그려지고, 끝나면 모두 되돌아온다', () => {
+  const kinds = new Set();
+  for (let seed = 1; seed <= 60; seed++) {
+    const { crew, log, run, state } = rig();
+    const type = seed % 3;
+    crew.remote('hr', 'rA', ans('hr', 3, type, seed));
+    run(9);
+    for (const e of log) if (e[1] === 'hr' || e[0] === 'emote') kinds.add(e[0]);
+    assert.ok(!state.hr.pose && !state.hr.tilt && !state.hr.yaw && !state.hr.bounce, `seed ${seed}: 끝나면 되돌린다`);
+    assert.equal(crew.state('hr').kind, 'idle');
+  }
+  for (const k of ['emote', 'tilt', 'yaw', 'pose', 'bounce']) assert.ok(kinds.has(k), `${k} 가 나온다`);
+});
+
+test('crew: 가벼운 반응(light)은 손 번쩍·고개 돌리기·효과 하나까지 하고(동작 클립이 없어도), 끝나면 되돌린다', () => {
+  const { crew, log, run, state } = rig();
+  assert.equal(crew.light('mentor', { clip: 'emote-yes', pose: 'raise', yaw: 0.4, emote: 'thumb', seconds: 1.2 }, 'me'), true);
+  assert.ok(log.some((e) => e[0] === 'pose' && e[2] === 'raise') && log.some((e) => e[0] === 'yaw' && e[2] === 0.4) && log.some((e) => e[0] === 'emote' && e[2] === 'thumb'));
+  assert.equal(crew.light('hr', { emote: 'dots', seconds: 1 }, 'me'), true);
+  run(3);
+  assert.ok(!state.mentor.pose && !state.mentor.yaw);
 });
