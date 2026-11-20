@@ -122,3 +122,26 @@ test('pickFortuneFor: favors 가 없으면 고르게, 결정적이고, 한 항�
   const r = pickFortuneFor(FORTUNES, () => 0.999999, -1);
   assert.equal(r.fortune, FORTUNES[r.index]);
 });
+
+import { breakFortuneLines } from '../src/logic/fortune.js';
+test('breakFortuneLines: 문장 끝마다 줄을 나누고, 긴 문장은 쉼표 뒤에서 한 번 더 나눈다', () => {
+  assert.equal(breakFortuneLines('오늘은 지원서 한 장만 써도 충분한 하루입니다.'), '오늘은 지원서 한 장만 써도 충분한 하루입니다.');
+  assert.equal(breakFortuneLines('면접 대비를 해 두세요. 이미 절반은 해냈어요!'), '면접 대비를 해 두세요.\n이미 절반은 해냈어요!');
+  assert.equal(breakFortuneLines('귀인은 멀리 있지 않아요, 오늘 열어 본 공고 속에 숨어 있을지도!'), '귀인은 멀리 있지 않아요,\n오늘 열어 본 공고 속에 숨어 있을지도!');
+  for (const f of FORTUNES) assert.equal(breakFortuneLines(f.text).replace(/\n/g, ' ').replace(/\s+/g, ' '), f.text.replace(/\s+/g, ' '), '글자는 그대로, 줄만 바뀐다');
+});
+test('pickFortuneFor: 캐치 링크가 골고루 나오고 최근 링크는 덜 나온다', () => {
+  const links = [...new Set(FORTUNES.map((f) => f.cta.link))];
+  const cnt = Object.fromEntries(links.map((l) => [l, 0]));
+  let seed = 7;
+  const rng = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  let last = -1;
+  const recent = [];
+  const n = 8000;
+  for (let i = 0; i < n; i++) {
+    const p = pickFortuneFor(FORTUNES, rng, last, [], 3, { recentLinks: recent });
+    last = p.index; cnt[p.fortune.cta.link]++;
+    recent.push(p.fortune.cta.link); if (recent.length > 3) recent.shift();
+  }
+  for (const l of links) assert.ok(cnt[l] / n > 0.09 && cnt[l] / n < 0.16, `${l} ${cnt[l] / n}`);
+});

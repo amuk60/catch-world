@@ -1,5 +1,6 @@
 // 브라우저 전용: 포춘쿠키 모달(HUD). 단계: 'pick'(쿠키 3종 고르기) -> 'crack'(연타해서 깨기) -> 'burst'(깨지는 연출) -> 'card'(운세 종이 + 캐치 버튼).
 // 입력(키보드)은 main.js 가 받고, 여기서는 화면과 클릭/터치만 맡는다. 쿠키 그림은 SVG(종류별 색)이고 금·흔들림·부스러기는 CSS 로 그린다.
+import { breakFortuneLines } from './logic/fortune.js';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 // 쿠키 종류별 색: body 몸통, shade 그늘, edge 가장자리 선.
@@ -170,7 +171,7 @@ export function createFortuneModal(container, { onPick = () => {}, onTap = () =>
       cardLink = link?.id ?? null;
       $('.fortune-dest').textContent = link ? `${link.name} · ${link.desc}` : '';
       $('.fortune-cat').textContent = `🥠 ${categoryName}`;
-      $('.fortune-text').textContent = fortune.text;
+      $('.fortune-text').textContent = breakFortuneLines(fortune.text);
       $('.fortune-cta').textContent = ctaLabel;
       burstTimer = setTimeout(() => setStage('card'), BURST_MS);
     },

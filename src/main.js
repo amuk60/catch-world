@@ -268,6 +268,7 @@ if (isMobileUA(navigator.userAgent)) {
   let transitionTarget = null; // 전환이 끝나면 가 있을 공간 id
   let seatItem = null; // 앉아 있는 벤치(layout.interactables 의 항목)
   let lastFortune = -1;
+  const recentFortuneLinks = []; // 최근에 나온 캐치 링크 id(같은 곳이 연달아 나오지 않게)
   let promptText = null;
   const raycaster = new THREE.Raycaster();
   const bubblePoint = new THREE.Vector3();
@@ -1419,8 +1420,10 @@ if (isMobileUA(navigator.userAgent)) {
     hud.fortune.tap(r);
     if (!r.broken) { sfx.play('crackTap'); return; }
     sfx.play('crackBreak');
-    const pick = pickFortuneFor(FORTUNES, Math.random, lastFortune, cookieKind.favors);
+    const pick = pickFortuneFor(FORTUNES, Math.random, lastFortune, cookieKind.favors, 3, { recentLinks: recentFortuneLinks });
     lastFortune = pick.index;
+    recentFortuneLinks.push(pick.fortune.cta.link);
+    if (recentFortuneLinks.length > 3) recentFortuneLinks.shift();
     const { category, cta } = pick.fortune;
     hud.fortune.burst(pick.fortune, FORTUNE_CTA[category].name, cta.label, category, catchLink(cta.link));
     track('fortune_crack', { cookie: cookieKind.id, category, presses: r.presses });
