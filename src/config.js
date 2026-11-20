@@ -245,9 +245,9 @@ export const LAUNDRY_ITEMS = [
     icon: { kind: 'smell', color: '#8fb06a' },
   },
   {
-    id: 'overtime', label: '야근 찌든 때', display: '야근 찌든 때 표백 중',
-    lines: ['야근의 흔적을 박박!', '표백제 한 스푼, 걱정은 두 스푼 빠져라', '새벽 퇴근길 때까지 싹 빼 준다!', '칼퇴 기운을 한 스푼 넣자~'],
-    done: '새하얗게! 야근 찌든 때 표백 완료!',
+    id: 'allnighter', label: '밤샘작업 찌든 때', display: '밤샘작업 찌든 때 표백 중',
+    lines: ['밤샘의 흔적을 박박!', '표백제 한 스푼, 걱정은 두 스푼 빠져라', '새벽까지 쓴 자소서 때, 싹 빼 준다!', '꿀잠 기운을 한 스푼 넣자~'],
+    done: '새하얗게! 밤샘작업 찌든 때 표백 완료!',
     icon: { kind: 'grime', color: '#8a6a46' },
   },
   {
