@@ -780,10 +780,11 @@ export const SUPABASE_ANON_KEY = 'sb_publishable_idHVy3M8kBSOIxkIvAMgCA_I5sQnMvN
 // 첫 접속 튜토리얼과 "오늘의 힐링 코스" 체크리스트 문구·수치. 팀이 자유롭게 고친다(글은 짧게: 카드는 두 줄 안팎). {keys}·{key1} 은 키 모양 그림으로 바뀐다.
 export const TUTORIAL = {
   intro: {
-    title: '취업 준비하며 꽉 찬 스트레스 지수!',
+    title: '캐치월드에 온 것을 환영해요!',
     lines: [
+      '취업 준비하며 꽉 찬 스트레스 지수!',
       '태우고, 세탁하고, 속마음을 표출하며\n마음껏 힐링해 보세요.',
-      '발밑 돌길을 따라 걸으면 곳곳에서 E 키가 떠요.',
+      '발밑 돌길을 따라 걸으면\n곳곳에서 E 키가 떠요.',
     ],
     note: '(캐치와 무관한 학사 과제용 비공식 프로젝트예요)',
     start: '시작하기',
