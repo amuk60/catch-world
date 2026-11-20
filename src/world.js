@@ -287,7 +287,7 @@ export function buildShredder(scene, shredder) {
   const lampMat = new THREE.MeshBasicMaterial({ color: 0x3a3f46 });
   const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.07, 0.03), lampMat);
   lamp.position.set(0.5, SHREDDER_BODY.h - 0.12, SHREDDER_BODY.d / 2 + 0.012);
-  // 명판: 정면(+z, 스폰 쪽)에 크게, 오른쪽 옆면(+x)에 작게. 깊이 겹침 방지로 몸통에서 4mm 띄우고 polygonOffset 을 준다.
+  // 명판: 정면(+z, 스폰 쪽)에만 붙인다. 깊이 겹침 방지로 몸통에서 4mm 띄우고 polygonOffset 을 준다.
   const plateTex = shredderPlateTexture();
   const plateMat = new THREE.MeshStandardMaterial({
     map: plateTex, emissive: 0xffffff, emissiveMap: plateTex, emissiveIntensity: 0.4, roughness: 0.5, metalness: 0,
@@ -295,13 +295,6 @@ export function buildShredder(scene, shredder) {
   });
   const plate = new THREE.Mesh(new THREE.PlaneGeometry(PLATE.w, PLATE.h), plateMat);
   plate.position.set(0, 0.46, SHREDDER_BODY.d / 2 + 0.004);
-  // 옆면 명판 2개(작게): 기본 카메라에서는 정면이 비스듬해 보이므로 양 옆면에도 붙인다. 왼쪽(-x)은 조각 통 위, 높이 0.60.
-  const badges = [1, -1].map((side) => {
-    const b = new THREE.Mesh(new THREE.PlaneGeometry(0.74, 0.74 * (PLATE.h / PLATE.w)), plateMat);
-    b.rotation.y = (side * Math.PI) / 2;
-    b.position.set(side * (SHREDDER_BODY.w / 2 + 0.004), side > 0 ? 0.5 : 0.62, 0);
-    return b;
-  });
   // 조각 통: 바닥 + 벽 4개를 한 덩어리로 합친다.
   const walls = [
     [BIN.w, BIN.wall, BIN.d, 0, BIN.wall / 2, 0], // 바닥
@@ -323,7 +316,7 @@ export function buildShredder(scene, shredder) {
   const tints = [0xffffff, 0xf3efe2, 0xe4e6ee, 0xfaf4dc];
   for (let i = 0; i < total; i++) strips.setColorAt(i, new THREE.Color(tints[i % tints.length]));
   strips.instanceColor.needsUpdate = true;
-  group.add(body, slot, outlet, lamp, plate, ...badges, bin, strips);
+  group.add(body, slot, outlet, lamp, plate, bin, strips);
   group.position.set(shredder.x, 0, shredder.z);
   group.rotation.y = shredder.rotY;
   scene.add(group);

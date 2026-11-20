@@ -157,7 +157,7 @@ test('체크리스트는 저장되어 다음 방문에 이어지고, 깨진 저�
 
 test('config 의 코스 항목: 아이콘·이름·한 줄 힌트가 있고 소개는 3줄 + 안내 문구', () => {
   for (const i of ITEMS) { assert.ok(i.id && i.icon && i.label && i.hint && i.needs.length); assert.ok(i.hint.length <= 24); }
-  assert.equal(TUTORIAL.intro.lines.length, 3);
+  assert.equal(TUTORIAL.intro.lines.length, 2);
   assert.ok(TUTORIAL.intro.note);
 });
 

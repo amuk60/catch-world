@@ -6,12 +6,12 @@ import { createTutorial, createCourse, eventOfTrack, compassArrow, resolveTarget
 const CSS = `
 #tut-dim { position: absolute; inset: 0; background: rgba(10, 10, 20, 0.3); z-index: 3; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity 0.25s, visibility 0.25s; }
 #tut-dim.open { opacity: 1; visibility: visible; }
-#tut-intro { position: absolute; left: 50%; top: 50%; width: 340px; max-width: calc(100% - 32px); box-sizing: border-box; padding: 20px 22px 14px; border-radius: 16px;
+#tut-intro { position: absolute; left: 50%; top: 50%; width: 420px; max-width: calc(100% - 32px); box-sizing: border-box; padding: 20px 22px 14px; border-radius: 16px;
   background: #fdf6e3; color: #3a2f1f; text-align: center; box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45); z-index: 3; opacity: 0; visibility: hidden;
   transform: translate(-50%, -46%); transition: opacity 0.25s, transform 0.25s, visibility 0.25s; }
 #tut-intro.open { opacity: 1; visibility: visible; transform: translate(-50%, -50%); }
-#tut-intro h2 { margin: 0 0 10px; font-size: 20px; line-height: 1.35; word-break: keep-all; }
-#tut-intro p { margin: 0 0 6px; font-size: 14px; line-height: 1.55; word-break: keep-all; }
+#tut-intro h2 { margin: 0 0 10px; font-size: 19px; line-height: 1.35; word-break: keep-all; }
+#tut-intro p { white-space: pre-line; margin: 0 0 10px; font-size: 14px; line-height: 1.55; word-break: keep-all; }
 #tut-intro .tut-note { margin: 10px 0 14px; font-size: 12px; color: #8a7a5f; }
 #tut-intro .tut-go { width: 100%; padding: 11px 0; border: 0; border-radius: 999px; background: #e8833a; color: #fff; font: inherit; font-size: 16px; font-weight: 700; cursor: pointer; box-shadow: 0 3px 0 #b9611f; }
 #tut-intro .tut-go:hover { background: #f0913f; }
