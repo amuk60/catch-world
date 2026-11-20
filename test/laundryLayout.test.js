@@ -26,12 +26,12 @@ const circlesOf = (r) => L.obstacles.filter((o) => o.radius === r);
 const buildingCircles = circlesOf(laundry.obstacleRadius);
 
 // ---- 기존 배치는 그대로 ----
-test('세탁소를 추가해도 기존 배치(나무·덤불·바위·랜턴·소각로 장식·간판·파쇄기·위로 오브젝트·통나무 자리·장애물 34개)는 기본 시드에서 그대로다(세탁기·빨랫줄은 실내로 옮겼다)', () => {
+test('세탁소를 추가해도 기존 배치(나무·덤불·바위·랜턴·소각로 장식·간판·파쇄기·위로 오브젝트·통나무 자리·건물 앞 장애물 36개)는 기본 시드에서 그대로다(세탁기·빨랫줄은 실내로 옮겼다)', () => {
   const before = {
     trees: L.trees, bushes: L.bushes, rocks: L.rocks, lanterns: L.lanterns, furnaceItems: L.furnaceItems, sign: L.sign, shredder: L.shredder,
-    interactables: L.interactables.slice(0, 10), obstacles: L.obstacles.slice(0, 34), buildingSlots: L.buildingSlots, plaza: L.plaza,
+    interactables: L.interactables.slice(0, 10), obstacles: L.obstacles.slice(0, 36), buildingSlots: L.buildingSlots, plaza: L.plaza,
   };
-  assert.equal(createHash('sha1').update(JSON.stringify(before)).digest('hex'), 'f429f00553a4e125b14d16a0c1065867a00a216a');
+  assert.equal(createHash('sha1').update(JSON.stringify(before)).digest('hex'), 'bea11ac08673dbd3a3ef9d66ae926ef62828dff4');
   assert.equal(L.interactables.length, 14); // 세탁소 건물·문과 면접장 건물·문이 추가됐다(앞의 10개 = 소각로·위로 3·통나무 자리 6은 그대로)
 });
 

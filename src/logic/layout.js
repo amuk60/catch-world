@@ -1,5 +1,6 @@
 // 마당 장식 배치 계산 (순수 데이터). 좌표는 지면(x,z) 월드 단위, y=0.
-// 구역(+x = 동쪽): 서쪽 숲+소각로 (x <= ZONES.forestMaxX), 가운데 완충 잔디밭, 동쪽 도시 광장 (x >= ZONES.cityMinX).
+// 구역(+x = 동쪽): 서쪽 숲 (x <= ZONES.forestMaxX), 가운데 완충 잔디밭(소각로·스폰), 동쪽 도시 광장 (x >= ZONES.cityMinX).
+// 랜드마크 배치(사용자 요청): 소각로(캠프파이어)가 가운데이고, 동쪽으로 포춘쿠키 상점(면접장 북서쪽 옆) · 조용한 조각상(면접장과 세탁소 사이) · 파쇄기(세탁소 남서쪽 옆)가 소각로를 중심으로 반원을 그리며 둘러선다.
 import { YARD, FURNACE, PLAYER, SPAWN, ZONES } from '../config.js';
 import { mulberry32, rand, pick } from './rng.js';
 import { BUILDING_NAMES } from './signText.js';
@@ -39,9 +40,11 @@ const SMALL_ROCKS = ['rock_smallA', 'rock_smallB', 'rock_smallC'];
 const CITY_RING_KEEP = 0.35; // 도시 쪽(x > 2.5) 안쪽 고리 나무 유지 비율
 const CITY_BAND_KEEP = 0.3; // 도시 쪽(x > 4) 바깥 띠 나무 유지 비율
 const MAX_ATTEMPTS = 200;
-const FOREST_INNER_MAX_X = ZONES.forestMaxX - 1; // 숲 내부 장식 x 상한(-2.5): 완충 구역과 여유를 둔다.
+const FOREST_INNER_MAX_X = ZONES.forestMaxX - 1; // 숲 내부 장식 x 상한(-4.5): 완충 구역(소각로 잔디밭)과 여유를 둔다.
+// 소각로 둘레 빈 풀밭: 숲 내부 나무는 소각로 중심에서 FIRE_CLEAR.tree, 덤불·바위는 FIRE_CLEAR.other 이상 떨어진다(통나무 고리 반지름 3.4 + 여유).
+const FIRE_CLEAR = { tree: 5.6, other: 4.6 };
 
-// 간판: 소각로 북쪽(-z). 기본 카메라(+x,+z 쪽)를 비스듬히 향한다.
+// 간판: 소각로 북쪽(-z). 기본 카메라(+x,+z 쪽)를 비스듬히 향한다(소각로를 따라 움직인다).
 const SIGN_KEEP_OUT = 2.8; // 숲 내부 장식과의 최소 거리
 const SIGN_OBSTACLE_RADIUS = 0.7; // 간판 충돌 원 반경(가운데 + 양 끝 3개)
 
@@ -50,16 +53,17 @@ const SIGN_OBSTACLE_RADIUS = 0.7; // 간판 충돌 원 반경(가운데 + 양 �
 // 노점은 로컬 x축을 따라 가로 2.0, 앞(+z)이 기본 카메라 쪽이다. 충돌은 계산대 가운데(위로 오브젝트 원)와 양 끝 원 2개.
 const COMFORT_RADIUS = 0.5;
 const COMFORT_KEEP_OUT = 2.0; // 숲 내부 장식과의 최소 거리
+// 상점·조각상 자리: 소각로에서 약 11 떨어진 반원 위(상점은 면접장 북서쪽 앞마당, 조각상은 면접장과 세탁소 사이 골목 가운데). 상점 정면(로컬 +z)은 남쪽(스폰·기본 카메라 쪽)이다.
 const STALL = { width: 2.0, depth: 0.9, endOffset: 0.8, endRadius: 0.55, interactRange: 2.3 }; // 쿠키 노점 크기·양 끝 충돌 원
 const INTERACT_MARGIN = 0.8; // 반경 + 플레이어 반경 위에 더하는 상호작용 여유
 const COMFORT_OBJECTS = [
   { name: 'stump_roundDetailed', label: '쉬어가는 그루터기', kind: 'comfort', messageIndex: 0, x: -9.0, z: 5.0, scale: 3.5, rotY: 0.6 },
-  { stall: true, label: BUILDING_NAMES.fortune, kind: 'fortune', x: 0.8, z: -6.5, rotY: Math.PI / 4 },
-  { name: 'statue_head', label: '조용한 조각상', kind: 'comfort', messageIndex: 2, x: 6.0, z: 9.0, scale: 1.3, rotY: Math.PI / 4 },
+  { stall: true, label: BUILDING_NAMES.fortune, kind: 'fortune', x: 4.6, z: -9.2, rotY: 0 },
+  { name: 'statue_head', label: '조용한 조각상', kind: 'comfort', messageIndex: 2, x: 8.8, z: 0, scale: 1.3, rotY: -Math.PI / 2 }, // 얼굴이 서쪽(소각로·광장 쪽)
 ];
 
 // 소각로 곁 통나무 자리 6개: 소각로를 둘러싼 고리(반지름 3.0~3.4)에 눕힌 통나무(Nature Kit log_large: 길이 1.0 x 높이 0.417 x 너비 ~0.55, 길이 방향이 로컬 x, 원점은 중심 아래)를 접선 방향으로 놓는다.
-// 기준 각도(소각로에서 atan2(z, x), 도)는 걸어 들어갈 틈 두 곳을 비워 둔다: 스폰(35도)·파쇄기(70~80도) 쪽 틈(358~112도)과 간판(-90도) 쪽 틈(226~322도). 각도·반지름·크기·접선 기울기는 시드로 조금씩 흔들되 시드 흐름은 따로 쓴다(마당의 나무·덤불·바위 배치는 그대로).
+// 기준 각도(소각로에서 atan2(z, x), 도)는 걸어 들어갈 틈 두 곳을 비워 둔다: 스폰(약 64도)·파쇄기(약 54도) 쪽 틈(358~112도)과 간판(-90도) 쪽 틈(226~322도). 각도·반지름·크기·접선 기울기는 시드로 조금씩 흔들되 시드 흐름은 따로 쓴다(마당의 나무·덤불·바위 배치는 그대로).
 // 앉는 높이는 통나무 위(높이 x seatTopRatio), 일어서는 자리는 고리 바깥쪽이다.
 const LOG_SEAT = {
   model: 'log_large', length: 1.0, height: 0.4167, label: '통나무 의자',
@@ -74,12 +78,15 @@ const BENCH_CLEARANCE = 1.7; // 통나무·간판과의 선호 최소 거리(규
 // 카메라(+x,+z 쪽)에서 볼 때 소각로 양옆이 되는 방향(각도: atan2(z, x)).
 const BENCH_PREFERRED_ANGLE = -Math.PI / 4;
 
-// 파쇄기: 소각로와 따로, 6~8단위 떨어진 숲 남쪽 자리(기본 카메라에서 잘 보이고 스폰 쪽 길목에 있다). 모든 배치(벤치·통나무·나무·덤불·바위·간판·위로 오브젝트)가 끝난 뒤에,
-// 선호 방향(소각로에서 atan2(z, x), 남쪽이 +z)과 선호 거리 순서로 훑어, 파쇄기 자리와 그 앞 작업 자리(stand)가 모두 다른 배치물에서 PROP_CLEARANCE 이상 떨어진 첫 자리를 쓴다(없으면 가장 여유 있는 자리).
+// 파쇄기: 소각로와 따로, 소각로에서 약 11 떨어진 세탁소 남서쪽 옆 자리(상점·조각상과 함께 소각로를 둘러싼 반원의 남쪽 끝). 모든 배치(벤치·통나무·나무·덤불·바위·간판·위로 오브젝트)가 끝난 뒤에,
+// 선호 방향(소각로에서 atan2(z, x), 남쪽이 +z)과 선호 거리 순서로 훑어, 파쇄기 자리와 그 앞 작업 자리(stand)가 모두 다른 배치물(가로등 포함)에서 PROP_CLEARANCE 이상, 건물 벽에서 PROP_BUILDING_GAP 이상 떨어진 첫 자리를 쓴다(없으면 가장 여유 있는 자리).
 // 기존 배치의 난수 흐름을 건드리지 않아 벤치·통나무·나무는 그대로다. 정면(+z)은 스폰 쪽이고, 작업 자리는 정면으로 standDistance 만큼 나온 곳(투입구 바로 앞)이다. 조각 통은 정면 기준 왼쪽(-x)에 붙는다.
-const SHREDDER = { radius: 0.7, angle: (78 * Math.PI) / 180, distances: [6.8, 6.4, 7.2, 6.0, 7.6, 7.9], standDistance: 1.1 };
+const SHREDDER = { radius: 0.7, angle: (54 * Math.PI) / 180, distances: [11.3, 10.9, 11.7, 10.5, 12.1], standDistance: 1.1 };
+const PROP_BUILDING_GAP = 1.6; // 파쇄기·작업 자리 중심과 건물 벽 사이 최소 거리(건물에 붙지 않게)
 const PROP_CLEARANCE = 1.5; // 다른 배치물과의 최소 거리(중심 사이)
 const PROP_ANGLE_STEP = Math.PI / 36; // 5도
+
+const LANTERNS = [[3.2, -6], [6.4, -1.9], [6.4, 1.9], [3.2, 6]]; // 랜턴 자리(x, z)
 
 const nature = (name, x, z, scale, rotY) => ({ pack: 'nature', name, x, z, scale, rotY });
 
@@ -154,11 +161,11 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
     rand(rng, 0, Math.PI * 2);
   }
 
-  // 랜턴: 광장 서쪽 가장자리.
+  // 랜턴: 광장 서쪽 가장자리 2개 + 면접장과 세탁소 사이 골목 입구(조각상 앞) 양옆 2개. 스폰에서 건물 문·상점·파쇄기로 가는 길목은 비워 둔다.
   const lanterns = [];
-  for (const z of [-6, -2, 2, 6]) {
-    lanterns.push({ pack: 'fantasy', name: 'lantern', x: 3.2, z, scale: 1.0, rotY: 0 });
-    obstacles.push({ x: 3.2, z, radius: 0.3 });
+  for (const [x, z] of LANTERNS) {
+    lanterns.push({ pack: 'fantasy', name: 'lantern', x, z, scale: 1.0, rotY: 0 });
+    obstacles.push({ x, z, radius: 0.3 });
   }
 
   // 간판 (SIGN_KEEP_OUT 만큼 숲 내부 장식을 비운다). 충돌 원은 판의 로컬 x축을 따라 가운데와 양 끝에 둔다.
@@ -229,12 +236,12 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
 
   scatterForest({
     count: params.interiorTrees, names: [...FALL_TREES, ...FALL_TREES, ...FALL_TREES, ...PINES],
-    smin: 1.9, smax: 2.5, xmin: -11, obstacleRadius: 0.4, minFurnace: 4.5, minSpawn: 2.5, gap: 2.2, into: trees,
+    smin: 1.9, smax: 2.5, xmin: -11, obstacleRadius: 0.4, minFurnace: FIRE_CLEAR.tree, minSpawn: 2.5, gap: 2.2, into: trees,
   });
   const bushes = [];
-  scatterForest({ count: params.bushes, names: BUSHES, smin: 2.6, smax: 3.2, xmin: -walk, minFurnace: 3.2, gap: 1.2, into: bushes });
+  scatterForest({ count: params.bushes, names: BUSHES, smin: 2.6, smax: 3.2, xmin: -walk, minFurnace: FIRE_CLEAR.other, gap: 1.2, into: bushes });
   const rocks = [];
-  scatterForest({ count: params.rocks, names: SMALL_ROCKS, smin: 2.5, smax: 3, xmin: -walk, obstacleRadius: 0.4, minFurnace: 3.2, gap: 1.2, into: rocks });
+  scatterForest({ count: params.rocks, names: SMALL_ROCKS, smin: 2.5, smax: 3, xmin: -walk, obstacleRadius: 0.4, minFurnace: FIRE_CLEAR.other, gap: 1.2, into: rocks });
 
   // 통나무 자리 6개: 자기 시드 흐름(마당 배치와 따로). 나무·덤불·바위와 겹치면 각도를 비켜 보고, 그래도 안 되면 덤불·바위를 치운다.
   const logRng = mulberry32((seed ^ 0x5eed10c5) >>> 0);
@@ -276,8 +283,17 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
 
   // 파쇄기(소각로와 따로 떨어진 자리) + 그 앞 작업 자리.
   const fixed = [
-    ...interactables.filter((i) => i.kind !== 'furnace'), ...trees, ...bushes, ...rocks, ...signCircles,
+    ...interactables.filter((i) => i.kind !== 'furnace'), ...trees, ...bushes, ...rocks, ...signCircles, ...lanterns,
   ];
+  // 건물 벽(발자국 직사각형)까지의 거리. 건물은 아직 장애물에 들어가기 전이라 정면 데이터로 계산한다.
+  const facades = BUILDING_DEFS.map((def) => buildingFacade(def.id));
+  const buildingGap = (p) => Math.min(...facades.map(({ centre, building: b }) => {
+    const dx = p.x - centre.x;
+    const dz = p.z - centre.z;
+    const lx = dx * Math.cos(b.rotY) - dz * Math.sin(b.rotY); // 월드 -> 건물 로컬(정면 벽을 따라)
+    const lz = dx * Math.sin(b.rotY) + dz * Math.cos(b.rotY); // 앞쪽
+    return Math.hypot(Math.max(0, Math.abs(lx) - b.width / 2), Math.max(0, Math.abs(lz) - b.depth / 2));
+  }));
   const inBounds = (p) => Math.min(walk - Math.abs(p.x), walkZ - Math.abs(p.z));
   function placeProp(spec) {
     let best = null;
@@ -292,7 +308,7 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
           ...fixed.map((o) => Math.hypot(p.x - o.x, p.z - o.z) - PROP_CLEARANCE),
           ...fixed.map((o) => Math.hypot(stand.x - o.x, stand.z - o.z) - PROP_CLEARANCE + 0.3),
           Math.hypot(p.x - SPAWN.x, p.z - SPAWN.z) - 4,
-          inBounds(p), inBounds(stand), ZONES.forestMaxX - p.x,
+          inBounds(p), inBounds(stand), buildingGap(p) - PROP_BUILDING_GAP, buildingGap(stand) - PROP_BUILDING_GAP,
         );
         if (clearance > bestClearance) { bestClearance = clearance; best = { p, rotY, stand }; }
         if (clearance >= 0) break;

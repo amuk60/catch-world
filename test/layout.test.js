@@ -30,11 +30,11 @@ test('없앤 항목은 결과에 없다', () => {
   );
 });
 
-test('걸을 수 있는 영역 안의 나무는 숲 내부 나무뿐: x∈[-11,-2.5], 소각로 4.5 이상, 스폰 2.5 이상', () => {
+test('걸을 수 있는 영역 안의 나무는 숲 내부 나무뿐: x∈[-11,-4.5], 소각로 5.6 이상(불 둘레 빈 풀밭), 스폰 2.5 이상', () => {
   assert.ok(interiorTrees.length >= 6, `interior ${interiorTrees.length}`);
   for (const t of interiorTrees) {
-    assert.ok(t.x >= -11 && t.x <= -2.5, `x ${t.x}`);
-    assert.ok(d(t, FURNACE) >= 4.5, 'furnace');
+    assert.ok(t.x >= -11 && t.x <= ZONES.forestMaxX - 1 + 1e-9, `x ${t.x}`);
+    assert.ok(d(t, FURNACE) >= 5.6, 'furnace');
     assert.ok(d(t, SPAWN) >= 2.5, 'spawn');
   }
 });
@@ -69,16 +69,16 @@ test('나무·덤불·바위는 광장과 완충 구역 안에 없다', () => {
   }
 });
 
-test('덤불과 작은 바위: 숲 구역, 소각로 3.2 이상', () => {
+test('덤불과 작은 바위: 숲 구역, 소각로 4.6 이상(통나무 고리 밖)', () => {
   assert.ok(L.bushes.length >= 4 && L.bushes.length <= 6, `bushes ${L.bushes.length}`);
   assert.ok(L.rocks.length >= 2 && L.rocks.length <= 3, `rocks ${L.rocks.length}`);
-  for (const o of forestOnly) assert.ok(d(o, FURNACE) >= 3.2, 'furnace');
+  for (const o of forestOnly) assert.ok(d(o, FURNACE) >= 4.6, 'furnace');
   for (const r of L.rocks) assert.match(r.name, /^rock_small[ABC]$/);
 });
 
-test('랜턴은 정확히 4개, x=3.2, z=-6,-2,2,6', () => {
+test('랜턴은 정확히 4개: 광장 서쪽 가장자리 2개(z=-6, 6) + 면접장과 세탁소 사이 골목 입구 양옆 2개', () => {
   assert.equal(L.lanterns.length, 4);
-  assert.deepEqual(L.lanterns.map((l) => [l.x, l.z]), [[3.2, -6], [3.2, -2], [3.2, 2], [3.2, 6]]);
+  assert.deepEqual(L.lanterns.map((l) => [l.x, l.z]), [[3.2, -6], [6.4, -1.9], [6.4, 1.9], [3.2, 6]]);
 });
 
 test('건물 터 2개: 광장 안에 완전히 들어가고 서로 겹치지 않는다', () => {
@@ -93,8 +93,9 @@ test('건물 터 2개: 광장 안에 완전히 들어가고 서로 겹치지 않
   assert.ok(!overlap);
 });
 
-test('소각로는 숲 구역에 있고 둘레 장식이 있다', () => {
-  assert.ok(FURNACE.x <= ZONES.forestMaxX);
+test('소각로는 마당 가운데 완충 잔디밭(숲과 광장 사이)에 있고 둘레 장식이 있다', () => {
+  assert.ok(FURNACE.x > ZONES.forestMaxX && FURNACE.x < ZONES.cityMinX);
+  assert.ok(FURNACE.x + 3.4 + 0.5 < L.plaza.x1, '통나무 고리가 광장(포장)에 걸치지 않는다');
   assert.equal(L.furnaceItems.length, 1); // 장식 나무토막은 통나무 자리 6개가 대신한다
   const [fire] = L.furnaceItems;
   assert.equal(fire.name, 'campfire_stones');
@@ -144,22 +145,22 @@ test('여러 시드에서도 규칙이 유지된다', () => {
   for (const seed of [1, 2, 3, 42, 777, 20261111]) {
     const l = buildLayout(seed);
     for (const t of l.trees.filter(inWalk)) {
-      assert.ok(t.x >= -11 && t.x <= -2.5 && d(t, FURNACE) >= 4.5 && d(t, SPAWN) >= 2.5, `seed ${seed}`);
+      assert.ok(t.x >= -11 && t.x <= ZONES.forestMaxX - 1 + 1e-9 && d(t, FURNACE) >= 5.6 && d(t, SPAWN) >= 2.5, `seed ${seed}`);
     }
-    for (const o of [...l.bushes, ...l.rocks]) assert.ok(o.x <= -2.5 && d(o, FURNACE) >= 3.2, `seed ${seed}`);
+    for (const o of [...l.bushes, ...l.rocks]) assert.ok(o.x <= ZONES.forestMaxX - 1 + 1e-9 && d(o, FURNACE) >= 4.6, `seed ${seed}`);
   }
 });
 
 // 간판 로컬 x축 위의 월드 좌표(three.js 의 rotation.y: 로컬 +x -> (cos, -sin)).
 const signPoint = (s, a) => ({ x: s.x + a * Math.cos(s.rotY), z: s.z - a * Math.sin(s.rotY) });
 
-test('간판: 값, 숲 구역, 걸을 수 있는 영역 안, 소각로에서 3 이상', () => {
+test('간판: 값(소각로 북쪽), 광장 밖, 걸을 수 있는 영역 안, 소각로에서 3 이상', () => {
   const s = L.sign;
   assert.deepEqual(s, {
     x: FURNACE.x, z: FURNACE.z - 4.3, rotY: Math.PI / 4, width: 3.2, height: 1.2, text: 'Catch World', obstacleRadius: 0.7,
   });
   assert.ok(inWalk(s), 'walkable');
-  assert.ok(s.x <= ZONES.forestMaxX, 'forest zone');
+  assert.ok(s.x < ZONES.cityMinX, 'not in city');
   assert.ok(d(s, FURNACE) >= 3);
 });
 
@@ -211,16 +212,22 @@ test('상호작용 대상 14개: 소각로 + 위로 오브젝트 3개 + 통나�
   });
   assert.deepEqual(comfort.map((c) => [c.item?.name ?? null, c.label, c.x, c.z, c.item?.scale ?? null]), [
     ['stump_roundDetailed', '쉬어가는 그루터기', -9.0, 5.0, 3.5],
-    [null, '포춘쿠키 상점', 0.8, -6.5, null], // 모델 대신 src/fortuneStall.js 가 만든다
-    ['statue_head', '조용한 조각상', 6.0, 9.0, 1.3],
+    [null, '포춘쿠키 상점', 4.6, -9.2, null], // 모델 대신 src/fortuneStall.js 가 만든다. 면접장 북서쪽 옆
+    ['statue_head', '조용한 조각상', 8.8, 0, 1.3], // 면접장과 세탁소 사이
   ]);
 });
 
 test('위로 오브젝트: 구역, 걸을 수 있는 영역, 소각로·큰 간판·스폰과의 거리', () => {
-  const [forest, buffer, city] = comfort;
+  const [forest, stall, statue] = comfort;
   assert.ok(forest.x <= ZONES.forestMaxX, 'forest');
-  assert.ok(buffer.x > ZONES.forestMaxX && buffer.x < ZONES.cityMinX, 'buffer');
-  assert.ok(city.x >= ZONES.cityMinX, 'city');
+  assert.ok(stall.x >= ZONES.cityMinX && statue.x >= ZONES.cityMinX, 'city'); // 상점·조각상은 광장(건물 곁)
+  // 조각상은 면접장과 세탁소 사이(두 건물 벽 사이 골목 가운데)에 있다.
+  const [laundryB, interviewB] = L.buildings;
+  assert.ok(statue.z > interviewB.z + interviewB.width / 2 && statue.z < laundryB.z - laundryB.width / 2, 'statue between buildings');
+  assert.ok(statue.x > laundryB.x - laundryB.depth / 2 && statue.x < laundryB.x + laundryB.depth / 2, 'statue in the alley');
+  // 상점·조각상·파쇄기는 소각로를 중심으로 반원(반지름 차이 1.5 이내)을 그린다.
+  const radii = [stall, statue, L.shredder].map((o) => d(o, FURNACE));
+  assert.ok(Math.max(...radii) - Math.min(...radii) <= 1.5, `arc ${radii}`);
   for (const c of comfort) {
     assert.ok(inWalk(c), c.id);
     assert.ok(d(c, FURNACE) >= 3, `${c.id} furnace`);
@@ -294,7 +301,7 @@ function assertLogSeatRules(l, seed) {
     assert.ok(Math.abs(d(s.seat.stand, s) - 1.1) < 1e-9 && d(s.seat.stand, FURNACE) > d(s, FURNACE), `${tag} ${s.id} stand outside`);
     assert.ok(s.interactRange >= s.radius + PLAYER.radius + 0.8 - 1e-9, tag);
     assert.ok(inWalk(s), `${tag} walkable`);
-    assert.ok(s.x <= ZONES.forestMaxX, `${tag} forest zone`);
+    assert.ok(s.x + 0.5 < l.plaza.x1, `${tag} not on plaza`);
     assert.ok(d(s, SPAWN) >= 3, `${tag} spawn`);
     assert.ok(d(s, l.shredder) >= 3, `${tag} shredder`);
     for (const c of signCircles(l)) assert.ok(d(s, c) >= 1.4, `${tag} ${s.id} sign`);
@@ -349,7 +356,7 @@ test('통나무 자리 위치는 결정적이다', () => {
 
 test('마당 나무·바위·파쇄기 배치는 통나무 자리를 넣기 전과 같다(시드 흐름 유지; 통나무와 겹친 덤불·바위만 치워질 수 있다)', () => {
   const sha = createHash('sha1').update(JSON.stringify({ trees: L.trees, rocks: L.rocks, shredder: L.shredder })).digest('hex');
-  assert.equal(sha, '519ed35aee17e1150fae640e9aeae6aa893117c6');
+  assert.equal(sha, '80741ebf6cb540ffc3bbd4f54ff1c2d7f6b072ae');
 });
 
 // ---- 파쇄기(소각로 곁의 상시 소품) ----
@@ -362,10 +369,17 @@ function assertShredderRules(l, seed) {
   assert.equal(shredder.radius, 0.7, tag);
   assert.deepEqual(Object.keys(shredder).sort(), ['radius', 'rotY', 'stand', 'x', 'z'], tag);
   const df = d(shredder, FURNACE);
-  assert.ok(df >= 6.0 - 1e-9 && df <= 8.0 + 1e-9, `${tag} shredder-furnace ${df}`); // 소각로와 따로 떨어져 있다(6~8단위)
+  assert.ok(df >= 10.0 - 1e-9 && df <= 12.5 + 1e-9, `${tag} shredder-furnace ${df}`); // 소각로와 따로 떨어진 반원 위(약 11단위)
   const walkable = (t) => Math.abs(t.x) <= YARD.width / 2 - (PLAYER.radius + 0.5) && Math.abs(t.z) <= YARD.depth / 2 - (PLAYER.radius + 0.5);
   assert.ok(walkable(shredder), `${tag} walkable`);
-  assert.ok(shredder.x <= ZONES.forestMaxX, `${tag} forest zone`);
+  // 세탁소 남서쪽 옆: 세탁소 앞면 벽보다 서쪽, 세탁소 쪽(남쪽 절반), 건물 벽에서 1.6 이상 떨어져 붙지 않는다.
+  const laundryB = l.buildings.find((b) => b.id === 'laundry');
+  assert.ok(shredder.z > 0 && shredder.x < laundryB.x - laundryB.depth / 2, `${tag} beside laundry`);
+  for (const b of l.buildings) {
+    const gx = Math.max(0, Math.abs(shredder.x - b.x) - b.depth / 2);
+    const gz = Math.max(0, Math.abs(shredder.z - b.z) - b.width / 2);
+    assert.ok(Math.hypot(gx, gz) >= 1.6 - 1e-9, `${tag} ${b.id} wall gap`);
+  }
   assert.ok(d(shredder, SPAWN) >= shredder.radius + PLAYER.radius, `${tag} spawn`);
   for (const it of l.interactables.filter((i) => i.kind !== 'furnace')) assert.ok(d(shredder, it) >= 1.5, `${tag} interactable ${it.id}`);
   for (const t of l.trees) assert.ok(d(shredder, t) >= 1.5, `${tag} tree`);
@@ -384,12 +398,12 @@ test('종이 더미는 없다(layout 키 목록에도, 반경 0.5 장애물에�
   assert.equal(L.obstacles.filter((o) => o.radius === 0.5 && !comfort.some((c) => c.x === o.x && c.z === o.z) && !seats.some((l) => d(l, o) <= 1.0)).length, 0); // 통나무 자리의 양 끝 원은 제외
 });
 
-test('파쇄기: 기본 시드의 위치는 소각로에서 6~8단위 떨어진 남쪽 숲 자리의 고정값(정면은 스폰 쪽)', () => {
-  assert.equal(L.shredder.x, -4.8574976425397);
-  assert.equal(L.shredder.z, 6.227366045797065);
-  assert.equal(L.shredder.rotY, 2.1572344290438976);
+test('파쇄기: 기본 시드의 위치는 세탁소 남서쪽 옆(소각로에서 약 11)의 고정값(정면은 스폰 쪽)', () => {
+  assert.equal(L.shredder.x, 4.441973350904947);
+  assert.equal(L.shredder.z, 8.541892036436908);
+  assert.equal(L.shredder.rotY, -2.31557670324712);
   assert.equal(L.shredder.radius, 0.7);
-  assert.deepEqual(L.shredder.stand, { x: -3.941288827181128, z: 5.618628494253509, rotY: 5.298827082633691 });
+  assert.deepEqual(L.shredder.stand, { x: 3.633212889356183, z: 7.796300649794445, rotY: 0.8260159503426729 });
 });
 
 test('파쇄기: 값, 소각로와의 거리, 걸을 수 있는 영역, 스폰 쪽 정면과 작업 자리', () => {
@@ -411,10 +425,10 @@ test('파쇄기 배치는 결정적이다', () => {
 
 test('서 있을 수 있는 자리: 파쇄기 구역 안에서 장애물 밖에 설 수 있는 점이 충분하고 작업 자리는 소각로(태우기) 범위 밖이다', () => {
   const all = [FURNACE, ...L.obstacles];
-  const free = (p) => all.every((o) => d(p, o) >= o.radius + PLAYER.radius) && inWalk(p);
+  const free = (p) => all.every((o) => d(p, o) >= o.radius + PLAYER.radius - 1e-9) && inWalk(p);
   let shredderZone = 0;
   let overlap = 0;
-  for (let x = -12; x <= 2; x += 0.1) {
+  for (let x = -12; x <= 8; x += 0.1) {
     for (let z = -8; z <= 10; z += 0.1) {
       const p = { x, z };
       if (!free(p) || d(p, L.shredder) > SHREDDER_RANGE) continue;
@@ -429,13 +443,15 @@ test('서 있을 수 있는 자리: 파쇄기 구역 안에서 장애물 밖에 
 });
 
 // ---- 행운의 쿠키 노점 ----
-test('쿠키 노점: 완충 구역, 스폰에서 보이는 거리, 양 끝 원 2개가 계산대 양 끝(판의 x축)에 있다', () => {
+test('쿠키 노점: 면접장 북서쪽 옆(광장, 건물에 붙지 않음), 스폰에서 보이는 거리, 양 끝 원 2개가 계산대 양 끝(판의 x축)에 있다', () => {
   const st = L.stall;
   const fortuneI = L.interactables.find((i) => i.kind === 'fortune');
-  assert.deepEqual([st.x, st.z, st.rotY], [fortuneI.x, fortuneI.z, Math.PI / 4]);
-  assert.ok(st.x > ZONES.forestMaxX && st.x < ZONES.cityMinX, 'buffer');
+  assert.deepEqual([st.x, st.z, st.rotY], [fortuneI.x, fortuneI.z, 0]); // 정면(로컬 +z)이 남쪽(스폰·기본 카메라 쪽)
+  assert.ok(st.x >= ZONES.cityMinX, 'city');
+  const interviewB = L.buildings.find((b) => b.id === 'interview');
+  assert.ok(st.z < interviewB.z && st.x < interviewB.x - interviewB.depth / 2 - 1.2, 'beside interview, not touching');
   assert.ok(inWalk(st));
-  assert.ok(d(st, SPAWN) >= 6 && d(st, SPAWN) <= 14);
+  assert.ok(d(st, SPAWN) >= 6 && d(st, SPAWN) <= 16);
   assert.ok(d(st, L.sign) >= 3 && d(st, FURNACE) >= 5);
   const ends = L.obstacles.filter((o) => o.radius === 0.55);
   assert.equal(ends.length, 2);

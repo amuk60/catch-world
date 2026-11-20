@@ -116,14 +116,14 @@ export const OCCLUSION = { radius: 2.0, minT: 0.08, maxT: 0.97, minScale: 0.2 };
 // 클릭 판정: 이동 px와 시간(ms)이 모두 이하면 클릭, 넘으면 드래그.
 export const CLICK = { maxMovePx: 6, maxMs: 350 };
 
-// 임시 소각로(장애물).
-export const FURNACE = { x: -6.5, z: -1.5, radius: 1.6 };
+// 소각로(캠프파이어, 장애물). 마당 가운데 잔디밭(숲과 광장 사이)에 있고, 포춘쿠키 상점·조용한 조각상·파쇄기가 동쪽으로 반원을 그리며 둘러선다(logic/layout.js).
+export const FURNACE = { x: -2.2, z: -0.6, radius: 1.6 };
 
-// 플레이어 시작 위치. 숲과 도시 사이 완충 구역의 열린 잔디밭.
-export const SPAWN = { x: 0, z: 3 };
+// 플레이어 시작 위치. 소각로 남남동쪽, 통나무 고리 밖의 열린 잔디밭(기본 카메라가 남동쪽에서 보므로 불이 화면 가운데 위쪽에 보인다).
+export const SPAWN = { x: 0.6, z: 5.0 };
 
-// 구역 경계(world x축, +x = 동쪽). x <= forestMaxX 는 숲+소각로, x >= cityMinX 는 도시, 그 사이는 완충 구역.
-export const ZONES = { forestMaxX: -1.5, cityMinX: 2.5 };
+// 구역 경계(world x축, +x = 동쪽). x <= forestMaxX 는 숲, x >= cityMinX 는 도시, 그 사이는 완충 잔디밭(소각로·스폰이 여기 있다).
+export const ZONES = { forestMaxX: -3.5, cityMinX: 2.5 };
 
 // 상호작용 반경(단위). 이후 단계에서 사용한다.
 export const INTERACT_RADIUS = 1.5;
@@ -217,7 +217,7 @@ export const MARSHMALLOW = {
 export const FIRST_PERSON = { enterSeconds: 0.5, exitSeconds: 0.5, fov: 66, eyeForward: 0.12, eyeUp: 0.1, hideAt: 0.88, lookDeg: 12, lookRate: 6, sway: 0.012 };
 export const FIRE_RANGE = 4.0;
 export const SHREDDER_RANGE = 3.6;
-export const SHREDDER_ZONE_RADIUS = 3.6; // 파쇄기 구역(파쇄만): 파쇄기 중심에서 이 거리 안이면 [1 파쇄][R 자동] 막대가 뜬다. 소각로와 6~8단위 떨어져 있어 구역이 거의 겹치지 않는다(겹치면 중심이 더 가까운 쪽)
+export const SHREDDER_ZONE_RADIUS = 3.6; // 파쇄기 구역(파쇄만): 파쇄기 중심에서 이 거리 안이면 [1 파쇄][R 자동] 막대가 뜬다. 소각로와 약 11단위 떨어져 있어 구역이 거의 겹치지 않는다(겹치면 중심이 더 가까운 쪽)
 // 세탁소 구역(세탁·널기): 구역 중심은 layout 의 세탁기 줄과 빨랫줄 사이(logic/zones.js)이고 이 반경 안에서 행동 막대가 보인다.
 // WASHER_RANGE: 가장 가까운 세탁기 중심에서 이 거리 안이면 세탁이 켜진다. CLOTHESLINE_RANGE: 빨랫줄 중심에서 이 거리 안이면 널기가 켜진다.
 export const LAUNDRY_ZONE_RADIUS = 4.5; // 구역 중심은 실내 세탁기 줄과 빨랫줄 사이(logic/zones.js)
