@@ -455,7 +455,7 @@ export const AMBIENT = {
   fadeSeconds: 1.5,
   birds: { interval: [8, 20], weights: { dawn: 0.15, morning: 1, sunset: 0.6, evening: 0 }, sounds: ['birdChirp', 'birdWhistle', 'birdTrill'] },
   insects: { interval: [6, 14], weights: { dawn: 0.7, morning: 0, sunset: 0.2, evening: 1 }, sounds: ['cricket', 'cricketSoft'] },
-  wind: { enabled: true, level: 1 },
+  wind: { enabled: false, level: 1 },
 };
 
 // ---- 공간 전환(차원문)과 세탁소 실내 ----
