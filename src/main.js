@@ -285,6 +285,8 @@ if (isMobileUA(navigator.userAgent)) {
   const clearBoxes = buildingBoxes(layout.buildings, CAMERA_CLEAR.margin);
   let transitionTarget = null; // 전환이 끝나면 가 있을 공간 id
   let seatItem = null; // 앉아 있는 벤치(layout.interactables 의 항목)
+  // 테스트용: 주소 뒤에 ?wishcd=0 을 붙이면 소원 재입력 대기 시간이 없다(그 탭에서만. 기본은 WISH.cooldownSeconds).
+  const WISH_COOLDOWN = (() => { const v = Number(new URLSearchParams(location.search).get('wishcd')); return Number.isFinite(v) && v >= 0 && new URLSearchParams(location.search).has('wishcd') ? v : WISH.cooldownSeconds; })();
   let lastFortune = -1;
   const recentFortuneLinks = []; // 최근에 나온 캐치 링크 id(같은 곳이 연달아 나오지 않게)
   let promptText = null;
@@ -1459,7 +1461,7 @@ if (isMobileUA(navigator.userAgent)) {
   let wishItem = null;
   const nowSeconds = () => performance.now() / 1000;
   function openWish(item) {
-    const left = wishCooldownLeft(nowSeconds(), lastWishAt);
+    const left = wishCooldownLeft(nowSeconds(), lastWishAt, WISH_COOLDOWN);
     if (left > 0) { hud.showBubble(WISH.wait.replace('{s}', String(left))); return; }
     if (!dispatch('wish:open')) return;
     stopWalking();
