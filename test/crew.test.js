@@ -206,8 +206,8 @@ test('crew: clear 는 모든 일을 접고, 기다리던 방문자 말풍선은 
   assert.ok(!log.some((e) => e[0] === 'bubble' || e[0] === 'bubble2'));
 });
 
-test('crew: 속마음 — 보낸 방문자 머리 위 구름(onThink)이 답변 말풍선 뒤에, 속마음형은 구름 없이 반응만', () => {
-  for (const [a, expectThink] of [[0, true], [2, false]]) {
+test('crew: 속마음 — 보낸 방문자 머리 위 구름(onThink)이 답변 말풍선 뒤에, 나머지는 구름 없이 반응만', () => {
+  for (const [a, expectThink] of [[0, true], [1, false], [2, false]]) {
     const { crew, run } = rig();
     const calls = [];
     const scene = ans('hr', 1, a);

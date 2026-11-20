@@ -455,7 +455,8 @@ export function validateInterview(cfg, { questions = 12, improvs = 9, maxLength 
     if (types !== [...TYPES].sort().join() || (q.answers ?? []).length !== TYPES.length) problems.push(`${name}: 답변은 모범형·4차원형·속마음형 하나씩(모두 3개)이어야 합니다.`);
     for (const a of q.answers ?? []) {
       if (!a.text || a.text.length > maxLength) problems.push(`${name}: ${a.type} 답변 글이 비었거나 ${maxLength}자를 넘습니다.`);
-      if (a.type !== '속마음형' && (typeof a.inner !== 'string' || !a.inner || a.inner.length > innerMax)) problems.push(`${name}: ${a.type} 답변에 속마음(inner)이 없거나 ${innerMax}자를 넘습니다.`);
+      if (a.type === '모범형' && (typeof a.inner !== 'string' || !a.inner || a.inner.length > innerMax)) problems.push(`${name}: ${a.type} 답변에 속마음(inner)이 없거나 ${innerMax}자를 넘습니다.`);
+      else if (a.type !== '모범형' && a.inner !== undefined) problems.push(`${name}: ${a.type} 답변에는 속마음(inner)을 쓰지 않습니다(모범형에만).`);
     }
   });
   for (const type of TYPES) { // 반응 대사: 종류 > 면접관 > 스타일(그 종류에서 나올 수 있는 스타일마다 2개 이상, 면접관·종류당 4개 이상, 28자 이내)

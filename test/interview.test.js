@@ -335,11 +335,11 @@ test('INTERVIEW: 질문 12개, 각 질문은 모범형·4차원형·속마음형
     assert.equal(q.answers.length, 3, q.text);
     assert.deepEqual(q.answers.map((a) => a.type), ['모범형', '4차원형', '속마음형'], '번호 0~2 = 키 1~3 순서');
     for (const a of q.answers) assert.ok(a.text.length > 0 && a.text.length <= 38, a.text);
-    for (const a of q.answers.filter((x) => x.type !== '속마음형')) assert.ok(typeof a.inner === 'string' && a.inner.length > 0 && a.inner.length <= INNER_MAX_LENGTH, `속마음 ${a.inner}`);
-    assert.ok(q.answers.filter((x) => x.type !== '속마음형').every((a) => /^(.*)$/.test(a.inner)), '속마음은 괄호로 감싼 혼잣말');
+    assert.ok(typeof q.answers[0].inner === 'string' && q.answers[0].inner.length > 0 && q.answers[0].inner.length <= INNER_MAX_LENGTH, `속마음 ${q.answers[0].inner}`);
+    assert.equal(q.answers[1].inner, undefined, '4차원형에는 속마음 구름이 없다');
     assert.equal(q.answers[2].inner, undefined, '속마음형 답은 이미 소리 내어 말하므로 구름이 없다');
   }
-  assert.equal(new Set(INTERVIEW.questions.flatMap((q) => q.answers.map((a) => a.inner).filter(Boolean))).size, 24, '속마음 24개 모두 다르다');
+  assert.equal(new Set(INTERVIEW.questions.flatMap((q) => q.answers.map((a) => a.inner).filter(Boolean))).size, 12, '속마음 12개 모두 다르다');
   assert.equal(new Set(INTERVIEW.questions.map((q) => q.answers[2].text)).size, 12, '속마음형 답 12개 모두 다르다');
   assert.ok(INTERVIEW.questions.every((q) => !/솔직형|정석형|엉뚱형/.test(JSON.stringify(q))), '옛 솔직형은 없다');
   assert.equal(INTERVIEW.improvs.length, 9);
@@ -556,12 +556,12 @@ test('새 돌발행동 5개: 합격 도장·종이비행기·선글라스·큰�
   assert.ok(by('song').some((e) => e.type === 'notes'));
 });
 
-test('remoteScene(속마음형 답변): 보낸 방문자 머리 위 속마음 구름(remoteThink)은 모범형·4차원형에만, 속마음형은 구름 없이 반응만', () => {
+test('remoteScene(속마음형 답변): 보낸 방문자 머리 위 속마음 구름(remoteThink)은 모범형에만, 나머지는 구름 없이 반응만', () => {
   for (const [a, type] of [[0, '모범형'], [1, '4차원형'], [2, '속마음형']]) {
     const sc = remoteScene(INTERVIEW, { ty: 'ans', q: 1, a }, 'hr', { rng: mulberry32(2) });
     assert.equal(sc.line.type, type);
     const th = sc.events.filter((e) => e.type === 'remoteThink');
-    if (type === '속마음형') assert.equal(th.length, 0);
+    if (type !== '모범형') assert.equal(th.length, 0);
     else {
       assert.equal(th.length, 1);
       assert.equal(th[0].text, INTERVIEW.questions[1].answers[a].inner);
