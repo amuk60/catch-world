@@ -1,4 +1,4 @@
-// 브라우저 전용: 면접관 반응의 작은 효과(싸고 절차적인 스프라이트·도형). 면접관 머리 위 느낌표·물음표·땀방울·ㅋㅋㅋ·엄지, 커피 뿜기, 떨어지는 펜, 흩날리는 서류.
+// 브라우저 전용: 면접관 반응의 작은 효과(싸고 절차적인 스프라이트·도형). 면접관 머리 위 땀방울·ㅋㅋㅋ·엄지, 커피 뿜기, 떨어지는 펜, 흩날리는 서류.
 // 장면 대본의 emote 이벤트(interviewCrew.apply)가 interviewers.emote(id, name) 을 부르면 여기서 그린다. 새 소리는 없다. 모두 짧게 떠 있다 사라지고 clear() 로 한꺼번에 치운다.
 import * as THREE from 'three';
 import { canvasTexture } from './interviewProps.js';
@@ -7,9 +7,6 @@ const LABEL_SIZE = 1.0; // 글자 효과 높이(월드 단위, 캐릭터 머리 
 const FONT = '900 84px "Malgun Gothic", "Noto Sans KR", "Segoe UI Emoji", sans-serif';
 // 글자 효과: 이름 -> { text, color, life(초) }
 const LABELS = {
-  exclaim: { text: '!', color: '#ff4a3d', life: 1.1 },
-  question: { text: '?', color: '#3d7be0', life: 1.1 },
-  exqu: { text: '!?', color: '#ff4a3d', life: 1.2 },
   dots: { text: '...', color: '#59607a', life: 1.4 },
   laugh: { text: 'ㅋㅋㅋ', color: '#ff9a1f', life: 1.2 },
   cough: { text: '크흠!', color: '#59607a', life: 1.1 },
