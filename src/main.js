@@ -712,7 +712,17 @@ if (isMobileUA(navigator.userAgent)) {
   function changeOutfit(newState) {
     if (!newState) return;
     character?.applyOutfit(outfit.state);
-    if (newState === 'dirty') track('outfit_dirty');
+    if (newState === 'dirty') { track('outfit_dirty'); if (!sootHintSeen()) sootHintPending = true; }
+  }
+  // 처음으로 옷에 그을음이 묻으면, 소각장에서 벗어나는 순간 말풍선으로 세탁소를 한 번만 권한다(이 브라우저에 기억).
+  let sootHintPending = false;
+  function sootHintSeen() { try { return window.localStorage.getItem('catchworld.sootHint') === '1'; } catch { return false; } }
+  function updateSootHint() {
+    if (!sootHintPending || mode !== 'free' || spaceId !== 'yard' || runner.isBusy() || outfit.state !== 'dirty') return;
+    if (Math.hypot(player.position.x - FURNACE.x, player.position.z - FURNACE.z) <= FIRE_ZONE_RADIUS + 0.5) return;
+    sootHintPending = false;
+    try { window.localStorage.setItem('catchworld.sootHint', '1'); } catch { /* 저장 불가: 이번 방문에만 */ }
+    hud.showBubble(SOOT_HINT);
   }
 
   // 마른 새 셔츠 입기(E): 모드를 'wearing' 으로 잠그고(이동·클릭·E 무시, 자동 해제) 줄 쪽으로 돌아 팔을 올리는 동작을 한다.
@@ -1705,6 +1715,7 @@ if (isMobileUA(navigator.userAgent)) {
     helpGuide.update(dt, Boolean(moveTarget || keyDir), spaceId);
     outfit.update(dt); // 널어 둔 새 셔츠는 밖에 나가 있어도 마른다
     updateWear(dt);
+    updateSootHint();
     updateActions(dt);
     fire.update(dt, time);
     fortuneStall.update(time);
