@@ -1,9 +1,13 @@
-// 브라우저 전용: 소각장 물건 6종의 손에 드는 소품과 선택 창 그림. 물건 표는 config.js 의 INCINERATOR.items 이고 prop.kind 로 그림이 정해진다.
+// 브라우저 전용: 소각장 물건과 파쇄기 서류의 손에 드는 소품과 선택 창 그림. 물건 표는 config.js 의 INCINERATOR.items·shredItems 이고 prop.kind 로 그림이 정해진다.
+// 파쇄기 서류(kind resume·letter·mail)는 머리글·색·도장만 다른 종이 한 장(docCanvas)이다.
 // 종이 물건(불합격 통지서·취업 잔소리 쪽지)은 src/notice.js 의 종이 소품(buildSheetProp: 앞뒤 모두 읽히는 납작한 종이 + 구겨진 공),
 // 두툼한 물건(자소서·이력서 뭉치, 인적성 교재, 토익 단어장)은 표지 캔버스를 얹은 두꺼운 상자(buildSolid), 오로라 가루는 글씨 없는 천 주머니(buildPouch)다.
 // 모든 소품은 userData.setCrumple(k) 와 userData.rot(손에 쥘 때의 방향)을 갖는다. 종이·두꺼운 소품은 rot [π/2,0,0] 으로 세우면 앞면이 +z 를 향하고 윗쪽이 하늘이다.
 import * as THREE from 'three';
 import { buildSheetProp, noticeFace, buildPaper } from './notice.js';
+import { DOC_KINDS } from './logic/incinerator.js';
+
+const DOC_SIZE = [0.66, 0.88]; // 서류 한 장(파쇄기 서류)의 [폭, 세로](월드 단위)
 
 const W = 480;
 const H = 640;
@@ -225,9 +229,86 @@ function nagCanvas() {
   return canvas;
 }
 
+// 파쇄기 서류 한 장(kind: resume 지원서·표 양식 | letter 줄 친 문서 | mail 출력한 웹 문서): 흰 종이 + 색 머리띠(머리글) + 종류별 본문 + 빨간 도장(prop.stamp).
+function docCanvas(prop) {
+  const [canvas, g] = makeCanvas(W, H);
+  paperBase(g);
+  const seed = [...(prop.title ?? '')].reduce((a, c) => a + c.charCodeAt(0), 0) % 97;
+  g.fillStyle = prop.accent;
+  g.fillRect(0, 0, W, 92);
+  g.fillStyle = '#fff';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  fit(g, prop.title, W - 60, 50, '900');
+  g.fillText(prop.title, W / 2, 48);
+  g.textAlign = 'left';
+  if (prop.kind === 'resume') { // 사진 칸 + 표 양식(칸마다 손글씨 줄)
+    g.strokeStyle = '#8a8a8a';
+    g.lineWidth = 3;
+    g.strokeRect(30, 118, 110, 140);
+    g.fillStyle = '#e4e2da';
+    g.fillRect(32, 120, 106, 136);
+    g.fillStyle = '#b9b7ae'; // 사진 속 사람 모양
+    g.beginPath();
+    g.arc(85, 170, 26, 0, Math.PI * 2);
+    g.fill();
+    g.fillRect(52, 205, 66, 50);
+    for (let i = 0; i < 3; i++) { g.strokeRect(160, 118 + i * 47, W - 190, 47); scribble(g, 176, 146 + i * 47, 180 - i * 30, seed + i, '#34498c'); }
+    for (let i = 0; i < 6; i++) {
+      const y = 290 + i * 52;
+      g.strokeRect(30, y, 120, 52);
+      g.strokeRect(150, y, W - 180, 52);
+      g.fillStyle = '#8a8a8a';
+      g.fillRect(48, y + 22, 70, 9);
+      scribble(g, 166, y + 32, 220 - ((i * 41) % 110), seed + 10 + i, '#34498c');
+    }
+  } else if (prop.kind === 'letter') { // 번호 매긴 줄 + 빨간 X·체크 표시
+    for (let i = 0; i < 9; i++) {
+      const y = 140 + i * 50;
+      g.fillStyle = '#6b6b6b';
+      g.font = `bold 26px ${FONT}`;
+      g.fillText(`${i + 1}.`, 30, y);
+      scribble(g, 76, y + 4, 260 - ((i * 53) % 120), seed + i, '#33405a');
+      g.strokeStyle = '#d3221c';
+      g.lineWidth = 6;
+      g.beginPath();
+      if (i % 3 !== 1) { g.moveTo(390, y - 14); g.lineTo(420, y + 14); g.moveTo(420, y - 14); g.lineTo(390, y + 14); } else { g.moveTo(388, y); g.lineTo(400, y + 12); g.lineTo(424, y - 14); }
+      g.stroke();
+    }
+  } else { // mail: 주소창 띠 + 제목·마감일 줄 + 본문
+    g.fillStyle = '#e9e7df';
+    g.fillRect(24, 112, W - 48, 36);
+    g.fillStyle = '#9a9a9a';
+    g.font = `bold 20px ${FONT}`;
+    g.fillText('https://', 36, 131);
+    g.fillStyle = '#33405a';
+    fit(g, '[채용] 신입 공개채용', W - 60, 34, '900');
+    g.fillText('[채용] 신입 공개채용', 30, 190);
+    g.fillStyle = prop.accent;
+    fit(g, '접수 마감 D-0', W - 60, 28, '900');
+    g.fillText('접수 마감 D-0', 30, 234);
+    for (let i = 0; i < 7; i++) scribble(g, 30, 290 + i * 46, 380 - ((i * 47) % 140), seed + i, '#555');
+  }
+  if (prop.stamp) { // 빨간 도장: 비스듬한 네모 테두리 + 글씨
+    g.save();
+    g.translate(W - 130, H - 120);
+    g.rotate(-0.22);
+    g.strokeStyle = 'rgba(211, 34, 28, 0.85)';
+    g.lineWidth = 9;
+    g.strokeRect(-95, -50, 190, 100);
+    g.fillStyle = 'rgba(211, 34, 28, 0.85)';
+    g.textAlign = 'center';
+    fit(g, prop.stamp, 160, 64, '900');
+    g.fillText(prop.stamp, 0, 4);
+    g.restore();
+  }
+  return canvas;
+}
+
 // 물건의 앞면 캔버스(kind 별). 주머니는 그림이 따로 있다.
 function faceCanvas(item) {
   const { kind } = item.prop;
+  if (DOC_KINDS.includes(kind)) return docCanvas(item.prop);
   if (kind === 'stack') return stackCanvas(item.prop);
   if (kind === 'workbook') return workbookCanvas(item.prop);
   if (kind === 'booklet') return bookletCanvas(item.prop);
@@ -403,12 +484,16 @@ export function buildItemProp(item, width = 0.7, depth = 0.93, clip = null) {
     group = buildSheetProp([faceCanvas(item)], ballCanvas('#f3dc5e'), 0.66, 0.72);
     group.userData.rot = [Math.PI / 2, 0, 0];
     group.userData.sheet = true;
+  } else if (DOC_KINDS.includes(kind)) { // 파쇄기 서류 한 장: 앞뒤 모두 읽히는 납작한 종이
+    group = buildSheetProp([faceCanvas(item)], ballCanvas('#fffefa'), DOC_SIZE[0], DOC_SIZE[1]);
+    group.userData.rot = [Math.PI / 2, 0, 0];
+    group.userData.sheet = true;
   } else {
     group = buildPaper(width, depth); // 불합격 통지서: 머리글 4종(setVariant)
     group.userData.rot = [Math.PI / 2, 0, 0];
     group.userData.sheet = true; // 들여다볼 때 카메라 쪽으로 돌려 읽기 쉽게 한다
   }
-  group.userData.height = SOLID[kind] ? SOLID[kind][1] : kind === 'nag' ? 0.72 : depth; // 세웠을 때 세로 길이(월드 단위): 파쇄에서 내려가는 거리
+  group.userData.height = SOLID[kind] ? SOLID[kind][1] : kind === 'nag' ? 0.72 : DOC_KINDS.includes(kind) ? DOC_SIZE[1] : depth; // 세웠을 때 세로 길이(월드 단위): 파쇄에서 내려가는 거리
   if (clip) {
     group.traverse((o) => {
       if (!o.isMesh) return;

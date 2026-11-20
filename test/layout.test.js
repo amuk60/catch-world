@@ -26,7 +26,7 @@ test('없앤 항목은 결과에 없다', () => {
   }
   assert.deepEqual(
     Object.keys(L).sort(),
-    ['buildingSlots', 'buildings', 'bushes', 'furnaceItems', 'interactables', 'lanterns', 'obstacles', 'plaza', 'rocks', 'shredder', 'sign', 'stall', 'trees'],
+    ['buildingSlots', 'buildings', 'bushes', 'furnaceItems', 'interactables', 'lanterns', 'obstacles', 'plaza', 'rocks', 'shredder', 'sign', 'stall', 'trees', 'wishStones'],
   );
 });
 
@@ -198,7 +198,7 @@ test('나무 크기: 고리 1.8~2.5, 바깥 띠 2.3~3.2, 숲 내부 1.9~2.5', ()
 });
 
 // ---- 상호작용 오브젝트 ----
-const comfort = L.interactables.filter((i) => i.kind === 'comfort' || i.kind === 'fortune'); // 위로 오브젝트 3개(작은 푯말은 fortune)
+const comfort = L.interactables.filter((i) => i.kind === 'comfort' || i.kind === 'fortune' || i.kind === 'wish'); // 위로 오브젝트 3개(쿠키 노점은 fortune, 소원 조각상은 wish)
 const seats = L.interactables.filter((i) => i.kind === 'seat');
 const furnaceI = L.interactables.find((i) => i.id === 'furnace');
 
@@ -212,7 +212,7 @@ test('상호작용 대상 14개: 소각로 + 위로 오브젝트 3개 + 통나�
   assert.deepEqual(comfort.map((c) => [c.item?.name ?? null, c.label, c.x, c.z, c.item?.scale ?? null]), [
     ['stump_roundDetailed', '쉬어가는 그루터기', -9.0, 5.0, 3.5],
     [null, '포춘쿠키 상점', 0.8, -6.5, null], // 모델 대신 src/fortuneStall.js 가 만든다
-    ['statue_head', '조용한 조각상', 6.0, 9.0, 1.3],
+    ['statue_head', '소원 조각상', 8.8, 0.0, 1.3], // 면접장과 세탁소 사이 골목
   ]);
 });
 
@@ -245,8 +245,9 @@ test('상호작용 범위는 반경 + 플레이어 반경보다 크다, 위로 �
     assert.ok(i.interactRange > i.radius + PLAYER.radius, i.id);
     assert.ok(i.interactRange >= i.radius + PLAYER.radius + 0.8 - 1e-9, i.id);
   }
-  assert.deepEqual(comfort.map((c) => c.kind), ['comfort', 'fortune', 'comfort']);
-  assert.deepEqual(comfort.filter((c) => c.kind === 'comfort').map((c) => c.messageIndex), [0, 2]);
+  assert.deepEqual(comfort.map((c) => c.kind), ['comfort', 'fortune', 'wish']);
+  assert.deepEqual(comfort.filter((c) => c.kind === 'comfort').map((c) => c.messageIndex), [0]);
+  assert.equal(comfort[2].messageIndex, undefined); // 소원 조각상은 문구 대신 소원 입력 창을 연다
   assert.equal(comfort[1].id, 'comfort-1');
   assert.equal(comfort[1].label, '포춘쿠키 상점');
   assert.equal(comfort[1].messageIndex, undefined);
@@ -379,6 +380,32 @@ function assertShredderRules(l, seed) {
   assert.ok(walkable(stand), `${tag} stand walkable`);
   assert.ok(d(stand, shredder) >= shredder.radius + PLAYER.radius - 1e-9, `${tag} stand outside shredder`);
 }
+
+// ---- 소원 조각상 ----
+test('소원 조각상: 면접장과 세탁소 사이 골목 가운데, 얼굴(모델 로컬 -z)이 서쪽 소각로 쪽을 향한다', () => {
+  const statue = comfort[2];
+  const [laundryB, interviewB] = L.buildings;
+  assert.ok(statue.z > interviewB.z + interviewB.width / 2 && statue.z < laundryB.z - laundryB.width / 2, '두 건물 사이(z)');
+  assert.ok(statue.x > interviewB.x - interviewB.depth / 2 && statue.x < interviewB.x + interviewB.depth / 2, '건물 앞뒤 폭 안(x): 골목 가운데');
+  const faceX = -Math.sin(statue.item.rotY); // 로컬 -z 의 월드 방향 (-sin, -cos)
+  const faceZ = -Math.cos(statue.item.rotY);
+  const toFurnace = { x: FURNACE.x - statue.x, z: FURNACE.z - statue.z };
+  assert.ok((faceX * toFurnace.x + faceZ * toFurnace.z) / Math.hypot(toFurnace.x, toFurnace.z) > 0.95, '얼굴이 소각로 쪽');
+  // 건물 벽 충돌 원과 겹치지 않고 양옆으로 지나갈 틈이 있다
+  for (const o of L.obstacles.filter((o) => o.radius === 0.65 || o.radius === 0.66)) assert.ok(d(o, statue) - o.radius - statue.radius >= PLAYER.radius * 2, `${o.x},${o.z}`);
+  // 돌탑 자리: 조각상 앞(서쪽)이고 건물·조각상과 겹치지 않는다
+  assert.ok(L.wishStones.x < statue.x);
+  assert.ok(d(L.wishStones, statue) > statue.radius + 0.3);
+  for (const o of L.obstacles.filter((o) => o.radius === 0.65 || o.radius === 0.66)) assert.ok(d(o, L.wishStones) > o.radius + 0.3);
+});
+
+test('소원 조각상은 두 건물 문 앞 동선(문 앞 도착 지점)을 막지 않는다', () => {
+  const statue = comfort[2];
+  for (const door of L.interactables.filter((i) => i.kind === 'door')) {
+    assert.ok(d(door.walkTo, statue) > 3, door.id);
+    assert.ok(statue.x - door.walkTo.x > 2.5, `${door.id}: 조각상은 문 앞 동선보다 동쪽 골목 안`);
+  }
+});
 
 test('종이 더미는 없다(layout 키 목록에도, 반경 0.5 장애물에도 위로 오브젝트 말고는 없다)', () => {
   assert.equal(L.obstacles.filter((o) => o.radius === 0.5 && !comfort.some((c) => c.x === o.x && c.z === o.z) && !seats.some((l) => d(l, o) <= 1.0)).length, 0); // 통나무 자리의 양 끝 원은 제외

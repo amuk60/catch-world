@@ -27,9 +27,16 @@ const buildingCircles = circlesOf(laundry.obstacleRadius);
 
 // ---- 기존 배치는 그대로 ----
 test('세탁소를 추가해도 기존 배치(나무·덤불·바위·랜턴·소각로 장식·간판·파쇄기·위로 오브젝트·통나무 자리·장애물 34개)는 기본 시드에서 그대로다(세탁기·빨랫줄은 실내로 옮겼다)', () => {
+  // 조각상은 소원 조각상으로 바뀌어 면접장·세탁소 사이로 옮겼다: 그 한 항목(상호작용 대상과 장애물 원)만 예전 값으로 되돌려 놓고 보면 나머지는 한 글자도 다르지 않다.
+  const OLD_STATUE = { x: 6, z: 9 };
+  const statue = L.interactables.find((i) => i.kind === 'wish');
+  const interactables = L.interactables.slice(0, 10).map((i) => (i === statue
+    ? { id: i.id, label: '조용한 조각상', kind: 'comfort', messageIndex: 2, ...OLD_STATUE, radius: i.radius, interactRange: i.interactRange, item: { ...i.item, ...OLD_STATUE, rotY: Math.PI / 4 } }
+    : i));
+  const obstacles = L.obstacles.slice(0, 34).map((o) => (o.x === statue.x && o.z === statue.z ? { ...OLD_STATUE, radius: o.radius } : o));
   const before = {
     trees: L.trees, bushes: L.bushes, rocks: L.rocks, lanterns: L.lanterns, furnaceItems: L.furnaceItems, sign: L.sign, shredder: L.shredder,
-    interactables: L.interactables.slice(0, 10), obstacles: L.obstacles.slice(0, 34), buildingSlots: L.buildingSlots, plaza: L.plaza,
+    interactables, obstacles, buildingSlots: L.buildingSlots, plaza: L.plaza,
   };
   assert.equal(createHash('sha1').update(JSON.stringify(before)).digest('hex'), 'f429f00553a4e125b14d16a0c1065867a00a216a');
   assert.equal(L.interactables.length, 14); // 세탁소 건물·문과 면접장 건물·문이 추가됐다(앞의 10개 = 소각로·위로 3·통나무 자리 6은 그대로)

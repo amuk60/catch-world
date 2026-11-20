@@ -15,7 +15,7 @@ import { createFire } from './fire.js';
 import { buildItemProp, buildItemIcon, createGlitter } from './incineratorProps.js';
 import { buildStainIcon } from './laundryFx.js';
 import { pickRandomStain, washLine, hangLine } from './logic/laundryItems.js';
-import { itemsFor, pickIndexFromCode, variantOf, isFlameItem, lineFor, pickRandomItem, poseFor } from './logic/incinerator.js';
+import { itemsFor, allItems, pickIndexFromCode, variantOf, isFlameItem, lineFor, pickRandomItem, poseFor } from './logic/incinerator.js';
 import { createHud } from './hud.js';
 import { interactTarget, hoverLabel, nearestInRange, actionOf, standPoint } from './logic/interaction.js';
 import { nextMode, holdsSeat, showPrompt as promptAllowed } from './logic/playerMode.js';
@@ -63,8 +63,11 @@ import {
   INCINERATOR, REDUCE_RANGE, ACTION_EFFECT_AT, ACTION_TARGET_SECONDS, ACTION_TURN_SECONDS, AUTO_GAP, PASSIVE, MARSHMALLOW, FIRST_PERSON,
   FIRE_RANGE, SHREDDER_RANGE, WASHER_RANGE, CLOTHESLINE_RANGE, FIRE_ZONE_RADIUS, GA_MEASUREMENT_ID, WEAR_SECONDS, WEAR_SWAP_AT,
   INTERVIEW, INTERVIEW_ROUND, INTERVIEW_BONUS_RANGE, INTERVIEW_ZONE_RADIUS, INTERVIEW_ANSWER_SECONDS, INTERVIEW_IMPROV_SECONDS, INTERVIEW_FINALE_SECONDS, SPEECH_SECONDS,
-  MULTIPLAYER, SUPABASE_URL, SUPABASE_ANON_KEY, CLOTHESLINE_SLOTS, QUICK_CHAT, LAUNDRY_ITEMS, LAUNDRY_FX, TUTORIAL,
+  MULTIPLAYER, SUPABASE_URL, SUPABASE_ANON_KEY, CLOTHESLINE_SLOTS, QUICK_CHAT, LAUNDRY_ITEMS, LAUNDRY_FX, TUTORIAL, WISH,
 } from './config.js';
+import { wishCooldownLeft, nextStoneCount, pickCheer, wishEventParams } from './logic/wish.js';
+import { createWishCard } from './wishCard.js';
+import { createWishStones, loadStoneCount, saveStoneCount } from './wishStones.js';
 import { isTypingTarget } from './logic/typing.js';
 import { createQuickChat } from './quickChat.js';
 import { applyDrag, applyZoom, orbitPosition, frontAzimuthDeg } from './logic/orbit.js';
@@ -155,6 +158,9 @@ if (isMobileUA(navigator.userAgent)) {
   // 소각로 곁의 상시 소품: 불, 파쇄기.
   const fire = createFire(yardRoot, FURNACE);
   const shredder = buildShredder(yardRoot, layout.shredder);
+  // 소원 조각상 발치의 소원 돌탑(돌 개수는 이 브라우저에 기억한다)과 소원을 빌 때의 반짝임.
+  const wishStones = layout.wishStones ? createWishStones(yardRoot, layout.wishStones, { max: WISH.maxStones, count: loadStoneCount(WISH.storageKey, WISH.maxStones) }) : null;
+  const wishGlitter = createGlitter(yardRoot, 50);
   // 캐릭터 모델이 없으면 상자 플레이어. 이동/회전은 항상 group 이 맡는다.
   let character = null;
   let player;
@@ -176,6 +182,8 @@ if (isMobileUA(navigator.userAgent)) {
     },
     onClose: () => dispatch('close'),
   });
+  // 소원 적기 카드(소원 조각상에서 E). 적은 글은 makeWish 로만 넘어오고 저장·전송·말풍선에 쓰지 않는다.
+  const wishCard = createWishCard(document.getElementById('game'), { maxLength: WISH.maxLength, onSubmit: (wish) => makeWish(wish), onCancel: () => dispatch('wish:close') });
   createSoundButton(document.getElementById('game'), sfx); // 우상단 효과음 켜기/끄기(M 키도 같다). 소리는 첫 입력 뒤에야 난다
   let guideStorage = null;
   try { guideStorage = window.localStorage; } catch { /* 저장소 접근 불가: 안내는 매번 처음처럼 */ }
@@ -252,7 +260,7 @@ if (isMobileUA(navigator.userAgent)) {
   const desired = new THREE.Vector3();
   let moveTarget = null;
   const keys = createKeyState(); // 눌린 이동 키(WASD·방향키)
-  let mode = 'free'; // 'free' | 'seated' | 'fortune' | 'result' | 'transition' | 'wearing' | 'interview-choice' | 'interview-play' | 'item-choice' | 'roasting' (전이는 logic/playerMode.js)
+  let mode = 'free'; // 'free' | 'seated' | 'fortune' | 'result' | 'transition' | 'wearing' | 'interview-choice' | 'interview-play' | 'item-choice' | 'roasting' | 'wishing' (전이는 logic/playerMode.js)
   const transition = createTransition(TRANSITION); // 공간 전환(차원문) 상태 기계
   const cameraClear = createCameraClear(CAMERA_CLEAR); // 마당에서 건물이 플레이어를 가리면 카메라를 천천히 돌려 피한다(config 의 CAMERA_CLEAR 로 끈다)
   const clearBoxes = buildingBoxes(layout.buildings, CAMERA_CLEAR.margin);
@@ -376,7 +384,7 @@ if (isMobileUA(navigator.userAgent)) {
   // 손에 드는 소품은 행동마다 하나를 모든 단계에서 재사용한다: 주머니(player 기준) -> 손(handAttach) -> 날아가기(scene). 행동이 끝나면 항상 숨긴다.
   // 태우기·파쇄는 종이, 세탁은 구겨진 셔츠, 널기는 깨끗한 흰 셔츠. 모두 같은 오른손 자리(handAttach)에 붙는다.
   const shredClip = new THREE.Plane(new THREE.Vector3(0, 1, 0), 1000); // 월드 y 가 -constant 아래인 부분을 숨긴다(평소엔 아무것도 안 가린다)
-  const itemProps = new Map(INCINERATOR.items.map((item) => [item.id, buildItemProp(item, 0.7, 0.93, shredClip)])); // 소각장 물건 6종(불합격 통지서 크기: 기본 카메라에서도 읽힌다)
+  const itemProps = new Map(allItems().map((item) => [item.id, buildItemProp(item, 0.7, 0.93, shredClip)])); // 소각장 물건 5종 + 파쇄기 서류 5종(불합격 통지서 크기: 기본 카메라에서도 읽힌다)
   const glitter = createGlitter(yardRoot); // 오로라 가루 반짝이
   const dirtyShirt = buildCrumpledShirt();
   dirtyShirt.userData.rot = [0, 0, 0];
@@ -1205,7 +1213,7 @@ if (isMobileUA(navigator.userAgent)) {
     if (meditating && once('game_start')) track('game_start');
     if (relief > 0) applyReduction(relief, false); // 불멍은 행동 횟수에 넣지 않는다
     updateRoast(dt);
-    if (pending && !runner.isBusy() && !interviewScene.busy && mode !== 'roasting' && (pending.kind === 'side' || (mode !== 'fortune' && mode !== 'transition' && mode !== 'wearing' && mode !== 'item-choice'))) {
+    if (pending && !runner.isBusy() && !interviewScene.busy && mode !== 'roasting' && (pending.kind === 'side' || (mode !== 'fortune' && mode !== 'transition' && mode !== 'wearing' && mode !== 'item-choice' && mode !== 'wishing'))) {
       pending.wait -= dt;
       if (pending.wait <= 0) {
         const { kind, info } = pending;
@@ -1424,9 +1432,44 @@ if (isMobileUA(navigator.userAgent)) {
     openCatch(link, { source: 'fortune', category });
   }
 
+  // ---- 소원 조각상: E 로 소원 적기 카드를 열고, 빌면 돌탑에 돌이 하나 얹히고 반짝임·종소리·응원 한 줄. 지수는 다른 행동과 같은 범위로 한 번 준다(소원 사이 쿨다운). ----
+  let lastWishAt = null; // 마지막으로 빈 시각(초, 실제 시간)
+  let lastCheer = -1;
+  let wishItem = null;
+  const nowSeconds = () => performance.now() / 1000;
+  function openWish(item) {
+    const left = wishCooldownLeft(nowSeconds(), lastWishAt);
+    if (left > 0) { hud.showBubble(WISH.wait.replace('{s}', String(left))); return; }
+    if (!dispatch('wish:open')) return;
+    stopWalking();
+    renderer.domElement.style.cursor = '';
+    hud.hideTooltip();
+    hud.hideBubble();
+    wishItem = item;
+    player.rotation.y = headingY(player.position, item); // 조각상을 바라본다
+    wishCard.open();
+  }
+  function makeWish(wish) {
+    dispatch('wish:close');
+    lastWishAt = nowSeconds();
+    if (once('game_start')) track('game_start');
+    const stones = wishStones ? nextStoneCount(wishStones.count, WISH.maxStones) : 0;
+    if (wishStones) {
+      wishStones.set(stones, { animate: true });
+      saveStoneCount(WISH.storageKey, stones);
+      wishGlitter.cloud(tmpV.set(layout.wishStones.x, wishStones.topY() + 0.15, layout.wishStones.z), 1.1);
+    } else if (wishItem) wishGlitter.cloud(tmpV.set(wishItem.x, 1.0, wishItem.z), 1.1);
+    sfx.play('wishBell');
+    const cheer = pickCheer(WISH.cheers, Math.random, lastCheer);
+    lastCheer = cheer.index;
+    hud.showBubble(`소원을 빌었어요! ${cheer.text}`); // 응원 문구만(소원 글은 말풍선에 올리지 않는다)
+    track('wish_made', wishEventParams(wish, stones)); // 글자 수·돌 개수만
+    applyReduction(rollReduction(Math.random, REDUCE_RANGE));
+  }
+
   // E 키: 포춘 모달이면 깨기/닫기, 앉은 상태면 일어나기, 아니면 가장 가까운 대상의 동작(소각로는 E 동작이 없다).
   function onInteractKey() {
-    if (runner.isBusy() || mode === 'roasting' || mode === 'transition' || mode === 'wearing' || mode === 'interview-choice' || mode === 'interview-play' || mode === 'item-choice') return; // 행동·전환·옷 갈아입기·면접 중에는 E 동작을 하지 않는다.
+    if (runner.isBusy() || mode === 'roasting' || mode === 'transition' || mode === 'wearing' || mode === 'interview-choice' || mode === 'interview-play' || mode === 'item-choice' || mode === 'wishing') return; // 행동·전환·옷 갈아입기·면접 중에는 E 동작을 하지 않는다.
     if (mode === 'seated') { dispatch('interact'); return; }
     const item = nearestInRange(player.position, here().interactables);
     if (!item) return;
@@ -1434,6 +1477,7 @@ if (isMobileUA(navigator.userAgent)) {
     if (type === 'enter' || type === 'exit') startSpaceChange(item.to);
     else if (type === 'wear') startWear();
     else if (type === 'comfort') hud.showBubble(COMFORT_MESSAGES[item.messageIndex]);
+    else if (type === 'wish') openWish(item);
     else if (type === 'seat') {
       if (seatsTaken().has(item.id)) return; // 다른 방문자가 앉아 있다("사용 중")
       if (!dispatch('interact:seat')) return;
@@ -1455,6 +1499,10 @@ if (isMobileUA(navigator.userAgent)) {
     if (mode === 'item-choice') { // 소각장 물건 고르기 창: 숫자 키로 고르고 Esc 는 아무 일 없이 닫는다. 그 밖의 키는 모두 무시.
       if (e.code === 'Escape') cancelPicker();
       else if (!e.repeat) { const i = pickIndexFromCode(e.code, pickerItems.length); if (i >= 0) pickItem(i); }
+      return;
+    }
+    if (mode === 'wishing') { // 소원 적기 카드: 카드 밖에 포커스가 있을 때도 Esc 만 받는다(취소). 그 밖의 키는 모두 무시.
+      if (e.code === 'Escape') wishCard.cancel();
       return;
     }
     if (mode === 'interview-choice') { // 답변 선택 창: 1·2·3 으로 고르고 Esc 는 감소 없이 닫는다.
@@ -1552,7 +1600,7 @@ if (isMobileUA(navigator.userAgent)) {
         const hit = pickInteractable(ndc);
         if (hit?.kind === 'furnace' && fire.clearTint()) return;
       }
-      if (mode === 'fortune' || mode === 'transition' || mode === 'wearing' || mode === 'interview-choice' || mode === 'interview-play' || mode === 'item-choice' || mode === 'roasting' || runner.isBusy()) return;
+      if (mode === 'fortune' || mode === 'transition' || mode === 'wearing' || mode === 'interview-choice' || mode === 'interview-play' || mode === 'item-choice' || mode === 'roasting' || mode === 'wishing' || runner.isBusy()) return;
       const item = pickInteractable(ndc);
       let target = item && interactTarget(item);
       if (!target) {
@@ -1584,7 +1632,7 @@ if (isMobileUA(navigator.userAgent)) {
   const posOfRemote = (id) => { const r = net?.remotes.find((p) => p.id === id); return r ? { x: r.x, z: r.z } : undefined; };
   const quickChat = createQuickChat({
     container: document.getElementById('game'), hud, camera, renderer, player, list: QUICK_CHAT,
-    isBlocked: () => mode === 'roasting' || mode === 'interview-choice' || mode === 'interview-play' || mode === 'item-choice' || mode === 'transition' || mode === 'wearing' || mode === 'fortune' || mode === 'result',
+    isBlocked: () => mode === 'roasting' || mode === 'interview-choice' || mode === 'interview-play' || mode === 'item-choice' || mode === 'wishing' || mode === 'transition' || mode === 'wearing' || mode === 'fortune' || mode === 'result',
     onSend: (i) => net?.chat(i) ?? false,
     onUse: (i) => track('quick_chat', { i }),
   });
@@ -1662,6 +1710,8 @@ if (isMobileUA(navigator.userAgent)) {
     if (mode === 'fortune' && hud.fortune.stage() === 'crack') hud.fortune.setProgress(crack.update()); // 멈추면 줄어드는 게이지
     shredder.update(dt);
     glitter.update(dt);
+    wishGlitter.update(dt);
+    wishStones?.update(dt);
     if (hud.isBubbleVisible()) {
       // 플레이어 발 위 1.9 지점을 화면 좌표로.
       const w = renderer.domElement.clientWidth;

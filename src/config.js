@@ -297,29 +297,27 @@ export const ACTION_TARGET_SECONDS = 5;
 // 소각장 행동(태우기·파쇄)의 물건과 연출. 팀이 이 표를 고쳐 물건·멘트를 바꾼다(코드는 건드리지 않아도 된다).
 // targetSeconds: 태우기·파쇄 한 번의 총 길이 목표(초). 단계별 길이는 logic/actions.js 가 이 값에 맞춰 비율로 늘이고 줄인다(세탁소 행동은 ACTION_TARGET_SECONDS 를 그대로 쓴다).
 // auroraChance: 자동(R)의 태우기 차례에서 오로라 가루가 나올 확률(파쇄에는 나오지 않는다). 멘트 한 줄은 20자 이하로 쓴다.
-// items: 물건 목록(선택 창에 이 순서로 1~5 번호가 붙는다).
-//   id: 영문 고유 이름(분석 이벤트 burn_item / shred_item 에 실린다). label: 선택 창에 보이는 이름.
-//   burn / shred: 그 행동으로 할 수 있으면 { lines: [멘트들] }(주머니에서 꺼낸 뒤 말풍선으로 한 줄 중얼거린다). 없으면 그 행동 목록에 나오지 않는다. 오로라 가루는 파쇄 못 한다.
-//   prop: 손에 드는 물건의 겉모습. kind('letter' 자소서 | 'resume' 이력서 | 'notice' 불합격 통지서 | 'mail' 탈락 메일 | 'pouch' 가루 주머니), title(머리글), accent(색), ball(구긴 공에 남는 표식 색).
+// items: 소각장(태우기 전용) 물건 목록, shredItems: 파쇄기(파쇄 전용) 서류 목록. 두 목록은 겹치지 않는다(선택 창에 각 목록의 순서대로 1~N 번호가 붙는다).
+//   id: 영문 고유 이름(분석 이벤트 burn_item / shred_item 에 실린다, 두 목록 전체에서 하나뿐). label: 선택 창에 보이는 이름.
+//   burn / shred: 그 행동으로 할 수 있으면 { lines: [멘트들] }(주머니에서 꺼낸 뒤 말풍선으로 한 줄 중얼거린다). 소각장 물건은 burn 만, 파쇄기 서류는 shred 만 가진다.
+//   prop: 손에 드는 물건의 겉모습. kind('stack' 서류 뭉치 | 'notice' 불합격 통지서 | 'nag' 잔소리 쪽지 | 'workbook'·'booklet' 책 | 'pouch' 가루 주머니
+//         | 서류 한 장: 'resume' 지원서·표 양식 | 'letter' 줄 친 문서 | 'mail' 출력한 웹 문서), title(머리글), accent(색), ball(구긴 공에 남는 표식 색), stamp(서류 한 장에 찍힌 빨간 도장 글씨, 선택).
 //   flame: 불 색 효과 { tint: 'aurora', seconds } (오로라 가루: 불꽃이 오로라 빛으로 바뀌었다가 seconds 뒤 돌아온다).
 // auroraFade: 오로라 불꽃의 번짐(in 초)·사그라듦(out 초: 끝나기 전)·클릭해서 되돌릴 때 걸리는 시간(returnSeconds).
 export const INCINERATOR = {
   targetSeconds: 7.4,
   auroraFade: { in: 0.6, out: 2, returnSeconds: 1 },
   auroraChance: 0.12,
-  // 물건 5종(선택 창의 1~5번 순서). 물건 하나: id, label(선택 창 이름), burn/shred(있는 행동만 한다: lines = 멘트 3~5개, 32자 이하), prop(손에 드는 그림: kind·제목·색, solid 가 true 면 두툼해서 구기지 않고 통째로 던진다), flame(태울 때 불꽃 색을 잠깐 바꾼다).
-  // shred 가 없는 물건은 파쇄 목록에 나오지 않는다(두꺼운 교재·주머니).
+  // 소각장 물건 5종(태우기 전용, 선택 창의 1~5번 순서). 물건 하나: id, label(선택 창 이름), burn(lines = 멘트 3~5개, 32자 이하), prop(손에 드는 그림: kind·제목·색, solid 가 true 면 두툼해서 구기지 않고 통째로 던진다), flame(태울 때 불꽃 색을 잠깐 바꾼다).
   items: [
     {
       id: 'resume', label: '자소서·이력서 뭉치',
       burn: { lines: ['매번 고치고 새로 지어내는 것도 힘들다, 잠깐 쉴게', '또 처음부터 다시 쓰라고? 잠깐 쉴게!', '자소설 쓰느라 고생했다, 이제 쉴게~', '수정하고 또 수정… 오늘은 여기까지!', '내 새벽을 갈아 넣은 자소설, 안녕~'] },
-      shred: { lines: ['이 문서는 이제 가루가 된다!', '또 고치라고? 잘게 갈아 줄게!', '퇴고는 여기서 끝이다!', '빨간 펜 첨삭도 같이 갈린다~', '자소설 시리즈, 종영이다!'] },
       prop: { kind: 'stack', title: '자소서·이력서', accent: '#2f5fa8', ball: '#d3221c', solid: true },
     },
     {
       id: 'notice', label: '불합격 통지서',
       burn: { lines: ['불합격도 합격이다! 기죽지 말자', '불합격? 나도 너 불합격이야!', '불합격 통지서는 불쏘시개로 딱이지', '아쉽다고? 나도 아쉬워 죽겠다'] },
-      shred: { lines: ['불합격 통지서는 가루가 되라', '싹둑싹둑 잘게 갈아주마', '너는 이제 종이국수야'] },
       prop: { kind: 'notice', title: '불합격 통지서', accent: '#2b3a67', ball: '#d3221c' },
     },
     {
@@ -330,7 +328,6 @@ export const INCINERATOR = {
     {
       id: 'nag', label: '취업 잔소리 쪽지',
       burn: { lines: ['힘 빠지는 잔소리는 프리패스! 응원만 받을게요', '걱정은 고맙지만 응원만 받을게요~', '취업은 언제 하니? 안 들려~', '잔소리는 불에 던져 버리자!'] },
-      shred: { lines: ['잔소리는 잘게 갈아 줄게!', '못 들은 걸로 할게, 가루로~', '옆집 아들 얘기도 파쇄다!'] },
       prop: { kind: 'nag', title: '취업 잔소리', accent: '#f2d64b', ball: '#f2d64b' },
     },
     {
@@ -340,6 +337,53 @@ export const INCINERATOR = {
       flame: { tint: 'aurora', seconds: 15 },
     },
   ],
+  // 파쇄기 전용 서류 5종(파쇄 전용, 선택 창의 1~5번 순서): 소각장 물건과 겹치지 않는, 취준생이 잘게 갈아 버리고 싶은 서류 한 장들. shred.lines = 멘트 3~5개(32자 이하).
+  shredItems: [
+    {
+      id: 'app_copy', label: '지원서 출력 사본',
+      shred: { lines: ['출력만 하고 못 낸 지원서, 안녕~', '사본은 필요 없어, 원본은 나니까!', '마감 1분 전의 기억, 가루로!', '지원서 사본, 잘게 갈아 준다!'] },
+      prop: { kind: 'resume', title: '입사지원서', accent: '#3b5998', ball: '#3b5998', stamp: '사본' },
+    },
+    {
+      id: 'eval_sheet', label: '탈락 면접 평가표',
+      shred: { lines: ['평가는 내가 할게, 넌 가루 해!', '점수표는 숫자일 뿐, 나는 사람이다!', '압박 면접 기억도 싹둑싹둑~', '다음 면접은 내가 이긴다!'] },
+      prop: { kind: 'letter', title: '면접 평가표', accent: '#7a2e3a', ball: '#7a2e3a', stamp: '탈락' },
+    },
+    {
+      id: 'spec_sheet', label: '스펙 정리표·증명서 사본',
+      shred: { lines: ['남이랑 스펙 비교는 그만, 싹둑!', '스펙보다 나다움이 먼저야~', '증명서 사본은 서랍 말고 파쇄기로!', '줄 세우는 스펙표, 가루가 되어라'] },
+      prop: { kind: 'resume', title: '나의 스펙 정리표', accent: '#2e7d4f', ball: '#2e7d4f', stamp: '사본' },
+    },
+    {
+      id: 'wrong_notes', label: '인적성 오답 노트 출력본',
+      shred: { lines: ['틀린 문제는 여기서 끝!', '도형 회전은 파쇄기가 돌려 줄게~', '오답은 가루로, 정답은 머리로!', '시간 부족? 파쇄는 순식간이지!'] },
+      prop: { kind: 'letter', title: '인적성 오답 노트', accent: '#1f6f8b', ball: '#1f6f8b', stamp: '오답' },
+    },
+    {
+      id: 'job_post', label: '마감 지난 채용공고 스크랩',
+      shred: { lines: ['놓친 공고는 잊자, 새 공고가 온다!', '마감 지난 미련도 같이 갈아~', '우대사항이 왜 이렇게 길어, 싹둑!'] },
+      prop: { kind: 'mail', title: '채용공고 스크랩', accent: '#c2484a', ball: '#c2484a', stamp: '마감' },
+    },
+  ],
+};
+
+// 소원 조각상(면접장과 세탁소 사이 골목): E 로 작은 입력 창을 열어 취업 희망·목표·소원을 적고 빈다. 적은 글은 이 화면에만 잠깐 쓰이고 서버·분석·말풍선 어디에도 보내지 않는다.
+// maxLength: 최대 글자 수, cooldownSeconds: 소원 사이 최소 간격(초, 도배 방지: 간격 안에서는 창이 열리지 않는다), maxStones: 조각상 발치에 쌓이는 돌의 최대 개수(돌 개수는 이 브라우저에 기억한다),
+// cheers: 소원을 빈 뒤 말풍선 응원 한 줄(32자 이하), wait: 쿨다운 중에 E 를 누르면 보이는 말풍선({s} 자리에 남은 초).
+export const WISH = {
+  maxLength: 40,
+  cooldownSeconds: 10,
+  maxStones: 12,
+  storageKey: 'catchworld.wishStones',
+  cheers: [
+    '소원 접수 완료! 좋은 소식이 오고 있어요',
+    '돌 하나만큼 꿈에 가까워졌어요',
+    '그 마음이면 반드시 닿을 거예요',
+    '오늘의 소원, 조각상이 꼭 기억할게요',
+    '천천히 가도 괜찮아요, 방향이 맞으니까',
+    '적은 만큼 이루어지는 날이 올 거예요',
+  ],
+  wait: '조금 있다가 다시 빌어 주세요 ({s}초)',
 };
 
 // 시드: 마당 배치를 항상 같게 만든다.

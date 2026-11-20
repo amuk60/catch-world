@@ -49,14 +49,20 @@ const SIGN_OBSTACLE_RADIUS = 0.7; // 간판 충돌 원 반경(가운데 + 양 �
 // kind 가 'fortune' 인 행운의 쿠키 노점(모델 대신 src/fortuneStall.js 가 만든다)은 문구 대신 포춘쿠키를 연다.
 // 노점은 로컬 x축을 따라 가로 2.0, 앞(+z)이 기본 카메라 쪽이다. 충돌은 계산대 가운데(위로 오브젝트 원)와 양 끝 원 2개.
 const COMFORT_RADIUS = 0.5;
+// statue_head 모델의 얼굴은 로컬 -z 쪽이다(스크린샷으로 확인). rotY = π/2 면 로컬 -z 가 월드 (-sin, -cos) = (-1, 0), 즉 얼굴이 서쪽(소각로 쪽)을 본다.
+const WISH_STATUE_ROT_Y = Math.PI / 2;
 const COMFORT_KEEP_OUT = 2.0; // 숲 내부 장식과의 최소 거리
 const STALL = { width: 2.0, depth: 0.9, endOffset: 0.8, endRadius: 0.55, interactRange: 2.3 }; // 쿠키 노점 크기·양 끝 충돌 원
 const INTERACT_MARGIN = 0.8; // 반경 + 플레이어 반경 위에 더하는 상호작용 여유
 const COMFORT_OBJECTS = [
   { name: 'stump_roundDetailed', label: '쉬어가는 그루터기', kind: 'comfort', messageIndex: 0, x: -9.0, z: 5.0, scale: 3.5, rotY: 0.6 },
   { stall: true, label: BUILDING_NAMES.fortune, kind: 'fortune', x: 0.8, z: -6.5, rotY: Math.PI / 4 },
-  { name: 'statue_head', label: '조용한 조각상', kind: 'comfort', messageIndex: 2, x: 6.0, z: 9.0, scale: 1.3, rotY: Math.PI / 4 },
+  // 소원 조각상: 면접장과 세탁소 사이 골목 가운데(두 건물의 벽 충돌 원 사이 약 4.9 폭, 문 앞 동선(x 5.6 근처)보다 동쪽). 얼굴 정면이 서쪽(소각로 쪽)을 향해, 소각로를 등지고 보면 얼굴이 보인다.
+  // kind 'wish': E 로 소원 입력 창을 연다(문구 없음). 발치에 소원 돌탑이 쌓인다(wishStones 의 자리).
+  { name: 'statue_head', label: '소원 조각상', kind: 'wish', x: 8.8, z: 0.0, scale: 1.3, rotY: WISH_STATUE_ROT_Y },
 ];
+// 소원 돌탑 자리: 조각상 앞(서쪽)에서 오른쪽(북쪽)으로 비켜 선 곳(조각상 앞에 서는 플레이어와 겹치지 않게). 장식이라 충돌 원은 없다.
+const WISH_STONES_OFFSET = { front: 0.75, side: -0.7 };
 
 // 소각로 곁 통나무 자리 6개: 소각로를 둘러싼 고리(반지름 3.0~3.4)에 눕힌 통나무(Nature Kit log_large: 길이 1.0 x 높이 0.417 x 너비 ~0.55, 길이 방향이 로컬 x, 원점은 중심 아래)를 접선 방향으로 놓는다.
 // 기준 각도(소각로에서 atan2(z, x), 도)는 걸어 들어갈 틈 두 곳을 비워 둔다: 스폰(35도)·파쇄기(70~80도) 쪽 틈(358~112도)과 간판(-90도) 쪽 틈(226~322도). 각도·반지름·크기·접선 기울기는 시드로 조금씩 흔들되 시드 흐름은 따로 쓴다(마당의 나무·덤불·바위 배치는 그대로).
@@ -337,8 +343,12 @@ export function buildLayout(seed, params = DEFAULT_PARAMS) {
     });
   }
 
+  // 소원 돌탑 자리(조각상 정면 = 서쪽 기준으로 앞·옆).
+  const wishItem = interactables.find((i) => i.kind === 'wish');
+  const wishStones = wishItem ? { x: wishItem.x - WISH_STONES_OFFSET.front, z: wishItem.z + WISH_STONES_OFFSET.side } : null;
+
   return {
-    trees, bushes, rocks, lanterns, furnaceItems, sign, stall, interactables, shredder,
+    trees, bushes, rocks, lanterns, furnaceItems, sign, stall, interactables, shredder, wishStones,
     buildingSlots: BUILDING_SLOTS.map((b) => ({ ...b })), plaza: { ...PLAZA }, obstacles,
     buildings,
   };

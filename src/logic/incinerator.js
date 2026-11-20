@@ -1,8 +1,12 @@
-// 소각장 물건 고르기 (순수). 물건 표는 config.js 의 INCINERATOR.items 이고, 여기서는 행동별 목록·숫자 키·멘트·자동 선택·표 검사를 한다.
+// 소각장·파쇄기 물건 고르기 (순수). 물건 표는 config.js 의 INCINERATOR.items(소각장: 태우기 전용)와 INCINERATOR.shredItems(파쇄기: 파쇄 전용)이고, 여기서는 행동별 목록·숫자 키·멘트·자동 선택·표 검사를 한다.
 import { INCINERATOR } from '../config.js';
 
 export const MAX_LINE_LENGTH = 32; // 말풍선이 읽기 좋도록 멘트 한 줄의 최대 글자 수
 export const PICKER_ACTIONS = ['burn', 'shred']; // 선택 창을 여는 행동(세탁소 행동은 물건이 없다)
+export const DOC_KINDS = ['resume', 'letter', 'mail']; // 서류 한 장(머리글·색·도장만 다른 종이 그림)
+
+// 두 목록을 합친 전체 물건(소품을 미리 만들고 id 로 찾을 때). cfg: INCINERATOR 와 같은 모양.
+export const allItems = (cfg = INCINERATOR) => [...(cfg.items ?? []), ...(cfg.shredItems ?? [])];
 
 // 숫자 키(윗줄·숫자패드) -> 0 부터의 번호. 목록 길이 밖이거나 숫자 키가 아니면 -1.
 export function pickIndexFromCode(code, count) {
@@ -12,7 +16,7 @@ export function pickIndexFromCode(code, count) {
 }
 
 // 그 행동으로 할 수 있는 물건만, 표의 순서대로(선택 창의 번호 순서).
-export function itemsFor(actionId, items = INCINERATOR.items) {
+export function itemsFor(actionId, items = allItems()) {
   return items.filter((item) => item[actionId]?.lines?.length > 0);
 }
 
@@ -30,7 +34,7 @@ export function pickLine(lines, rng = Math.random) {
 export const lineFor = (item, actionId, rng = Math.random) => pickLine(item?.[actionId]?.lines, rng);
 
 // 자동(R)이 고르는 물건. 태우기에서는 auroraChance 의 확률로 불꽃 색을 바꾸는 물건(오로라 가루), 아니면 나머지 중 하나. 직전 물건(lastId)은 가능하면 피한다.
-export function pickRandomItem(actionId, rng = Math.random, { items = INCINERATOR.items, auroraChance = INCINERATOR.auroraChance, lastId = null } = {}) {
+export function pickRandomItem(actionId, rng = Math.random, { items = allItems(), auroraChance = INCINERATOR.auroraChance, lastId = null } = {}) {
   const all = itemsFor(actionId, items);
   const flame = all.filter(isFlameItem);
   const plain = all.filter((i) => !isFlameItem(i));
@@ -39,8 +43,9 @@ export function pickRandomItem(actionId, rng = Math.random, { items = INCINERATO
   return pool[Math.min(pool.length - 1, Math.floor(rng() * pool.length))] ?? null;
 }
 
-// 표 검사: 문제 목록(빈 배열이면 이상 없음). id 중복·없음, 이름 없음, 멘트 없음·길이 초과, 주머니(pouch)·교재·단어장의 파쇄, 행동이 하나도 없는 물건.
-export function validateItems(items = INCINERATOR.items) {
+// 표 검사: 문제 목록(빈 배열이면 이상 없음). id 중복·없음, 이름 없음, 멘트 없음·길이 초과, 주머니(pouch)·교재·단어장의 파쇄, 행동이 하나도 없는 물건,
+// 태우기와 파쇄를 함께 가진 물건(소각장과 파쇄기의 물건은 따로다), 머리글 없는 서류 한 장.
+export function validateItems(items = allItems()) {
   const problems = [];
   const seen = new Set();
   for (const item of items) {
@@ -61,6 +66,8 @@ export function validateItems(items = INCINERATOR.items) {
       }
     }
     if (['pouch', 'workbook', 'booklet'].includes(item?.prop?.kind) && item.shred) problems.push(`${name}: 주머니·교재·단어장은 파쇄할 수 없다(태우기 전용)`);
+    if (item?.burn && item?.shred) problems.push(`${name}: burn 과 shred 를 함께 가질 수 없다(소각장 물건과 파쇄기 서류는 따로다)`);
+    if (DOC_KINDS.includes(item?.prop?.kind) && !item.prop.title) problems.push(`${name}: 서류 한 장에는 prop.title(머리글)이 있어야 한다`);
   }
   return problems;
 }

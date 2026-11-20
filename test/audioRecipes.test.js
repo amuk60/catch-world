@@ -139,7 +139,7 @@ test('반복음은 소각로 모닥불 하나뿐이고(배경음·앰비언스 �
 test('빼기로 한 소리는 레시피에 없고, 남기기로 한 소리만 있다', () => {
   const removed = ['crumple', 'paperOut', 'sigh', 'tick', 'swish', 'wearRustle', 'sit', 'stand', 'marker', 'relief', 'toss', 'firePop', 'bird', 'hover', 'scrape', 'hop', 'stomp', 'ambYard', 'ambLaundry', 'ambInterview'];
   for (const name of removed) assert.equal(SOUND_NAMES.includes(name) || LOOP_NAMES.includes(name), false, `${name} 가 남아 있음`);
-  const kept = ['stepGrass', 'stepTile', 'portal', 'whoof', 'shredder', 'washSplash', 'washerRattle', 'flap', 'tada', 'ding', 'confirm', 'speech', 'applause', 'ohno', 'laugh', 'fanfare', 'click', 'popupSide', 'popupModal', 'jingle', 'crackTap', 'crackBreak'];
+  const kept = ['stepGrass', 'stepTile', 'portal', 'whoof', 'shredder', 'washSplash', 'washerRattle', 'flap', 'tada', 'ding', 'confirm', 'speech', 'applause', 'ohno', 'laugh', 'fanfare', 'click', 'popupSide', 'popupModal', 'jingle', 'crackTap', 'crackBreak', 'wishBell'];
   assert.deepEqual([...SOUND_NAMES].sort(), [...kept].sort());
 });
 

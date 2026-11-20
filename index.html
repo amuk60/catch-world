@@ -241,6 +241,23 @@
     .nick-go { width: 100%; padding: 10px 0; border: 0; border-radius: 999px; background: #e8833a; color: #fff; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
     .nick-go:hover { background: #f0913f; }
     .nick-later { margin-top: 8px; padding: 4px 8px; border: 0; background: none; color: #6b5d44; font: inherit; font-size: 13px; text-decoration: underline; cursor: pointer; }
+    /* 소원 조각상: 소원 적기 카드(닉네임 카드와 같은 자리·모양, 밤하늘빛 머리). */
+    #wish-card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; width: 340px; max-width: calc(100% - 32px); box-sizing: border-box;
+      padding: 18px 20px 14px; border-radius: 16px; background: #fdf6e3; color: #3a2f1f; box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45); z-index: 4; text-align: center; }
+    #wish-card.open { display: block; }
+    #wish-card h2 { margin: 0 0 4px; font-size: 18px; }
+    .wish-sub { margin: 0 0 12px; font-size: 13px; color: #6b5d44; }
+    .wish-input { width: 100%; box-sizing: border-box; padding: 9px 11px; border: 2px solid #d9c9a3; border-radius: 10px; background: #fff; color: #2a2a40; font: inherit; font-size: 16px; }
+    .wish-input:focus { outline: none; border-color: #8a6ad8; }
+    #wish-card.invalid .wish-input { border-color: #d6453a; }
+    .wish-meta { display: flex; justify-content: space-between; gap: 8px; min-height: 18px; margin: 5px 2px 0; font-size: 12px; }
+    .wish-error { color: #c0392b; font-weight: 700; text-align: left; }
+    .wish-count { margin-left: auto; color: #8a7a5f; }
+    .wish-note { margin: 6px 0 12px; font-size: 12px; color: #6b5d44; line-height: 1.45; }
+    .wish-go { width: 100%; padding: 10px 0; border: 0; border-radius: 999px; background: #7a5cc8; color: #fff; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
+    .wish-go:hover:not(:disabled) { background: #8a6ad8; }
+    .wish-go:disabled { background: #c9bfdc; cursor: default; }
+    .wish-cancel { margin-top: 8px; padding: 4px 8px; border: 0; background: none; color: #6b5d44; font: inherit; font-size: 13px; text-decoration: underline; cursor: pointer; }
     /* 인사·응원말: 우하단 💬 버튼(이름표는 마우스를 올리거나 키보드로 누를 때 보인다)과 선택 창. 효과음 버튼(우상단)·행동 막대(가운데 아래)·측면 팝업(오른쪽 가운데)과 겹치지 않는다. */
     #qc-btn { position: absolute; right: 14px; bottom: 14px; display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 10px; border: 0; border-radius: 999px;
       background: rgba(18, 18, 31, 0.78); color: #fff; font: inherit; font-size: 12px; cursor: pointer; z-index: 2; transition: background 0.12s, opacity 0.12s; }

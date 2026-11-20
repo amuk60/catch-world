@@ -310,6 +310,13 @@ function popupSide(env) {
   tone(env, { f: 1975.5, at: 0.12, dur: 0.5, gain: 0.04, attack: 0.01 });
   return 0.9;
 }
+// 소원 조각상: 부드러운 종소리 한 번(낮은 종 + 5도 위 맑은 여음, 천천히 사라진다).
+function wishBell(env) {
+  fm(env, { f: NOTE.G5, ratio: 2.76, index: 0.6, endIndex: 0.02, dur: 1.6, gain: 0.16, attack: 0.008 });
+  tone(env, { f: NOTE.D6, at: 0.02, dur: 1.4, gain: 0.07, attack: 0.02 });
+  tone(env, { f: NOTE.G6, at: 0.05, dur: 0.9, gain: 0.025, attack: 0.02 });
+  return 1.65;
+}
 // 가운데 팝업(스트레스 0): 한결 밝은 올라가는 음과 종소리.
 function popupModal(env) {
   [NOTE.C5, NOTE.E5, NOTE.G5, NOTE.C6, NOTE.E6].forEach((f, i) => tone(env, { type: i % 2 ? 'sine' : 'triangle', f, at: i * 0.09, dur: 0.9, gain: 0.2, attack: 0.006 }));
@@ -410,6 +417,7 @@ export const RECIPES = {
   popupModal: { run: popupModal, duration: [1.0, 2.0], priority: 4, gain: 1.42, jitter: NOJ, minInterval: 0.8, group: '화면', label: '가운데 팝업(스트레스 0 축하)' },
   jingle: { run: jingle, duration: [0.8, 1.8], priority: 4, gain: 1.37, jitter: NOJ, minInterval: 0.8, group: '화면', label: '면접 갈 준비 완료 징글' },
   crackTap: { run: crackTap, duration: [0.04, 0.2], priority: 2, gain: 0.9, jitter: { pitch: 0.08, gain: 0.2 }, minInterval: 0.05, group: '화면', label: '포춘쿠키 연타(톡, 아주 작게)' },
+  wishBell: { run: wishBell, duration: [1.0, 2.2], priority: 3, gain: 1.2, jitter: { pitch: 0.02, gain: 0.05 }, minInterval: 1.0, group: '화면', label: '소원 종소리(부드럽게 한 번)' },
   crackBreak: { run: crackBreak, duration: [0.2, 0.6], priority: 3, gain: 0.9, jitter: { pitch: 0.05, gain: 0.1 }, minInterval: 0.3, group: '화면', label: '포춘쿠키 깨짐(파삭 바삭)' },
 };
 
