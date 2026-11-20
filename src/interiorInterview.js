@@ -94,7 +94,7 @@ function noticeTexture() {
     g.fillText('면접 안내', 24, 34);
     g.fillStyle = '#3b4756';
     g.font = FONT(22);
-    ['1. 질문은 총 5문항', '2. 답변은 1~3 선택', '3. 핸드폰은 무음으로', '4. 복장은 단정하게'].forEach((line, i) => g.fillText(line, 20, 104 + i * 44));
+    ['1. 질문은 총 5문항', '2. 답변은 1~2 선택', '3. 핸드폰은 무음으로', '4. 복장은 단정하게'].forEach((line, i) => g.fillText(line, 20, 104 + i * 44));
     g.fillStyle = '#4a78b5';
     g.fillRect(20, 282, 216, 4);
   });

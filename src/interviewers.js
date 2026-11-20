@@ -40,7 +40,7 @@ export function createInterviewers({ root, interior, gltfs, chairs, cfg }) {
     };
   });
   const byId = Object.fromEntries(list.map((m) => [m.id, m]));
-  let reactionFx = null; // 머리 위 반응 효과(느낌표·땀방울·커피 뿜기 ...). headPoint 를 쓰므로 api 가 만들어진 뒤에 붙인다
+  let reactionFx = null; // 머리 옆 반응 효과(땀방울·커피 뿜기·펜 ...). headPoint 를 쓰므로 api 가 만들어진 뒤에 붙인다
 
   function moveChair(m, toOffset) {
     if (!m.chair) return;
