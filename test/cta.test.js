@@ -39,9 +39,9 @@ test('shareUrl: origin + pathname, 쿼리·해시 제거', () => {
 test('emptyMessage: 지수 0 문구', () => {
   assert.deepEqual(emptyMessage(), {
     title: '소각 완료!',
-    line1: '스트레스 지수 0! 마음이 한결 가벼워졌죠?',
-    line2: '다음 지원서는 캐치가 같이 찾아드릴게요!',
-    cta: '캐치에서 새 시작하기',
+    line1: '스트레스 지수 0! 마음은 이미 후련해졌죠?\n이제 합격만 남았어요.',
+    line2: '맞춤 공고부터 AI 면접 연습까지,\n다음 지원서는 캐치와 함께!',
+    cta: '캐치에서 합격 준비 시작하기',
     link: 'home',
   });
 });

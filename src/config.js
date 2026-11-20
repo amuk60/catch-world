@@ -13,7 +13,7 @@ export const CATCH_LINKS = [
   { id: 'cover_letter', name: '합격자소서', desc: '합격자들의 자기소개서를 참고할 수 있어요', url: 'https://www.catch.co.kr/JobN/CoverLetter/Main' },
   { id: 'cafe', name: '캐치카페', desc: '회원에게 무료로 제공하는 오프라인 공간: 대학생·취준생 모두 무료, 매일 음료 1잔, 카페 좌석·스터디 공간 대여·채용설명회', url: 'https://www.catch.co.kr/CatchCafe/' },
   { id: 'tv', name: '캐치TV', desc: '취준생의 영원한 친구 캐치TV, 취업 정보를 재미있게 풀어 주는 유튜브 채널', url: 'https://www.catch.co.kr/News/CatchCast' },
-  { id: 'home', name: '캐치', desc: '취업 준비의 모든 것, 캐치', url: CATCH_URL }, // 칩·배너·공유 카드 등 일반 용도
+  { id: 'home', name: '캐치', desc: '취업 준비의 모든 것', url: CATCH_URL }, // 칩·배너·공유 카드 등 일반 용도
 ];
 
 // GA4 측정 ID ('G-'로 시작). 비어 있으면 분석이 꺼진다. localhost 에서는 켜지지 않는다.
