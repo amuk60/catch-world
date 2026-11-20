@@ -11,7 +11,7 @@ import { signCanvas, liveSignTexture, drawSignText } from './signFont.js';
 const STONE_H = 0.045;
 const PLAZA_LIFT = 0.03; // 포장 광장(y=0.02) 위에서는 돌을 그만큼 띄운다
 const DIRT_Y = 0.012;
-const STONE_COLORS = [0xcdb892, 0xb9b1a2, 0xc7aa7f, 0xa9a69f, 0xd2c3a0, 0xb4a58a];
+const STONE_COLORS = [0x8e9498, 0x899095, 0x959b9f, 0x848b90, 0x91979b, 0x9aa0a3]; // 잔디 위: 연한 회색(따뜻한 햇빛에 갈색으로 보이지 않게 살짝 차갑게) // 잔디 위: 연한 회색 톤
 const DIRT_COLORS = [0xb59a6c, 0xa89578, 0xbba67a];
 const FLOWER_COLORS = [0xffffff, 0xffe27a, 0xff9fb8, 0xc9a6ff];
 
@@ -19,10 +19,10 @@ const col = new THREE.Color();
 const rgb = (hex, k = 1) => { col.setHex(hex); return [col.r * k, col.g * k, col.b * k]; };
 
 // 납작한 돌 조각 하나: 위 가장자리를 살짝 깎은 다각형 기둥. 바닥은 만들지 않는다(안 보인다). 평평한 면 음영(비색인).
-function stoneGeometry({ rx, rz, h, n = 8, rng, tint, lift = 0 }) {
+function stoneGeometry({ rx, rz, h, n = 10, rng, tint, lift = 0 }) {
   const rings = [];
   const a0 = rng() * Math.PI * 2;
-  const fs = Array.from({ length: n }, () => rand(rng, 0.82, 1.08));
+  const fs = Array.from({ length: n }, () => rand(rng, 0.7, 1.12));
   const ring = (scale, y) => fs.map((f, i) => {
     const a = a0 + (i / n) * Math.PI * 2;
     return [Math.cos(a) * rx * f * scale, y, Math.sin(a) * rz * f * scale];
@@ -156,66 +156,25 @@ export function buildGroundPaths(scene, plan, layout) {
   let stones = 0;
 
   // 허브(스폰): 흙 마당.
-  addDirt(dirtDisc(plan.hub.x, plan.hub.z, 1.5, rng));
 
   for (const path of plan.paths) {
-    const centre = resample(path.points, 0.88, PATH_STYLE.hubClear);
+    const centre = resample(path.points, 0.7, PATH_STYLE.hubClear);
     // 디딤돌: 폭 비슷하지만 크기·옆 어긋남·방향이 조금씩 다르다.
     centre.forEach((p, i) => {
-      const lateral = rand(rng, -0.08, 0.08);
+      const lateral = rand(rng, -0.03, 0.03);
       const nx = -p.tz;
       const nz = p.tx;
-      const x = p.x + nx * lateral + p.tx * rand(rng, -0.04, 0.04);
-      const z = p.z + nz * lateral + p.tz * rand(rng, -0.04, 0.04);
-      const yaw = -Math.atan2(p.tz, p.tx) + rand(rng, -0.45, 0.45);
-      const lift = inPlaza(x, z) ? PLAZA_LIFT : 0;
-      const tint = STONE_COLORS[Math.floor(rng() * STONE_COLORS.length)];
-      const s = rand(rng, 0.88, 1.12);
-      stoneGeos.push(placed(stoneGeometry({ rx: 0.4 * s, rz: 0.34 * s, h: STONE_H, rng, tint, lift }), x, 0, z, yaw));
+      const x = p.x + nx * lateral + p.tx * 0;
+      const z = p.z + nz * lateral + p.tz * 0;
+      const yaw = -Math.atan2(p.tz, p.tx) + rand(rng, -0.3, 0.3);
+      const onPlaza = inPlaza(x, z);
+      const lift = onPlaza ? PLAZA_LIFT : 0;
+      const palette = STONE_COLORS; // 광장 위도 잔디 위와 같은 회색
+      const tint = palette[Math.floor(rng() * palette.length)];
+      const s = rand(rng, 0.92, 1.08);
+      stoneGeos.push(placed(stoneGeometry({ rx: 0.27 * s, rz: 0.23 * s, h: STONE_H * rand(rng, 0.8, 1.1), rng, tint, lift }), x, 0, z, yaw));
       stones++;
-      // 가끔 옆에 작은 돌 하나.
-      if (i % 3 === 1) {
-        const side = rng() < 0.5 ? -1 : 1;
-        const ox = p.x + nx * side * rand(rng, 0.55, 0.7);
-        const oz = p.z + nz * side * rand(rng, 0.55, 0.7);
-        if (free(ox, oz)) {
-          stoneGeos.push(placed(stoneGeometry({ rx: 0.16, rz: 0.13, h: 0.035, n: 7, rng, tint: STONE_COLORS[Math.floor(rng() * STONE_COLORS.length)], lift: inPlaza(ox, oz) ? PLAZA_LIFT : 0 }), ox, 0, oz, rng() * 3));
-          stones++;
-        }
-      }
-      // 가장자리 자갈 · 들꽃 포기.
-      for (const side of [-1, 1]) {
-        if (rng() < 0.5) {
-          const d = rand(rng, 0.62, 0.95);
-          const px = p.x + nx * side * d;
-          const pz = p.z + nz * side * d;
-          if (!inPlaza(px, pz) && free(px, pz)) stoneGeos.push(placed(stoneGeometry({ rx: rand(rng, 0.045, 0.085), rz: rand(rng, 0.04, 0.075), h: 0.04, n: 6, rng, tint: STONE_COLORS[Math.floor(rng() * STONE_COLORS.length)] }), px, 0, pz, rng() * 3));
-        }
-      }
-      if (i % 5 === 3) {
-        const side = rng() < 0.5 ? -1 : 1;
-        const d = rand(rng, 0.9, 1.25);
-        const tx = p.x + nx * side * d;
-        const tz = p.z + nz * side * d;
-        if (!inPlaza(tx, tz) && free(tx, tz)) {
-          const t = tuftGeometry(rng, FLOWER_COLORS[Math.floor(rng() * FLOWER_COLORS.length)]);
-          t.rotateY(rng() * 3);
-          t.translate(tx, 0, tz);
-          tuftGeos.push(t);
-        }
-      }
     });
-    // 흙길 가장자리: 광장 경계 앞에서 끝낸다.
-    let pts = path.points;
-    if (path.plaza) {
-      const cut = pts.findIndex((p) => p.x > plaza.x1 - 0.25);
-      if (cut > 1) pts = pts.slice(0, cut);
-    }
-    const samples = resample(pts, 0.3);
-    if (samples.length > 3) {
-      const ribbon = dirtRibbon(samples, rng, { fadeEnds: [true, !path.plaza] });
-      addDirt(ribbon);
-    }
   }
 
   const group = new THREE.Group();
@@ -340,6 +299,5 @@ export function buildSignpost(scene, signpost, { rng = mulberry32((SEED ^ 0x51a9
 export function buildGuidePaths(scene, layout) {
   const plan = buildPathPlan(layout);
   const ground = buildGroundPaths(scene, plan, layout);
-  const signpost = buildSignpost(scene, plan.signpost);
-  return { plan, ground, signpost };
+  return { plan, ground, signpost: null }; // 가운데 이정표는 쓰지 않는다
 }
