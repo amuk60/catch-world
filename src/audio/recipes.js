@@ -358,7 +358,88 @@ function crackBreak(env) {
   return 0.36;
 }
 
-// ---- 끊기지 않는 소리(모닥불 하나뿐: 배경음·앰비언스는 넣지 않는다) ----
+// ---- 마당 자연 소리(아주 작게: audio/ambient.js 가 마당에서만 드문드문 낸다. 크기는 config.js 의 AMBIENT.volume) ----
+// 새소리 1: 짹짹(짧게 내려 긋는 높은 음 2~4번).
+function birdChirp(env) {
+  const n = 2 + Math.floor(env.rng() * 2.99);
+  const base = rnd(env, 2900, 3600);
+  let at = 0;
+  for (let i = 0; i < n; i++) {
+    const f = base * rnd(env, 0.95, 1.06);
+    const dur = rnd(env, 0.05, 0.08);
+    tone(env, { f, to: f * 0.72, at, dur, gain: rnd(env, 0.22, 0.3), attack: 0.006 });
+    at += dur + rnd(env, 0.05, 0.1);
+  }
+  return at + 0.05;
+}
+// 새소리 2: 휘-휘이(올라갔다 내려오는 휘파람 두 마디).
+function birdWhistle(env) {
+  const f = rnd(env, 1900, 2400);
+  tone(env, { f, to: f * 1.3, dur: 0.2, gain: 0.22, attack: 0.03 });
+  tone(env, { f: f * 1.35, to: f * 0.95, at: 0.3, dur: 0.32, gain: 0.25, attack: 0.04 });
+  return 0.68;
+}
+// 새소리 3: 또르르(빠르게 떨리는 높은 음).
+function birdTrill(env) {
+  const dur = rnd(env, 0.4, 0.6);
+  const am = chop(env, { freq: rnd(env, 18, 26), depth: 0.5, dur });
+  const f = rnd(env, 3300, 4000);
+  tone(env, { f, to: f * 0.85, dur, gain: 0.24, attack: 0.03, dest: am });
+  return dur + 0.06;
+}
+// 풀벌레: 찌르르 찌르르(높은 음을 빠르게 끊은 짧은 묶음을 천천히 2~3번).
+function cricketCall(env, { f, groups, len, gap, gain }) {
+  let at = 0;
+  let end = 0;
+  for (let i = 0; i < groups; i++) {
+    const am = chop(env, { freq: rnd(env, 34, 44), depth: 0.5, at, dur: len });
+    tone(env, { f: f * rnd(env, 0.99, 1.01), at, dur: len, gain, attack: 0.02, dest: am });
+    end = at + len;
+    at = end + gap * rnd(env, 0.85, 1.15);
+  }
+  return end + 0.05;
+}
+function cricket(env) {
+  return cricketCall(env, { f: rnd(env, 4200, 4700), groups: 2 + Math.floor(env.rng() * 1.99), len: 0.2, gap: 0.32, gain: 0.16 });
+}
+function cricketSoft(env) {
+  return cricketCall(env, { f: rnd(env, 3300, 3700), groups: 2, len: 0.28, gap: 0.5, gain: 0.12 });
+}
+
+// 바람결(끊기지 않는 소리): 분홍 잡음을 낮게 걸러 아주 작게, 크기와 거르는 높이가 천천히(10~20초 주기) 일렁인다.
+function windLoop(env) {
+  const { ctx, noise } = env;
+  const src = ctx.createBufferSource();
+  src.buffer = noise.pink;
+  src.loop = true;
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 420;
+  lp.Q.value = 0.5;
+  const g = ctx.createGain();
+  g.gain.value = 0.22;
+  const swell = ctx.createOscillator(); // 크기 일렁임
+  swell.frequency.value = 0.07;
+  const swellAmt = ctx.createGain();
+  swellAmt.gain.value = 0.14;
+  const sweep = ctx.createOscillator(); // 거르는 높이 일렁임
+  sweep.frequency.value = 0.045;
+  const sweepAmt = ctx.createGain();
+  sweepAmt.gain.value = 160;
+  swell.connect(swellAmt);
+  swellAmt.connect(g.gain);
+  sweep.connect(sweepAmt);
+  sweepAmt.connect(lp.frequency);
+  src.connect(lp);
+  lp.connect(g);
+  g.connect(env.out);
+  src.start(env.t, env.rng() * noise.pink.duration);
+  swell.start(env.t);
+  sweep.start(env.t);
+  return { stop(at) { for (const n of [src, swell, sweep]) { try { n.stop(at); } catch { /* 이미 멈췄다 */ } } } };
+}
+
+// ---- 끊기지 않는 소리(모닥불, 그리고 마당 자연 소리의 바람결) ----
 // 모닥불(소각로): 편안한 ASMR 모닥불. 길게 미리 만든 되풀이 표본(audio/fireSynth.js: 아주 작은 불꽃 숨결 + 하나하나 또렷하고 간격이 제각각인 타닥임)을 반복 재생한다.
 function fireLoop(env) {
   const { ctx } = env;
@@ -419,11 +500,20 @@ export const RECIPES = {
   crackTap: { run: crackTap, duration: [0.04, 0.2], priority: 2, gain: 0.9, jitter: { pitch: 0.08, gain: 0.2 }, minInterval: 0.05, group: '화면', label: '포춘쿠키 연타(톡, 아주 작게)' },
   wishBell: { run: wishBell, duration: [1.0, 2.2], priority: 3, gain: 1.2, jitter: { pitch: 0.02, gain: 0.05 }, minInterval: 1.0, group: '화면', label: '소원 종소리(부드럽게 한 번)' },
   crackBreak: { run: crackBreak, duration: [0.2, 0.6], priority: 3, gain: 0.9, jitter: { pitch: 0.05, gain: 0.1 }, minInterval: 0.3, group: '화면', label: '포춘쿠키 깨짐(파삭 바삭)' },
+
+  // 마당 자연 소리: 게임은 audio/ambient.js 가 자연 소리 버스(AMBIENT.volume)로 낸다. 여기 gain 은 소리끼리의 크기 맞춤.
+  birdChirp: { run: birdChirp, duration: [0.2, 0.8], priority: 1, gain: 1, jitter: { pitch: 0.08, gain: 0.15 }, minInterval: 2, group: '마당 자연', label: '새소리 짹짹(아침~노을)' },
+  birdWhistle: { run: birdWhistle, duration: [0.5, 1.0], priority: 1, gain: 1, jitter: { pitch: 0.08, gain: 0.15 }, minInterval: 2, group: '마당 자연', label: '새소리 휘-휘이(아침~노을)' },
+  birdTrill: { run: birdTrill, duration: [0.4, 0.8], priority: 1, gain: 0.9, jitter: { pitch: 0.06, gain: 0.15 }, minInterval: 2, group: '마당 자연', label: '새소리 또르르(아침~노을)' },
+  cricket: { run: cricket, duration: [0.4, 1.4], priority: 1, gain: 0.9, jitter: { pitch: 0.03, gain: 0.15 }, minInterval: 2, group: '마당 자연', label: '풀벌레 찌르르(저녁~새벽)' },
+  cricketSoft: { run: cricketSoft, duration: [0.5, 1.4], priority: 1, gain: 0.9, jitter: { pitch: 0.03, gain: 0.15 }, minInterval: 2, group: '마당 자연', label: '풀벌레 낮은 찌르르(저녁~새벽)' },
 };
 
-// 끊기지 않는 소리. 배경음·앰비언스는 두지 않고 소각로의 모닥불 하나뿐이다. gain: 소리 크기(sfx.update 가 불과의 거리에 따라 0~1 을 곱한다).
+// 끊기지 않는 소리. 배경음악은 없다. 소각로의 모닥불(gain: 소리 크기, sfx.update 가 불과의 거리에 따라 0~1 을 곱한다)과
+// 마당 자연 소리의 바람결(audio/ambient.js 가 자연 소리 버스로 낸다: sfx.update 는 이것을 켜지 않는다).
 export const LOOPS = {
   fire: { run: fireLoop, gain: 0.25, group: '소각장', label: '모닥불 타닥타닥(가까울수록, 편안한 ASMR)' },
+  wind: { run: windLoop, gain: 0.5, group: '마당 자연', label: '바람결(아주 작게 일렁임)', ambient: true },
 };
 
 export const SOUND_NAMES = Object.keys(RECIPES);

@@ -127,9 +127,10 @@ for (const name of LOOP_NAMES) {
   });
 }
 
-// ---- 소리 정리: 배경음 없음, 필요한 소리만 ----
-test('반복음은 소각로 모닥불 하나뿐이고(배경음·앰비언스 없음), 효과음에도 앰비언스 버스·분류가 없다', () => {
-  assert.deepEqual(LOOP_NAMES, ['fire']);
+// ---- 소리 정리: 배경음악 없음, 필요한 소리만(마당 자연 소리는 사용자 요청으로 추가: 아주 작게, 마당에서만) ----
+test('반복음은 소각로 모닥불과 마당 바람결뿐이고(배경음악 없음), 효과음에도 앰비언스 버스·분류가 없다', () => {
+  assert.deepEqual(LOOP_NAMES, ['fire', 'wind']);
+  assert.equal(LOOPS.wind.ambient, true);
   for (const [name, def] of Object.entries({ ...RECIPES, ...LOOPS })) {
     assert.equal(def.bus, undefined, `${name} 에 bus 가 남음`);
     assert.notEqual(def.group, '앰비언스', name);
@@ -139,7 +140,7 @@ test('반복음은 소각로 모닥불 하나뿐이고(배경음·앰비언스 �
 test('빼기로 한 소리는 레시피에 없고, 남기기로 한 소리만 있다', () => {
   const removed = ['crumple', 'paperOut', 'sigh', 'tick', 'swish', 'wearRustle', 'sit', 'stand', 'marker', 'relief', 'toss', 'firePop', 'bird', 'hover', 'scrape', 'hop', 'stomp', 'ambYard', 'ambLaundry', 'ambInterview'];
   for (const name of removed) assert.equal(SOUND_NAMES.includes(name) || LOOP_NAMES.includes(name), false, `${name} 가 남아 있음`);
-  const kept = ['stepGrass', 'stepTile', 'portal', 'whoof', 'shredder', 'washSplash', 'washerRattle', 'flap', 'tada', 'ding', 'confirm', 'speech', 'applause', 'ohno', 'laugh', 'fanfare', 'click', 'popupSide', 'popupModal', 'jingle', 'crackTap', 'crackBreak', 'wishBell'];
+  const kept = ['stepGrass', 'stepTile', 'portal', 'whoof', 'shredder', 'washSplash', 'washerRattle', 'flap', 'tada', 'ding', 'confirm', 'speech', 'applause', 'ohno', 'laugh', 'fanfare', 'click', 'popupSide', 'popupModal', 'jingle', 'crackTap', 'crackBreak', 'wishBell', 'birdChirp', 'birdWhistle', 'birdTrill', 'cricket', 'cricketSoft'];
   assert.deepEqual([...SOUND_NAMES].sort(), [...kept].sort());
 });
 
