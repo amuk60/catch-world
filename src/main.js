@@ -14,6 +14,7 @@ import {
 } from './world.js';
 import { createPlayer } from './player.js';
 import { createFire } from './fire.js';
+import { buildLanternLights } from './lanternLights.js';
 import { buildItemProp, buildItemIcon, createGlitter } from './incineratorProps.js';
 import { buildStainIcon } from './laundryFx.js';
 import { pickRandomStain, washLine, hangLine } from './logic/laundryItems.js';
@@ -160,6 +161,7 @@ if (isMobileUA(navigator.userAgent)) {
   if (treeCount < 5) buildBoundary(yardRoot);
   // 소각로 곁의 상시 소품: 불, 파쇄기.
   const fire = createFire(yardRoot, FURNACE);
+  const lanternLights = buildLanternLights(yardRoot, layout.lanterns); // 광장 가로등 기둥에 조명(모델은 그대로)
   // 마당 하늘 시간대(새벽 -> 아침 -> 노을 -> 밤): 방문자 PC 의 현지 시각을 따른다(서버·동기화 없음). 확인용: ?sky=18:00 고정, ?skyspeed=60 빨리 감기.
   const skyState = createSkyState();
   const skyClock = skyClockParams(location.search);
@@ -171,6 +173,7 @@ if (isMobileUA(navigator.userAgent)) {
     if (spaceId !== 'yard') return; // 실내는 자기 조명(마당 값은 마당에 돌아오면 다시 맞춘다)
     setSky(skyState);
     fire.setLightBoost(skyState.fire);
+    lanternLights.setDarkness((SKY_CYCLE.lanternSunBright - skyState.sun) / (SKY_CYCLE.lanternSunBright - SKY_CYCLE.lanternSunDark)); // 해가 약할수록 가로등이 밝아진다
   };
   const ambient = createAmbient(sfx.engine); // 마당 자연 소리(새소리·풀벌레·바람결, 아주 작게)
   const shredder = buildShredder(yardRoot, layout.shredder);
