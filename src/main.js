@@ -81,6 +81,7 @@ import { createGuideHud } from './guideHud.js';
 
 // 분석 이벤트 보내기. 같은 이벤트를 튜토리얼·힐링 코스 체크리스트에도 알린다(태우기·세탁·면접 답변 등이 스스로 체크된다).
 let tutorialUi = null;
+const SOOT_HINT = '앗! 면접복에 얼룩이!\n세탁소에서 빨아볼까?';
 const track = (name, params) => { const sent = gaTrack(name, params); tutorialUi?.onTrack(name, params); return sent; };
 
 const MAX_DT = 0.1; // 한 프레임에 진행하는 최대 시간(초). 탭이 멈췄다 돌아와도 행동·애니메이션이 한꺼번에 튀지 않게 한다.
