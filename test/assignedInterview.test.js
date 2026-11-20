@@ -66,14 +66,14 @@ test('answerScript(finale): 담당이 "최종 합격!" 을 말하고 finaleIds �
 
 test('answerScript(deferFinale): 끝에 finale 신호만 두고(end 없음) finaleEvents 가 그 뒤를 이어 붙인다 — 합치면 deferFinale 없는 대본과 같다', () => {
   for (const finaleIds of [['leader'], IDS3]) {
-    const deferred = answerScript({ type: '속마음형', line: '대사', lines: LINES, assigned: 'leader', finale: true, deferFinale: true, finaleIds, ...opts });
+    const deferred = answerScript({ type: '4차원형', line: '대사', lines: LINES, assigned: 'leader', finale: true, deferFinale: true, finaleIds, ...opts });
     assert.ok(!deferred.some((e) => e.type === 'end' || e.type === 'bonus' || e.type === 'stand'));
     const marker = deferred[deferred.length - 1];
     assert.equal(marker.type, 'finale');
     const tail = finaleEvents({ ids: finaleIds, speaker: 'leader', finaleSeconds: INTERVIEW_FINALE_SECONDS, finaleText: INTERVIEW.finale });
     assert.equal(tail[0].t, 0);
     assert.deepEqual([tail[tail.length - 1].type, tail[tail.length - 1].t], ['end', INTERVIEW_FINALE_SECONDS]);
-    const whole = answerScript({ type: '속마음형', line: '대사', lines: LINES, assigned: 'leader', finale: true, finaleIds, ...opts });
+    const whole = answerScript({ type: '4차원형', line: '대사', lines: LINES, assigned: 'leader', finale: true, finaleIds, ...opts });
     const joined = [...deferred.slice(0, -1), ...tail.map((e) => ({ ...e, t: e.t + marker.t }))];
     const key = (e) => JSON.stringify([e.t.toFixed(6), e.type, e.who ?? '', e.name ?? '']);
     assert.deepEqual(joined.map(key).sort(), whole.map(key).sort());
@@ -113,7 +113,7 @@ test('assignedImprov: 담당 면접관의 대사·동작은 그대로, 다른 �
 test('remoteScene(답변): 담당이 q 번 질문 글을 묻고 -> REMOTE_BUBBLE_AT 에 보낸 사람의 답변 말풍선 -> 담당의 종류별 반응과 대사, 다른 둘은 light', () => {
   const q = 5;
   for (const assigned of IDS3) {
-    for (const [a, type] of [[0, '모범형'], [1, '4차원형'], [2, '속마음형']]) {
+    for (const [a, type] of [[0, '모범형'], [1, '4차원형']]) {
       const sc = remoteScene(INTERVIEW, { ty: 'ans', q, a }, assigned, { rng: mulberry32(3) });
       assert.equal(sc.line.text, INTERVIEW.questions[q].answers[a].text);
       assert.equal(sc.line.type, type);
@@ -159,12 +159,13 @@ test('remoteScene: 모르는 번호·id·면접관은 null', () => {
   assert.equal(remoteScene(INTERVIEW, { ty: 'ans', q: 0, a: 0 }, 'nobody'), null);
 });
 
-test('설정 검증: interjections(정석·솔직·엉뚱·improv 별 12자 이내 후보)가 필요하다', () => {
+test('설정 검증: interjections(모범형·4차원형·improv 별 12자 이내 후보)가 필요하다', () => {
   assert.deepEqual(validateInterview(INTERVIEW), []);
-  for (const key of ['모범형', 'improv']) {
+  for (const key of ['모범형', '4차원형', 'improv']) {
     const bad = { ...INTERVIEW, interjections: { ...INTERVIEW.interjections, [key]: [] } };
     assert.ok(validateInterview(bad).some((p) => p.includes(`짧은 한마디: ${key}`)), key);
   }
-  assert.ok(validateInterview({ ...INTERVIEW, interjections: undefined }).length >= 4);
-  assert.ok(validateInterview({ ...INTERVIEW, interjections: { ...INTERVIEW.interjections, 속마음형: ['이건 열두 글자를 훌쩍 넘기는 아주 긴 한마디입니다'] } }).some((p) => p.includes('속마음형')));
+  assert.ok(validateInterview({ ...INTERVIEW, interjections: undefined }).length >= 3);
+  assert.ok(validateInterview({ ...INTERVIEW, interjections: { ...INTERVIEW.interjections, '4차원형': ['이건 열두 글자를 훌쩍 넘기는 아주 긴 한마디입니다'] } }).some((p) => p.includes('4차원형')));
+  assert.ok(!('속마음형' in INTERVIEW.interjections), '속마음형 한마디는 없다');
 });

@@ -9,8 +9,6 @@ const PREFIX = 'r-'; // hud 말풍선 id 앞머리(hud.js 의 REMOTE_PREFIX 와 
 const HEAD_HEIGHT = 1.8; // 이름표(remotePlayers.js 의 LABEL_HEIGHT)와 같은 머리 위 높이(발 기준)
 const ABOVE_LABEL_PX = 26; // 말풍선이 이름표 위에 놓이도록 올리는 화면 거리
 const CHAT_SUFFIX = '~c'; // 인사·응원말 말풍선 키의 꼬리(quickChat.js)
-const THOUGHT_SUFFIX = '~t'; // 속마음 구름 키의 꼬리(답변 말풍선 위에 쌓는다)
-const THOUGHT_GAP_PX = 30; // 구름 꼬리(동그라미)가 아래 말풍선을 가리지 않게 띄우는 거리
 const GAP_PX = 8; // 옆 말풍선과 띄우는 거리
 
 // opts: { hud, crew, camera, renderer, config(INTERVIEW), interviewerOf(방문자 id): 그 방문자가 앉은 의자의 담당 면접관 id(없으면 null), posOf(방문자 id): 그 방문자의 { x, z }(효과음 위치, 없어도 된다), rng }
@@ -26,15 +24,14 @@ export function createRemoteSpeech({ hud, crew, camera, renderer, config, interv
     for (const key of hud.speechIds()) {
       if (!key.startsWith(PREFIX)) continue;
       const chat = key.endsWith(CHAT_SUFFIX); // 인사·응원말 말풍선(quickChat.js): 같은 방문자의 면접 답변 말풍선이 있으면 그 위에 쌓는다
-      const thought = key.endsWith(THOUGHT_SUFFIX); // 속마음 구름도 답변 말풍선 위에
-      const baseKey = chat || thought ? key.slice(0, -CHAT_SUFFIX.length) : key;
+      const baseKey = chat ? key.slice(0, -CHAT_SUFFIX.length) : key;
       const p = byId.get(baseKey.slice(PREFIX.length));
       if (!p) { hud.clearRemoteSpeech(key); continue; } // 방문자가 사라지면 말풍선도 걷는다
       point.set(p.x, p.y + HEAD_HEIGHT, p.z).project(camera);
       if (point.z >= 1) { hud.clearRemoteSpeech(key); continue; }
       const size = hud.speechSize(key) ?? { w: 120, h: 40 };
-      const under = chat || thought ? hud.speechSize(baseKey) : null;
-      items.push({ key, x: (point.x * 0.5 + 0.5) * w, y: (-point.y * 0.5 + 0.5) * h - ABOVE_LABEL_PX - (under ? under.h + (thought ? THOUGHT_GAP_PX : 6) : thought ? 4 : 0), ...size, shift: 0 });
+      const under = chat ? hud.speechSize(baseKey) : null;
+      items.push({ key, x: (point.x * 0.5 + 0.5) * w, y: (-point.y * 0.5 + 0.5) * h - ABOVE_LABEL_PX - (under ? under.h + 6 : 0), ...size, shift: 0 });
     }
     items.sort((a, b) => a.x - b.x);
     for (let i = 1; i < items.length; i++) {
@@ -63,8 +60,7 @@ export function createRemoteSpeech({ hud, crew, camera, renderer, config, interv
       const scene = assigned && remoteScene(config, ev, assigned, { rng });
       if (!scene) { bubble(); return true; }
       if (scene.bubbleAt === 0) bubble(); // 돌발행동은 말풍선을 바로(면접관 반응은 기다릴 수 있다)
-      const think = (e) => hud.say(`${PREFIX}${ev.id}${THOUGHT_SUFFIX}`, e.text, { name: '속마음', seconds: e.seconds, thought: true, silent: true });
-      crew.remote(assigned, ev.id, { ...scene, onBubble: scene.bubbleAt === 0 ? null : bubble, onThink: think });
+      crew.remote(assigned, ev.id, { ...scene, onBubble: scene.bubbleAt === 0 ? null : bubble });
       return true;
     },
     // 매 프레임. list: net.remotes(보간된 방문자들). space: 내가 있는 공간 id.
