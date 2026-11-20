@@ -40,6 +40,9 @@ const CSS = `
 #tut-edge .tut-edge-tri { position: absolute; left: 0; top: 0; color: #ff9a4a; font-size: 16px; line-height: 1; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6); }
 #tut-course { position: absolute; left: 12px; top: 84px; width: 270px; max-width: calc(100% - 24px); box-sizing: border-box; z-index: 2; color: #fff; font-size: 13px; line-height: 1.45;
   transition: opacity 1.2s, visibility 1.2s; opacity: 1; }
+#tut-hint { position: absolute; left: 292px; top: 88px; z-index: 2; padding: 8px 12px; border-radius: 12px; background: #fff6e0; color: #3d2412; font-size: 13px; font-weight: 700; line-height: 1.4; box-shadow: 0 3px 10px rgba(0,0,0,0.3); opacity: 0; visibility: hidden; transition: opacity 0.3s; pointer-events: none; max-width: 220px; word-break: keep-all; }
+#tut-hint.open { opacity: 1; visibility: visible; }
+@media (max-width: 640px) { #tut-hint { display: none; } }
 #tut-course.hide { opacity: 0; visibility: hidden; }
 #tut-course.fading { opacity: 0; }
 #tut-course .tut-head { display: flex; align-items: center; gap: 2px; border-radius: 999px; background: rgba(18, 18, 31, 0.8); }
@@ -140,7 +143,16 @@ export function createTutorialUi(container, { storage = null, track = () => {}, 
   const body = el('div', { className: 'tut-body' });
   chip.append(head, body);
   noFocus(toggle); noFocus(closeBtn);
-  container.append(dim, intro, toast, pin, edge, chip);
+  const hint = el('div', { id: 'tut-hint', textContent: config.hintBubble?.text ?? '' });
+  hint.setAttribute('role', 'status');
+  let hintTimer = null;
+  function showHint() {
+    if (!config.hintBubble) return;
+    hint.classList.add('open');
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => hint.classList.remove('open'), config.hintBubble.seconds * 1000);
+  }
+  container.append(dim, intro, toast, pin, edge, chip, hint);
 
   const itemById = (id) => config.course.items.find((i) => i.id === id);
   const needsDone = (item) => item.needs.filter((e) => course.hasGot(e)).length;
@@ -191,6 +203,7 @@ export function createTutorialUi(container, { storage = null, track = () => {}, 
     renderChip();
     const replay = isReplay;
     isReplay = false;
+    if (how === 'complete' && !replay) showHint();
     onEnd({ replay, how });
   }
   goBtn.addEventListener('click', () => { if (tutorial.finish()) ended('complete'); });
