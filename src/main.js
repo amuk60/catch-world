@@ -48,7 +48,7 @@ import { createFireView, isFireViewKey, seatPromptKeys } from './logic/fireView.
 import { createFpBlend, blendPose, lookFromPointer, followLook, lookDirection, sway, shouldHideBody } from './logic/fpCamera.js';
 import { computeFov } from './logic/camera.js';
 import { createOnce } from './logic/once.js';
-import { shareLines, shareFilename, shareUrl, resultPlan, goalMessage, emptyMessage, readyMessage } from './logic/cta.js';
+import { shareUrl, resultPlan, goalMessage, emptyMessage, readyMessage } from './logic/cta.js';
 import { createOutfit, outfitPrompt, laundryGuide } from './logic/outfit.js';
 import { createLine } from './logic/line.js';
 import { makeId } from './logic/net.js';
@@ -56,7 +56,7 @@ import { initAnalytics, track as gaTrack, trackCatchClick } from './analytics.js
 import { createTutorialUi } from './tutorialHud.js';
 import { isTutorialSeen } from './logic/tutorial.js';
 import { loadSignFonts } from './signFont.js';
-import { renderShareCard, saveShareCard, copyText } from './share.js';
+import { copyText } from './share.js';
 import { easeInOut } from './logic/burn.js';
 import {
   ORBIT, CAMERA_CLEAR, TRANSITION, PLAYER, PLAYER_MODEL, FURNACE, STRESS, SPAWN, SEED, COMFORT_MESSAGES, FORTUNES, FORTUNE_CTA, CATCH_LINKS, COOKIE_KINDS,
@@ -1293,21 +1293,10 @@ if (isMobileUA(navigator.userAgent)) {
   // 모든 캐치 링크 클릭의 유일한 관문(logic/catchOpen.js): 새 탭 + catch_link_click 1번 + 기존 상세 이벤트. source: fortune | popup_goal | popup_clear | popup_ready | chip.
   const openCatch = createCatchOpener({ links: CATCH_LINKS, open: (url) => window.open(url, '_blank', 'noopener'), track, trackCatch: trackCatchClick });
 
-  async function saveResultImage() {
-    try { renderer.render(scene, camera); } catch (err) { console.warn('저장용 화면을 그리지 못했습니다.', err); } // 같은 틱에서 바로 복사해야 캔버스가 비지 않는다.
-    const { stress, actions } = emptyInfo;
-    const card = renderShareCard(renderer.domElement, {
-      ...shareLines(stress, actions, gameState.stress.start), footer: SHARE_FOOTER, url: shareUrl(location),
-    });
-    const ok = await saveShareCard(card, shareFilename(new Date()));
-    if (ok) track('share_image');
-    hud.setResultFeedback(ok ? '저장했어요!' : '저장하지 못했어요. 다시 시도해 주세요.');
-  }
-
   async function copyAddress() {
     const ok = await copyText(shareUrl(location));
     if (ok) track('share_link');
-    hud.setResultFeedback(ok ? '주소를 복사했어요!' : '복사에 실패했어요. 주소창의 주소를 직접 복사해 주세요.');
+    hud.setResultFeedback(ok ? '링크를 복사했어요! 친구에게 붙여넣어 보내 주세요.' : '복사에 실패했어요. 주소창의 주소를 직접 복사해 주세요.');
   }
 
   function closeResult() {
@@ -1369,7 +1358,7 @@ if (isMobileUA(navigator.userAgent)) {
     hud.hideBubble();
     showChip();
     hud.openResult({
-      link: catchLink(emptyMessage().link), onCta: () => openCatch(emptyMessage().link, { source: 'popup_clear' }), onSave: saveResultImage, onCopy: copyAddress, onContinue: closeResult, onRestart: restart,
+      link: catchLink(emptyMessage().link), onCta: () => openCatch(emptyMessage().link, { source: 'popup_clear' }), onCopy: copyAddress, onContinue: closeResult, onRestart: restart,
     });
   }
 

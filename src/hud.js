@@ -98,8 +98,7 @@ export function createHud(container, { fortuneHandlers = {}, onClose = () => {} 
       <button type="button" class="result-cta"></button>
       <p class="cta-hint result-hint"></p>
       <div class="result-row">
-        <button type="button" class="result-sub" data-act="save">결과 이미지 저장</button>
-        <button type="button" class="result-sub" data-act="copy">사이트 주소 복사</button>
+        <button type="button" class="result-sub result-share" data-act="copy">친구에게 캐치월드 공유하기</button>
       </div>
       <p class="result-feedback" aria-live="polite"></p>
       <div class="result-row">
@@ -116,7 +115,7 @@ export function createHud(container, { fortuneHandlers = {}, onClose = () => {} 
   let resultHandlers = {};
   result.querySelector('.result-cta').addEventListener('click', () => resultHandlers.onCta?.());
   for (const button of result.querySelectorAll('[data-act]')) {
-    const handler = { save: 'onSave', copy: 'onCopy', continue: 'onContinue', restart: 'onRestart' }[button.dataset.act];
+    const handler = { copy: 'onCopy', continue: 'onContinue', restart: 'onRestart' }[button.dataset.act];
     button.addEventListener('click', () => resultHandlers[handler]?.());
   }
   // 측면 팝업(목표 달성): 우측 가장자리에서 밀려 들어오는 카드. 배경을 어둡게 하지 않고 플레이를 막지 않으며 스스로 사라지지 않는다.
@@ -448,14 +447,14 @@ export function createHud(container, { fortuneHandlers = {}, onClose = () => {} 
       setTimeout(() => el.remove(), DELTA_MS + 100);
     },
     // 가운데 팝업(지수 0). 버튼 핸들러를 받는다.
-    openResult({ onCta, onSave, onCopy, onContinue, onRestart, link }) {
+    openResult({ onCta, onCopy, onContinue, onRestart, link }) {
       const m = emptyMessage();
       resultCta.textContent = m.cta;
       resultHint.textContent = hintText(link);
       resultTitle.textContent = m.title;
       resultMessage.replaceChildren(m.line1, document.createElement('br'), m.line2);
       resultFeedback.textContent = '';
-      resultHandlers = { onCta, onSave, onCopy, onContinue, onRestart };
+      resultHandlers = { onCta, onCopy, onContinue, onRestart };
       result.classList.add('open');
       sfx.play('popupModal');
     },
