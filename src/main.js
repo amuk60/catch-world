@@ -1492,6 +1492,7 @@ if (isMobileUA(navigator.userAgent)) {
 
   // 숫자 키 1·2 는 지금 구역의 첫째·둘째 행동(구역 밖이면 아무 일도 없다).
   const ACTION_KEYS = { Digit1: 0, Numpad1: 0, Digit2: 1, Numpad2: 1 };
+  const CHOICE_KEYS = { Digit1: 0, Numpad1: 0, Digit2: 1, Numpad2: 1, Digit3: 2, Numpad3: 2 }; // 답변 선택 창의 1·2·3
   window.addEventListener('keydown', (e) => {
     if (isTypingTarget(e.target)) return; // 닉네임 입력 중에는 게임 단축키가 반응하지 않는다
     if (mode === 'transition' || mode === 'wearing' || mode === 'interview-play') return; // 전환·옷 갈아입기·면접 연출 중에는 모든 키를 무시한다.
@@ -1504,9 +1505,9 @@ if (isMobileUA(navigator.userAgent)) {
       if (e.code === 'Escape') wishCard.cancel();
       return;
     }
-    if (mode === 'interview-choice') { // 답변 선택 창: 1·2 로 고르고(답변 종류 수 INTERVIEW.types 밖의 숫자 키는 무시) Esc 는 감소 없이 닫는다.
+    if (mode === 'interview-choice') { // 답변 선택 창: 1·2·3 으로 고르고 Esc 는 감소 없이 닫는다.
       if (e.code === 'Escape') interviewScene.cancel();
-      else if (!e.repeat) { const i = pickIndexFromCode(e.code, INTERVIEW.types.length); if (i >= 0) interviewScene.pick(i); }
+      else if (e.code in CHOICE_KEYS && !e.repeat) interviewScene.pick(CHOICE_KEYS[e.code]);
       return;
     }
     if (mode === 'roasting') { // 마시멜로 굽는 중: Space 를 누르고 있으면 굴리고, 1·E 로 꺼내고, Esc(굽기 전에는 E 도)로 취소한다(logic/marshmallow.js 의 roastInputAction). 그 밖의 키(이동·R·2)는 무시.

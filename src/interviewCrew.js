@@ -39,7 +39,7 @@ export function createCrew({ hud, interviewers, names, ids }) {
         if (e.fx.spin) fx.startSpin(e.fx.spin);
         break;
       }
-      case 'emote': interviewers.emote?.(e.who, e.name); break; // 머리 옆 작은 효과(땀방울·커피 뿜기·펜 ...)
+      case 'emote': interviewers.emote?.(e.who, e.name); break; // 머리 위 작은 효과(느낌표·땀방울·커피 뿜기 ...)
       case 'stand': interviewers.stand(e.who); break;
       case 'sit': interviewers.sit(e.who); break;
       default: break;
@@ -78,6 +78,7 @@ export function createCrew({ hud, interviewers, names, ids }) {
       if (jobs.get(id) !== job) return; // 처리 도중 접혔다
       if (e.type === 'light') crew.light(e.who, e.spec, job.owner);
       else if (e.type === 'remoteBubble') showBubble(job);
+      else if (e.type === 'remoteThink') job.payload.onThink?.(e); // 보낸 방문자 머리 위 속마음 구름
       else if (e.who === id) apply(e, true);
     }
   }

@@ -154,9 +154,10 @@ export function createActor(gltf, { scale = 1.5, base = 'idle', oneShots = [] } 
       fx.update(dt);
       const L = arms['arm-left'];
       const R = arms['arm-right'];
-      if (pose && pose !== 'clap' && L && R) { // 손 번쩍(raise) / 책상 두드림(drum)
+      if (pose && pose !== 'clap' && L && R) { // 허둥지둥(flail) / 손 번쩍(raise) / 책상 두드림(drum)
         poseT += dt;
-        if (pose === 'raise') { R.rotation.set(-2.2 + 0.25 * Math.sin(poseT * 9), 0.4, 0); }
+        if (pose === 'flail') { L.rotation.set(-2.1 + 0.9 * Math.sin(poseT * 17), -0.4, 0); R.rotation.set(-2.1 + 0.9 * Math.sin(poseT * 17 + 2.2), 0.4, 0); }
+        else if (pose === 'raise') { R.rotation.set(-2.2 + 0.25 * Math.sin(poseT * 9), 0.4, 0); }
         else if (pose === 'drum') { L.rotation.set(-1.0 + 0.45 * Math.max(0, Math.sin(poseT * 16)), -0.25, 0); R.rotation.set(-1.0 + 0.45 * Math.max(0, Math.sin(poseT * 16 + Math.PI)), 0.25, 0); }
       }
       if (pose === 'clap' && arms['arm-left'] && arms['arm-right']) {

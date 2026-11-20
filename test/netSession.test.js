@@ -368,7 +368,7 @@ test('session: 서 있는 사람의 하트비트(heartbeatMs)에도 지워지지
 });
 
 // ---- 면접 답변·돌발행동 한마디(k: 'say') ----
-const sayLimits = { questions: 12, answers: 2, improvs: ['paperToss', 'reverse', 'dance', 'banzai', 'stamp', 'plane', 'shades', 'bow', 'song'] };
+const sayLimits = { questions: 12, answers: 3, improvs: ['paperToss', 'reverse', 'dance', 'banzai', 'stamp', 'plane', 'shades', 'bow', 'song'] };
 const sayMsg = (id, o = {}) => ({ k: 'say', id, space: 'interview', ty: 'ans', q: 2, a: 1, ...o });
 async function hall({ limits = sayLimits, c = cfg } = {}) {
   const tr = fakeTransport();
@@ -388,8 +388,8 @@ async function hall({ limits = sayLimits, c = cfg } = {}) {
 test('session: 상태를 보낸 적 있는 방문자의 한마디는 검사 후 구독자에게 전달된다(보낸이 닉네임 포함, 글은 없다)', async () => {
   const x = await hall();
   x.meet('peer00001');
-  x.at(1100); x.tr.emitMsg(sayMsg('peer00001', { q: 5, a: 1 }));
-  assert.deepEqual(x.seen, [{ id: 'peer00001', nick: '닉00001', ty: 'ans', q: 5, a: 1, imp: undefined }]);
+  x.at(1100); x.tr.emitMsg(sayMsg('peer00001', { q: 5, a: 2 }));
+  assert.deepEqual(x.seen, [{ id: 'peer00001', nick: '닉00001', ty: 'ans', q: 5, a: 2, imp: undefined }]);
   x.at(3000); x.tr.emitMsg(sayMsg('peer00001', { ty: 'imp', imp: 'dance', q: undefined, a: undefined }));
   assert.equal(x.seen.length, 2);
   assert.equal(x.seen[1].ty, 'imp');

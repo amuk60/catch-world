@@ -71,7 +71,7 @@ test('crew: 세 의자 동시 활동 — 나 + 원격 둘, 모두 자기 담당 
   crew.claim('leader');
   const bubbles = [];
   assert.equal(crew.remote('hr', 'rA', { ...ans('hr', 0, 0), onBubble: () => bubbles.push('A') }), 'start');
-  assert.equal(crew.remote('mentor', 'rB', { ...ans('mentor', 3, 1, 5), onBubble: () => bubbles.push('B') }), 'start');
+  assert.equal(crew.remote('mentor', 'rB', { ...ans('mentor', 3, 2, 5), onBubble: () => bubbles.push('B') }), 'start');
   run(5);
   assert.deepEqual(bubbles.sort(), ['A', 'B']);
   assert.equal(says('hr').length, 2);
@@ -133,7 +133,7 @@ test('crew: 가벼운 반응은 한가할 때만 — 하는 동안 담당 일이
   assert.equal(speech.get('mentor'), '오~');
   assert.equal(crew.light('mentor', { clip: 'emote-no', seconds: 1 }, 'me'), false, '이미 가벼운 반응 중이면 건너뜀');
   run(0.3);
-  crew.remote('mentor', 'rB', { ...ans('mentor', 3, 1), onBubble: () => {} });
+  crew.remote('mentor', 'rB', { ...ans('mentor', 3, 2), onBubble: () => {} });
   assert.equal(state.mentor.pose, null, '박수 자세를 접었다');
   assert.equal(state.mentor.bounce, null);
   assert.notEqual(speech.get('mentor'), '오~', '짧은 한마디도 걷었다(곧이어 질문이 뜬다)');
@@ -206,19 +206,19 @@ test('crew: clear 는 모든 일을 접고, 기다리던 방문자 말풍선은 
   assert.ok(!log.some((e) => e[0] === 'bubble' || e[0] === 'bubble2'));
 });
 
-test('crew: 속마음 없음 — 다른 방문자의 답변 장면은 말풍선과 반응뿐이고(구름 이벤트 없음), 옛 클라이언트의 a=2(속마음형)는 장면이 없다', () => {
-  for (const a of [0, 1]) {
-    const { crew, log, run } = rig();
+test('crew: 속마음 — 보낸 방문자 머리 위 구름(onThink)이 답변 말풍선 뒤에, 속마음형은 구름 없이 반응만', () => {
+  for (const [a, expectThink] of [[0, true], [2, false]]) {
+    const { crew, run } = rig();
     const calls = [];
     const scene = ans('hr', 1, a);
-    assert.ok(scene.events.every((e) => e.type !== 'think' && e.type !== 'remoteThink'), `a=${a}: 구름 이벤트 없음`);
-    crew.remote('hr', 'rA', { ...scene, onBubble: () => calls.push('bubble') });
+    crew.remote('hr', 'rA', { ...scene, onBubble: () => calls.push(['bubble', crew.clock]), onThink: (e) => calls.push(['think', crew.clock, e.text]) });
     run(5);
-    assert.deepEqual(calls, ['bubble']);
-    assert.ok(log.some((e) => e[0] === 'say' && e[1] === 'hr'), '담당의 반응 대사');
-    assert.ok(!log.some((e) => e[0] === 'say' && e[3] === '속마음'), '속마음 말풍선 없음');
+    assert.equal(calls.some((c) => c[0] === 'think'), expectThink, `a=${a}`);
+    if (expectThink) {
+      assert.equal(calls[1][2], INTERVIEW.questions[1].answers[a].inner);
+      assert.ok(calls[1][1] > calls[0][1], '말풍선 뒤에 구름');
+    }
   }
-  assert.equal(remoteScene(INTERVIEW, { ty: 'ans', q: 1, a: 2 }, 'hr'), null, '없는 답변 번호는 오류 없이 버린다');
 });
 
 test('crew: 큰절 — 담당 면접관이 숙였다가(tilt) 돌아오고, 끝나면 자세를 되돌린다(다른 둘은 가벼운 맞절)', () => {
@@ -236,7 +236,7 @@ test('crew: 반응 스타일 — 여러 번 뽑아도 효과·자세·기울임�
   const kinds = new Set();
   for (let seed = 1; seed <= 60; seed++) {
     const { crew, log, run, state } = rig();
-    const type = seed % 2; // 모범형 / 4차원형
+    const type = seed % 3;
     crew.remote('hr', 'rA', ans('hr', 3, type, seed));
     run(9);
     for (const e of log) if (e[1] === 'hr' || e[0] === 'emote') kinds.add(e[0]);

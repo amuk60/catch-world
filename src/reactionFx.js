@@ -1,4 +1,4 @@
-// 브라우저 전용: 면접관 반응의 작은 효과(싸고 절차적인 스프라이트·도형). 면접관 머리 옆 땀방울·말줄임표·ㅋㅋㅋ·엄지, 커피 뿜기, 떨어지는 펜(물음표·느낌표 마크는 없다).
+// 브라우저 전용: 면접관 반응의 작은 효과(싸고 절차적인 스프라이트·도형). 면접관 머리 위 느낌표·물음표·땀방울·ㅋㅋㅋ·엄지, 커피 뿜기, 떨어지는 펜, 흩날리는 서류.
 // 장면 대본의 emote 이벤트(interviewCrew.apply)가 interviewers.emote(id, name) 을 부르면 여기서 그린다. 새 소리는 없다. 모두 짧게 떠 있다 사라지고 clear() 로 한꺼번에 치운다.
 import * as THREE from 'three';
 import { canvasTexture } from './interviewProps.js';
@@ -7,9 +7,12 @@ const LABEL_SIZE = 1.0; // 글자 효과 높이(월드 단위, 캐릭터 머리 
 const FONT = '900 84px "Malgun Gothic", "Noto Sans KR", "Segoe UI Emoji", sans-serif';
 // 글자 효과: 이름 -> { text, color, life(초) }
 const LABELS = {
+  exclaim: { text: '!', color: '#ff4a3d', life: 1.1 },
+  question: { text: '?', color: '#3d7be0', life: 1.1 },
+  exqu: { text: '!?', color: '#ff4a3d', life: 1.2 },
   dots: { text: '...', color: '#59607a', life: 1.4 },
   laugh: { text: 'ㅋㅋㅋ', color: '#ff9a1f', life: 1.2 },
-  cough: { text: '크흠', color: '#59607a', life: 1.1 },
+  cough: { text: '크흠!', color: '#59607a', life: 1.1 },
   thumb: { text: '👍', color: '#ffb400', life: 1.2 },
   sparkle: { text: '✨', color: '#ffd23a', life: 1.1 },
 };
@@ -150,6 +153,36 @@ export function createReactionFx({ root, interviewers, interior }) {
     });
   }
 
+  // 서류 쏟기: 책상 위 면접관 앞에서 종이 여러 장이 튀어 올랐다가 하늘하늘 떨어진다.
+  function papers(id) {
+    const f = faceDir(id);
+    const g = (fx.paperGeo ??= new THREE.PlaneGeometry(0.28, 0.38));
+    const m = (fx.paperMat ??= new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide, roughness: 0.9 }));
+    const group = interviewers.byId[id].actor.group.position;
+    for (let i = 0; i < 7; i++) {
+      const mesh = new THREE.Mesh(g, m);
+      mesh.position.set(group.x, interior.deskTop.y + 0.1, group.z).addScaledVector(f, 0.75);
+      mesh.position.x += (Math.random() - 0.5) * 0.8;
+      mesh.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+      root.add(mesh);
+      const vel = new THREE.Vector3((Math.random() - 0.5) * 1.4, 2.4 + Math.random() * 1.6, (Math.random() - 0.5) * 0.8).addScaledVector(f, 0.5);
+      const floor = interior.deskTop.y + 0.03;
+      add({
+        obj: mesh, life: 2.2,
+        tick(it, dt) {
+          if (mesh.position.y > floor) {
+            vel.y -= 5.5 * dt;
+            vel.x *= 1 - 1.1 * dt;
+            mesh.position.addScaledVector(vel, dt);
+            mesh.rotation.x += 6 * dt;
+            mesh.rotation.z += 4 * dt;
+            if (mesh.position.y <= floor) { mesh.position.y = floor; mesh.rotation.set(-Math.PI / 2, 0, mesh.rotation.z); }
+          }
+        },
+      });
+    }
+  }
+
   const fx = {
     emote(id, name) {
       if (!interviewers.byId[id]) return;
@@ -157,6 +190,7 @@ export function createReactionFx({ root, interviewers, interior }) {
       else if (name === 'sweat') sweat(id);
       else if (name === 'puff') puff(id);
       else if (name === 'pen') pen(id);
+      else if (name === 'papers') papers(id);
     },
     update(dt) {
       for (let i = items.length - 1; i >= 0; i--) {
