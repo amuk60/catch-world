@@ -44,7 +44,7 @@ export function autoActionsOf(zone) {
   return zone && zone.auto !== false ? zoneActions(zone) : [];
 }
 
-// 이 게임의 행동 구역: 마당의 소각장(소각로 중심, 태우기만)과 파쇄기 구역(파쇄기 중심, 파쇄만; 소각로에서 약 11단위 떨어진 세탁소 옆), 실내 세탁소(세탁기 줄과 빨랫줄 사이), 실내 면접장(지원자 의자 3개 중 하나에 앉아 있을 때만 켜지는 구역, 자동 버튼 없음), 마당의 마시멜로 굽기 구역(소각로 둘레 통나무 자리 6개 중 하나에 앉아 있을 때만, 자동 버튼 없음). layout 은 마당 배치(파쇄기 위치를 구역 중심으로 쓴다).
+// 이 게임의 행동 구역: 마당의 소각장(소각로 중심, 태우기만)과 파쇄기 구역(파쇄기 중심, 파쇄만; 소각로에서 6~8단위 떨어져 있다), 실내 세탁소(세탁기 줄과 빨랫줄 사이), 실내 면접장(지원자 의자 3개 중 하나에 앉아 있을 때만 켜지는 구역, 자동 버튼 없음), 마당의 마시멜로 굽기 구역(소각로 둘레 통나무 자리 6개 중 하나에 앉아 있을 때만, 자동 버튼 없음). layout 은 마당 배치(파쇄기 위치를 구역 중심으로 쓴다).
 export function buildZones(layout, interior = buildLaundryInterior(), interviewInterior = buildInterviewInterior()) {
   const { washers, clothesline } = interior;
   const wx = washers.reduce((sum, w) => sum + w.x, 0) / washers.length;
