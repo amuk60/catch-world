@@ -175,7 +175,8 @@ export function createRemotePlayers({ scene, container, camera, gltf, maxAvatars
         if (av.alpha <= 0 && av.target === 0) { release(av); continue; }
         const a = av.alpha * av.alpha * (3 - 2 * av.alpha);
         av.root.scale.setScalar(0.3 + 0.7 * a);
-        av.ring.material.opacity = 0.55 * a;
+        const sitting = Boolean(av.pose && (av.pose.seat || av.pose.anim === 'sit')); // 앉아 있으면 발밑 링이 의자에 가려 반쪽 호처럼 보이므로 숨긴다(어느 의자든)
+        av.ring.material.opacity = sitting ? 0 : 0.55 * a;
         const visible = placeLabel(av, av.pose, w, h, camPos);
         if (visible || av.alpha < 1) av.character?.update(dt); // 화면 밖의 아바타는 애니메이션을 건너뛴다
       }
