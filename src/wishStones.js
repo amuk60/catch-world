@@ -1,5 +1,6 @@
 // 브라우저 전용: 소원 조각상 발치의 소원 돌탑. 납작한 돌을 위로 쌓고(놓임새는 logic/wish.js 의 stoneAt), 새 돌은 위에서 살짝 내려앉는다.
-// 돌 개수는 이 브라우저의 localStorage 에 기억한다(소원 글은 저장하지 않는다). 저장소를 못 쓰면 이번 방문 동안만 쌓인다.
+// 돌 개수(이 브라우저가 본 가장 큰 탑 개수)는 localStorage 에 기억한다(소원 글은 저장하지 않는다). 저장소를 못 쓰면 이번 방문 동안만 쌓인다.
+// 같은 방 방문자와 함께 쌓는 개수 합치기는 main.js(logic/wishTower.js)가 하고, 이 모듈은 받은 개수대로 그리기만 한다.
 import * as THREE from 'three';
 import { stoneAt, parseStoneCount } from './logic/wish.js';
 
@@ -52,7 +53,12 @@ export function createWishStones(root, spot, { max, count = 0 } = {}) {
   }
   let shown = 0;
   let drop = null; // { mesh, t }
-  const show = (n) => { shown = Math.max(0, Math.min(max, n)); stones.forEach((m, i) => { m.visible = i < shown; m.position.y = m.userData.restY; }); };
+  // 내려앉는 중인 돌은 그대로 두고(연출이 끊기지 않게) 나머지는 제자리로. 내려앉던 돌이 사라지면 연출도 끝낸다.
+  const show = (n) => {
+    shown = Math.max(0, Math.min(max, n));
+    stones.forEach((m, i) => { m.visible = i < shown; if (m !== drop?.mesh) m.position.y = m.userData.restY; });
+    if (drop && !drop.mesh.visible) { drop.mesh.position.y = drop.mesh.userData.restY; drop = null; }
+  };
   show(count);
 
   return {
@@ -66,6 +72,7 @@ export function createWishStones(root, spot, { max, count = 0 } = {}) {
       show(n);
       if (animate && shown > before) {
         const mesh = stones[shown - 1];
+        if (drop && drop.mesh !== mesh) drop.mesh.position.y = drop.mesh.userData.restY; // 앞의 돌은 곧바로 제자리
         mesh.position.y = mesh.userData.restY + DROP_HEIGHT;
         drop = { mesh, t: 0 };
       }

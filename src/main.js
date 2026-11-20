@@ -69,6 +69,7 @@ import {
   SKY_CYCLE, LANTERN_LIGHT, MULTIPLAYER, SUPABASE_URL, SUPABASE_ANON_KEY, CLOTHESLINE_SLOTS, QUICK_CHAT, LAUNDRY_ITEMS, LAUNDRY_FX, TUTORIAL, WISH,
 } from './config.js';
 import { wishCooldownLeft, nextStoneCount, pickCheer, wishEventParams } from './logic/wish.js';
+import { mergeTowerCount, towerLine } from './logic/wishTower.js';
 import { createWishCard } from './wishCard.js';
 import { createWishStones, loadStoneCount, saveStoneCount } from './wishStones.js';
 import { isTypingTarget } from './logic/typing.js';
@@ -1476,18 +1477,30 @@ if (isMobileUA(navigator.userAgent)) {
     dispatch('wish:close');
     lastWishAt = nowSeconds();
     if (once('game_start')) track('game_start');
-    const stones = wishStones ? nextStoneCount(wishStones.count, WISH.maxStones) : 0;
+    const stones = wishStones ? nextStoneCount(wishStones.count, WISH.maxStones) : 0; // 같은 방 방문자와 함께 쌓는 탑: 내가 아는 개수 + 1
     if (wishStones) {
       wishStones.set(stones, { animate: true });
       saveStoneCount(WISH.storageKey, stones);
       wishGlitter.cloud(tmpV.set(layout.wishStones.x, wishStones.topY() + 0.15, layout.wishStones.z), 1.1);
+      net?.wish(stones); // 같은 방에 새 개수만 한 번 알린다(소원 글은 보내지 않는다)
     } else if (wishItem) wishGlitter.cloud(tmpV.set(wishItem.x, 1.0, wishItem.z), 1.1);
     sfx.play('wishBell');
     const cheer = pickCheer(WISH.cheers, Math.random, lastCheer);
     lastCheer = cheer.index;
-    hud.showBubble(`소원을 빌었어요!\n${cheer.text}`); // 응원 문구만(소원 글은 말풍선에 올리지 않는다)
+    const line = towerLine(stones);
+    hud.showBubble(`소원을 빌었어요!\n${cheer.text}${line ? `\n${line}` : ''}`); // 응원 문구와 탑 개수만(소원 글은 말풍선에 올리지 않는다)
     track('wish_made', wishEventParams(wish, stones)); // 글자 수·돌 개수만
     applyReduction(rollReduction(Math.random, REDUCE_RANGE));
+  }
+  // 같은 방 다른 방문자의 탑 개수(믿을 수 없는 입력: 검사는 session 과 logic/wishTower.js): 지금보다 클 때만 맞추고 기억한다.
+  // quiet(상태 메시지에 실려 온 개수, 예: 내가 나중에 들어왔을 때)면 연출 없이, 아니면(방금 누가 소원을 빌었다) 돌이 내려앉고 마당에 있으면 반짝인다.
+  function onRemoteWish(ev) {
+    if (!wishStones) return;
+    const next = mergeTowerCount(wishStones.count, ev.n, WISH.maxStones);
+    if (next === null) return;
+    wishStones.set(next, { animate: !ev.quiet });
+    saveStoneCount(WISH.storageKey, next);
+    if (!ev.quiet && spaceId === 'yard') wishGlitter.cloud(tmpV.set(layout.wishStones.x, wishStones.topY() + 0.15, layout.wishStones.z), 0.8);
   }
 
   // E 키: 포춘 모달이면 깨기/닫기, 앉은 상태면 일어나기, 아니면 가장 가까운 대상의 동작(소각로는 E 동작이 없다).
@@ -1670,6 +1683,7 @@ if (isMobileUA(navigator.userAgent)) {
         remoteSpeech = createRemoteSpeech({ hud, crew, camera, renderer, config: INTERVIEW, interviewerOf: interviewerOfRemote, posOf: (id) => net.remotes.find((r) => r.id === id) });
         // 받은 한마디는 말풍선·면접관 반응으로만 보여 준다. 내 지수·라운드·보너스는 건드리지 않는다(분석은 보았다는 횟수만).
         net.onRoom(onRoomMessage);
+        net.onWish(onRemoteWish); // 함께 쌓는 소원 탑
         net.onSay((ev) => { if (remoteSpeech.show(ev)) track('remote_say_seen', { type: ev.ty }); });
         net.onChat((ev) => { if (net.enabled) quickChat.showRemote(ev, posOfRemote(ev.id)); }); // 인사·응원말: 번호로 내 목록에서 글을 찾아 그 방문자 머리 위에 띄운다(다른 방문자 보기가 꺼져 있으면 아무것도 안 온다)
       }
@@ -1787,7 +1801,7 @@ if (isMobileUA(navigator.userAgent)) {
     updateRoastProp(dt);
     confetti.update(dt);
     if (!character) playerFx.update(dt);
-    net?.update(dt, { space: spaceId, x: player.position.x, z: player.position.z, y: player.position.y, rotY: player.rotation.y, anim: character ? character.getAnim() : 'idle', outfit: outfit.state, seat: holdsSeat(mode) });
+    net?.update(dt, { space: spaceId, x: player.position.x, z: player.position.z, y: player.position.y, rotY: player.rotation.y, anim: character ? character.getAnim() : 'idle', outfit: outfit.state, seat: holdsSeat(mode), ws: wishStones?.count ?? 0 });
     remoteSpeech?.update(dt, net.remotes, spaceId);
     quickChat.update(dt);
     updateLine(dt);

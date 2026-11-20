@@ -1,6 +1,7 @@
 // 브라우저 전용: 멀티플레이를 게임에 붙이는 얇은 접착제. main.js 는 멀티플레이가 켜져 있을 때만 이 모듈을 불러온다.
 // 전송 선택(transport.js) -> 세션(session.js) -> 다른 방문자 아바타(remotePlayers.js) + 안내 칩(netHud.js). 어떤 오류도 게임 루프로 던지지 않는다.
-import { MULTIPLAYER as BASE_CFG, INTERVIEW, QUICK_CHAT } from '../config.js';
+import { MULTIPLAYER as BASE_CFG, INTERVIEW, QUICK_CHAT, WISH } from '../config.js';
+import { WS_LIMIT } from '../logic/wishTower.js';
 import { channelPrefix, numberParam } from '../env.js';
 import { makeId } from '../logic/net.js';
 import { validateNick, suggestNickFor } from '../logic/nick.js';
@@ -22,6 +23,8 @@ const LAUNDRY = buildLaundryInterior();
 const ROOM_LIMITS = { slots: LAUNDRY.clothesline.slots, shared: LAUNDRY.clothesline.shared, washers: LAUNDRY.washers.length };
 // 인사·응원말 프리셋을 받을 때의 허용 범위(내 QUICK_CHAT 개수). 이 밖의 번호는 버린다.
 const CHAT_LIMITS = { count: QUICK_CHAT.length };
+// 함께 쌓는 소원 탑 "돌 얹음" 알림의 허용 범위(개수 상한, 보낸 사람마다 간격).
+const WISH_LIMITS = { max: WS_LIMIT, gapMs: WISH.recvGapMs };
 const PREF_KEY = 'catch-world-mp';
 const FOOTER_NOTICE = '접속 중에는 닉네임과 위치가 다른 방문자에게 공유됩니다(개인정보 아님).';
 
@@ -54,6 +57,8 @@ export function createMultiplayer(ctx) {
   let roomUnsub = null;
   const chatHandlers = new Set(); // 인사·응원말 구독
   let chatUnsub = null;
+  const wishHandlers = new Set(); // "돌 얹음" 알림 구독
+  let wishUnsub = null;
   const sayHandlers = new Set(); // 한마디 구독(세션이 다시 만들어져도 유지한다)
   let sayUnsub = null;
   const hud = createNetHud(container, { enabled: on, onToggle: toggle, nick: self.nick, onNick: () => nickCard.isOpen ? nickCard.close() : nickCard.open(self.nick) });
@@ -83,11 +88,12 @@ export function createMultiplayer(ctx) {
     try {
       transport ??= await pick.create();
       if (!on) return;
-      session = createSession({ transport, self, cfg: MULTIPLAYER, sayLimits: SAY_LIMITS, roomLimits: ROOM_LIMITS, chatLimits: CHAT_LIMITS });
+      session = createSession({ transport, self, cfg: MULTIPLAYER, sayLimits: SAY_LIMITS, roomLimits: ROOM_LIMITS, chatLimits: CHAT_LIMITS, wishLimits: WISH_LIMITS });
       unsub = session.subscribe(refresh);
       sayUnsub = session.onSay((ev) => { for (const fn of sayHandlers) fn(ev); });
       roomUnsub = session.onRoom((ev) => { for (const fn of roomHandlers) fn(ev); });
       chatUnsub = session.onChat((ev) => { for (const fn of chatHandlers) fn(ev); });
+      wishUnsub = session.onWish((ev) => { for (const fn of wishHandlers) fn(ev); });
     } catch (err) {
       console.warn('멀티플레이를 시작하지 못했습니다.', err);
       session = null;
@@ -106,6 +112,8 @@ export function createMultiplayer(ctx) {
     roomUnsub = null;
     chatUnsub?.();
     chatUnsub = null;
+    wishUnsub?.();
+    wishUnsub = null;
     session?.dispose();
     session = null;
     lastList = [];
@@ -143,6 +151,10 @@ export function createMultiplayer(ctx) {
     // 내 인사·응원말 보내기(프리셋 번호만). 보냈으면 true. 다른 방문자의 것은 onChat(fn) 으로 받는다(fn({ id, nick, i })).
     chat(i) { return session ? session.chat(i) : false; },
     onChat(fn) { chatHandlers.add(fn); return () => chatHandlers.delete(fn); },
+    // 함께 쌓는 소원 탑: 내가 소원을 빌어 바뀐 새 돌 개수 n 을 같은 방에 한 번 알린다(소원 글은 보내지 않는다). 다른 방문자의 것은 onWish(fn) 으로 받는다
+    // (fn({ id, n, quiet }): quiet 면 상태 메시지에 실려 온 탑 개수 ws 라서 연출 없이 맞춘다).
+    wish(n) { return session ? session.wish(n) : false; },
+    onWish(fn) { wishHandlers.add(fn); return () => wishHandlers.delete(fn); },
     // 닉네임 바꾸기(검사 통과해야 함). 지금 닉네임은 self.nick.
     setNick,
     openNickCard() { nickCard.open(self.nick); },
