@@ -1462,7 +1462,7 @@ if (isMobileUA(navigator.userAgent)) {
     sfx.play('wishBell');
     const cheer = pickCheer(WISH.cheers, Math.random, lastCheer);
     lastCheer = cheer.index;
-    hud.showBubble(`소원을 빌었어요! ${cheer.text}`); // 응원 문구만(소원 글은 말풍선에 올리지 않는다)
+    hud.showBubble(`소원을 빌었어요!\n${cheer.text}`); // 응원 문구만(소원 글은 말풍선에 올리지 않는다)
     track('wish_made', wishEventParams(wish, stones)); // 글자 수·돌 개수만
     applyReduction(rollReduction(Math.random, REDUCE_RANGE));
   }
