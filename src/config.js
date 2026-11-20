@@ -784,6 +784,7 @@ export const TUTORIAL = {
     lines: [
       '이곳은 취업 준비로 쌓인 스트레스를 풀어 주는 공간이에요.',
       '태우고, 세탁하고, 속마음을 표출하며 마음껏 힐링해 보세요.',
+      '발밑 돌길을 따라 걸으면 곳곳에서 E 키가 떠요. 왼쪽 위 힐링 코스를 눌러 방향을 확인해 보세요.',
     ],
     note: '(캐치와 무관한 학사 과제용 비공식 프로젝트예요)',
     start: '시작하기',
@@ -803,14 +804,14 @@ export const TUTORIAL = {
   pinHeight: 3.0, // 목표 위에 뜨는 화살표 높이
   course: {
     title: '오늘의 힐링 코스',
-    sub: '눌러 보면 가는 방향을 알려 줘요',
+    sub: '항목을 누르면 가는 방향을 알려 줘요',
     celebrate: '힐링 코스 완주! 오늘도 수고했어요, 마음이 한결 가벼워졌길 바라요.',
     celebrateSeconds: 7,
     items: [
       { id: 'burn', icon: '🔥', label: '소각장 태우기', hint: '모닥불 앞에서 1 키로 서류 태우기', needs: ['burn'] },
       { id: 'laundry', icon: '🧺', label: '마음 세탁소', hint: '세탁 → 널기 → 새 셔츠 입기', needs: ['wash', 'hang', 'wear'] },
-      { id: 'interview', icon: '🎤', label: '캐치 면접장', hint: '의자에 앉아 면접 보기', needs: ['interview'] },
-      { id: 'fortune', icon: '🥠', label: '포춘쿠키 상점', hint: '쿠키를 깨 보기', needs: ['fortune'] },
+      { id: 'interview', icon: '🎤', label: '캐치 면접장', hint: '문 앞에서 E 키로 입장', needs: ['interview'] },
+      { id: 'fortune', icon: '🥠', label: '포춘쿠키 상점', hint: '노점 앞에서 E 키로 쿠키 깨기', needs: ['fortune'] },
       { id: 'marshmallow', icon: '🍡', label: '마시멜로 굽기', hint: '통나무에 앉아 마시멜로 굽기', needs: ['marshmallow'] },
     ],
   },

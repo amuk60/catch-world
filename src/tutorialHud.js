@@ -193,7 +193,7 @@ export function createTutorialUi(container, { storage = null, track = () => {}, 
     isReplay = false;
     onEnd({ replay, how });
   }
-  goBtn.addEventListener('click', () => tutorial.begin());
+  goBtn.addEventListener('click', () => { if (tutorial.finish()) ended('complete'); });
   introSkip.addEventListener('click', () => { tutorial.skip(); ended('skip'); });
   toastSkip.addEventListener('click', () => { tutorial.skip(); ended('skip'); });
 

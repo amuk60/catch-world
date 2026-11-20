@@ -40,6 +40,8 @@ export function createTutorial({ storage = null, track = () => {}, moveDistance 
     },
     // "시작하기": 소개 -> 1단계
     begin() { if (step === STEP.INTRO) { moved = 0; enter(STEP.MOVE); } },
+    // "시작하기": 소개만 보이고 바로 끝낸다(강제 단계 없이 체크리스트와 돌길 안내로 자유롭게 시작). 소개 중일 때만 'complete' 를 돌려준다.
+    finish() { if (step !== STEP.INTRO) return null; step = null; track('tutorial_complete'); return 'complete'; },
     // 걸어서 움직인 거리(월드 단위, 이번 프레임 증가분). 1단계에서만 센다.
     notifyMoved(distance) {
       if (step !== STEP.MOVE || !(distance > 0)) return;
