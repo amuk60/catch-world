@@ -66,7 +66,7 @@ import {
   INCINERATOR, REDUCE_RANGE, ACTION_EFFECT_AT, ACTION_TARGET_SECONDS, ACTION_TURN_SECONDS, AUTO_GAP, PASSIVE, MARSHMALLOW, FIRST_PERSON,
   FIRE_RANGE, SHREDDER_RANGE, WASHER_RANGE, CLOTHESLINE_RANGE, FIRE_ZONE_RADIUS, GA_MEASUREMENT_ID, WEAR_SECONDS, WEAR_SWAP_AT,
   INTERVIEW, INTERVIEW_ROUND, INTERVIEW_BONUS_RANGE, INTERVIEW_ZONE_RADIUS, INTERVIEW_ANSWER_SECONDS, INTERVIEW_IMPROV_SECONDS, INTERVIEW_FINALE_SECONDS, SPEECH_SECONDS,
-  SKY_CYCLE, MULTIPLAYER, SUPABASE_URL, SUPABASE_ANON_KEY, CLOTHESLINE_SLOTS, QUICK_CHAT, LAUNDRY_ITEMS, LAUNDRY_FX, TUTORIAL, WISH,
+  SKY_CYCLE, LANTERN_LIGHT, MULTIPLAYER, SUPABASE_URL, SUPABASE_ANON_KEY, CLOTHESLINE_SLOTS, QUICK_CHAT, LAUNDRY_ITEMS, LAUNDRY_FX, TUTORIAL, WISH,
 } from './config.js';
 import { wishCooldownLeft, nextStoneCount, pickCheer, wishEventParams } from './logic/wish.js';
 import { createWishCard } from './wishCard.js';
@@ -161,7 +161,7 @@ if (isMobileUA(navigator.userAgent)) {
   if (treeCount < 5) buildBoundary(yardRoot);
   // 소각로 곁의 상시 소품: 불, 파쇄기.
   const fire = createFire(yardRoot, FURNACE);
-  const lanternLights = buildLanternLights(yardRoot, layout.lanterns, layout.interactables.filter((i) => i.kind === 'wish').map((i) => ({ x: i.x - 0.9, z: i.z + 0.8 }))); // 광장 가로등 기둥과 소원 조각상 발치(말뚝)에 조명(모델은 그대로)
+  const lanternLights = buildLanternLights(yardRoot, layout.lanterns, layout.interactables.filter((i) => i.kind === 'wish').flatMap((i) => [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sz]) => ({ x: i.x + sx * LANTERN_LIGHT.spot.half, z: i.z + sz * LANTERN_LIGHT.spot.half })))); // 광장 가로등 기둥에 조명(모델은 그대로) + 소원 조각상 둘레 바닥 매립등 4개
   // 마당 하늘 시간대(새벽 -> 아침 -> 노을 -> 밤): 방문자 PC 의 현지 시각을 따른다(서버·동기화 없음). 확인용: ?sky=18:00 고정, ?skyspeed=60 빨리 감기.
   const skyState = createSkyState();
   const skyClock = skyClockParams(location.search);

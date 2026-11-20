@@ -40,27 +40,36 @@ export function buildLanternLights(parent, lanterns, spots = []) {
     group.add(light, glow, pool);
     return { light, glow, pool };
   });
-  // 바닥 조명: 낮은 말뚝 + 작은 전구 + 약한 점광과 작은 빛 웅덩이(기둥보다 작고 은은하다).
+  // 소원 조각상 둘레의 바닥 매립등: 조각상을 가운데 두고 사각형 꼭짓점 4곳에 아주 작은 둥근 매립등(은색 테 + 따뜻하게 빛나는 면)을 땅과 거의 같은 높이로 박는다.
+  // 점광은 조각상 발치 가운데에 약한 것 하나만 둬서(아래에서 위로 비추는 느낌) 광원 수를 아낀다. 각 매립등 둘레에는 작은 빛 웅덩이를 얹는다.
   const sp = cfg.spot;
-  const stakeMat = new THREE.MeshStandardMaterial({ color: 0x3a3d46, roughness: 0.7 });
-  const bulbMat = new THREE.MeshBasicMaterial({ color: 0xffd9a0 });
-  const spotLamps = spots.map((s) => {
-    const stake = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, sp.height, 8), stakeMat);
-    stake.position.set(s.x, sp.height / 2, s.z);
-    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), bulbMat);
-    bulb.position.set(s.x, sp.height + 0.06, s.z);
-    const light = new THREE.PointLight(cfg.color, 0, sp.distance, cfg.decay);
-    light.position.set(s.x, sp.height + 0.2, s.z);
-    const glow = new THREE.Sprite(glowMat);
-    glow.position.copy(bulb.position);
-    glow.scale.setScalar(sp.glowSize);
-    const pool = new THREE.Mesh(poolGeo, poolMat);
-    pool.position.set(s.x, 0.06, s.z);
-    pool.scale.setScalar(sp.poolSize);
-    pool.renderOrder = 2;
-    group.add(stake, bulb, light, glow, pool);
-    return { light };
-  });
+  const spotLights = [];
+  const discMats = [];
+  if (spots.length) {
+    const ringGeo = new THREE.CylinderGeometry(sp.ringRadius, sp.ringRadius, 0.03, 20);
+    const discGeo = new THREE.CircleGeometry(sp.discRadius, 20).rotateX(-Math.PI / 2);
+    const ringMat = new THREE.MeshStandardMaterial({ color: 0xb9bec6, metalness: 0.6, roughness: 0.35, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+    const discMat = new THREE.MeshBasicMaterial({ color: 0xffe2b0, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 });
+    discMats.push(discMat);
+    let cx = 0; let cz = 0;
+    for (const s of spots) {
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.position.set(s.x, 0.04, s.z);
+      const disc = new THREE.Mesh(discGeo, discMat);
+      disc.position.set(s.x, 0.062, s.z);
+      disc.renderOrder = 3;
+      const pool = new THREE.Mesh(poolGeo, poolMat);
+      pool.position.set(s.x, 0.07, s.z);
+      pool.scale.setScalar(sp.poolSize);
+      pool.renderOrder = 2;
+      group.add(ring, disc, pool);
+      cx += s.x / spots.length; cz += s.z / spots.length;
+    }
+    const up = new THREE.PointLight(cfg.color, 0, sp.centerDistance, cfg.decay);
+    up.position.set(cx, sp.centerY, cz);
+    group.add(up);
+    spotLights.push(up);
+  }
   parent.add(group);
   let last = -1;
   return {
@@ -72,7 +81,8 @@ export function buildLanternLights(parent, lanterns, spots = []) {
       last = d;
       const k = cfg.dayLevel + (1 - cfg.dayLevel) * d;
       for (const { light } of lamps) light.intensity = cfg.intensity * k;
-      for (const { light } of spotLamps) light.intensity = sp.intensity * k;
+      for (const light of spotLights) light.intensity = sp.centerIntensity * k;
+      for (const m of discMats) m.color.setRGB(1, 0.89, 0.69).multiplyScalar(0.8 + 0.2 * d); // 어두울수록 매립등 면이 더 환하다
       glowMat.opacity = cfg.glowOpacity * k;
       poolMat.opacity = cfg.poolOpacity * d; // 바닥 웅덩이는 어두울 때만(낮에는 보이지 않는다)
     },
