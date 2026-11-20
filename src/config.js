@@ -408,6 +408,52 @@ export const FOG = { near: 22, far: 75 };
 // 조명: 해(방향광) 세기, 하늘빛(반구광) 세기, 해 위치, 그림자 범위(단위).
 export const LIGHT = { sun: 1.5, hemi: 0.95, sunPosition: [-9, 14, 7], shadowExtent: 24 };
 
+// ---- 마당 하늘 시간대(사용자 요청: 실제 시각을 따라 새벽 -> 아침 -> 노을 -> 저녁/밤) ----
+// 방문자 PC 의 현지 시각(new Date())을 따른다: 접속하면 지금 시각의 하늘에서 시작하고, 실제 시간이 흐르는 만큼 천천히 바뀐다(서버·동기화 없음).
+// 마당에서만 하늘·안개·해(방향광)·하늘빛(반구광)·모닥불 빛 세기가 바뀐다(실내는 자기 조명 그대로).
+// phases: 하루 순서대로(마지막 단계는 자정을 넘어 첫 단계 시작까지 이어진다). start: 시작 시각 'HH:MM'.
+//   blendMinutes: 그 단계의 끝 이만큼(분) 동안 다음 단계 값으로 서서히 넘어간다(새벽은 길게 잡아 점점 밝아진다).
+//   skyTop/skyHorizon: 하늘 꼭대기/지평선 색, glow: 해(달) 둘레 하늘 빛 색, fog: 안개 색, fogNear/fogFar: 안개 거리,
+//   sun/sunColor: 해(밤에는 달빛) 세기·색, sunElev/sunAzim: 해 높이(도, 지평선 0)와 방위(도, +x 에서 +z 쪽으로),
+//   hemi/hemiSky/hemiGround: 하늘빛 세기·위/아래 색, fire: 모닥불 점광 세기 배율(밤에 더 또렷하게).
+// minHemi/minSun: 어떤 값을 넣어도 이보다 어두워지지 않는다(저녁·새벽에도 주변이 읽히게).
+// 확인용 주소 옵션(운영에는 영향 없음): ?sky=18:00 은 그 시각에 고정(또는 ?sky=morning|sunset|evening|dawn 은 그 단계 한가운데),
+//   ?skyspeed=60 은 시간이 60배로 흐른다(고정과 함께 쓰면 그 시각부터 흐른다).
+export const SKY_CYCLE = {
+  enabled: true,
+  minHemi: 0.55,
+  minSun: 0.35,
+  phases: [
+    { name: 'dawn', start: '04:30', blendMinutes: 80, skyTop: 0x2f3d86, skyHorizon: 0xc6a2d6, glow: 0xf2b8d8, fog: 0x8c8cba, fogNear: 22, fogFar: 75,
+      sun: 0.85, sunColor: 0xd8c0f2, sunElev: 16, sunAzim: 330, hemi: 0.8, hemiSky: 0xaab0ec, hemiGround: 0x4a4a62, fire: 1.5 },
+    { name: 'morning', start: '06:30', blendMinutes: 50, skyTop: 0x4a8fdc, skyHorizon: 0xd2e8f6, glow: 0xfff4d6, fog: 0xc8dcea, fogNear: 24, fogFar: 80,
+      sun: 1.65, sunColor: 0xfff2dc, sunElev: 55, sunAzim: 140, hemi: 1.0, hemiSky: 0xe2efff, hemiGround: 0x7d7556, fire: 1.0 },
+    { name: 'sunset', start: '16:30', blendMinutes: 60, skyTop: 0x4b5c9e, skyHorizon: 0xffa067, glow: 0xff8a4a, fog: 0xe2a684, fogNear: 22, fogFar: 75,
+      sun: 1.5, sunColor: 0xffa66a, sunElev: 22, sunAzim: 165, hemi: 1.0, hemiSky: 0xf4cab8, hemiGround: 0x725848, fire: 1.35 },
+    { name: 'evening', start: '19:00', blendMinutes: 45, skyTop: 0x0d1636, skyHorizon: 0x2c3a6c, glow: 0x5a6aa8, fog: 0x232e52, fogNear: 20, fogFar: 70,
+      sun: 0.5, sunColor: 0xb0bcf0, sunElev: 50, sunAzim: 40, hemi: 0.68, hemiSky: 0x8a96c0, hemiGround: 0x34344a, fire: 2.3 },
+  ],
+};
+
+// ---- 마당 자연 소리(사용자 요청: 너무 적막해서. 배경음악은 넣지 않는다) ----
+// 마당에서만 아주 작게: 아침·낮·노을엔 드문드문 새소리, 저녁·밤·새벽 초반엔 풀벌레(새벽 후반부터 새소리가 섞인다: 하늘과 같은 실제 시각 기준), 늘 아주 약한 바람결. 모두 코드 합성(소리 파일 없음, audio/recipes.js).
+// 실내·불멍(불 둘레 통나무에 앉아 있을 때)·소리 끔(M) 에서는 완전히 끄고(소리를 만들지도 않는다), 탭이 숨겨지면 멈춘다.
+// volume: 마당 자연 소리 전체 크기(효과음 마스터 앞에서 곱하는 배율). 소리 크기는 이 값 하나로 조절한다(0.32 이면 최대 진폭 약 0.1 = 마스터의 약 10~15%).
+// fireDuck: 소각장 반경(FIRE_ZONE_RADIUS) 안에서 곱하는 배율(불 소리를 가리지 않게), fireDuckFade: 반경 밖으로 이만큼(단위) 나가며 원래 크기로 돌아온다.
+// fadeSeconds: 켜고 끌 때(공간 이동·소리 끔) 크기가 바뀌는 시간.
+// birds/insects: 소리 사이 간격 범위(초), 시간대별 비중(0~1: 그 시간대에 소리가 날 확률이자 크기, 단계 경계에서는 두 시간대 값을 섞는다), 쓰는 레시피 이름.
+// wind: 바람결(아주 작은 거른 잡음, 천천히 일렁임) 켜기와 크기 배율.
+export const AMBIENT = {
+  enabled: true,
+  volume: 0.32,
+  fireDuck: 0.3,
+  fireDuckFade: 4,
+  fadeSeconds: 1.5,
+  birds: { interval: [8, 20], weights: { dawn: 0.15, morning: 1, sunset: 0.6, evening: 0 }, sounds: ['birdChirp', 'birdWhistle', 'birdTrill'] },
+  insects: { interval: [6, 14], weights: { dawn: 0.7, morning: 0, sunset: 0.2, evening: 1 }, sounds: ['cricket', 'cricketSoft'] },
+  wind: { enabled: true, level: 1 },
+};
+
 // ---- 공간 전환(차원문)과 세탁소 실내 ----
 // 전환: 닫는 구간 -> (화면이 완전히 덮인 순간 공간 교체) -> 여는 구간. 합쳐 약 1초.
 export const TRANSITION = { outSeconds: 0.45, inSeconds: 0.45 };

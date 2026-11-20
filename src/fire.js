@@ -276,6 +276,7 @@ export function createFire(scene, furnacePos) {
   scene.add(group, light);
 
   const tint = createAuroraTint(); // 오로라 불꽃 진행(번짐·사그라듦·클릭 되돌리기는 logic/aurora.js)
+  let lightBoost = 1; // 점광 세기 배율(시간대: 밤에 더 밝게, setLightBoost)
   let flareT = -1; // 불이 커진 뒤 경과 초(-1 이면 없음)
   let sparkAcc = 0;
   let smokeAcc = 0;
@@ -347,6 +348,8 @@ export function createFire(scene, furnacePos) {
     // 불티 몇 개를 느리게 띄운다(타는 걸 지켜보는 동안의 불씨).
     embers(count = 4) { for (let i = 0; i < count; i++) spawnSpark(0.8 + Math.random() * 0.5); },
     tintAmount: () => flameUniforms.uAurora.value,
+    // 점광 세기 배율(마당 시간대 순환이 매 프레임 정한다: 저녁에는 불빛이 주변을 더 밝힌다).
+    setLightBoost(k) { lightBoost = Number.isFinite(k) && k > 0 ? k : 1; },
     update(dt, time) {
       const aur = tint.update(dt); // 오로라 정도(0..1): 0.6초에 번지고 끝나기 2초 전부터 사그라든다
       flameUniforms.uAurora.value = aur;
@@ -364,7 +367,7 @@ export function createFire(scene, furnacePos) {
       // 점광: 느린 숨결 + 빠른 일렁임, 색도 살짝 흔들린다.
       const n = 0.5 * Math.sin(time * 9.3) + 0.3 * Math.sin(time * 17.1 + 1.3) + 0.2 * Math.sin(time * 31 + 0.6);
       const slow = Math.sin(time * 2.1) * 0.5 + Math.sin(time * 3.7 + 2) * 0.5;
-      light.intensity = LIGHT_INTENSITY * (0.9 + 0.1 * slow + 0.12 * n + 0.9 * e);
+      light.intensity = LIGHT_INTENSITY * lightBoost * (0.9 + 0.1 * slow + 0.12 * n + 0.9 * e);
       light.color.setRGB(1 - 0.65 * aur, 0.52 + 0.06 * n + 0.08 * e + 0.38 * aur, 0.22 + 0.05 * n + 0.1 * e + 0.55 * aur);
       glowMat.opacity = Math.min(1, 0.85 + 0.15 * n + 0.4 * e);
       const pulse = 0.82 + 0.18 * Math.sin(time * 2.6) + 0.1 * n + 0.35 * e;

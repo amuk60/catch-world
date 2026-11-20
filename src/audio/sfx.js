@@ -1,7 +1,7 @@
 // 게임이 쓰는 효과음 공개 API(얇은 층). 이름으로 소리를 낸다: sfx.play('ding'), sfx.play('stepGrass', { rate: 0.95 }), 위치가 있는 소리는 { at: { x, z } }(듣는 사람과의 거리로 줄고 좌우로 쏠린다).
 // - 첫 사용자 입력 전에는 모든 호출이 아무 일도 하지 않는다(브라우저가 자동재생을 막는다). 음소거이거나 Web Audio 가 없어도 마찬가지다.
 // - 어떤 호출도 던지지 않는다(소리 오류가 게임 루프를 멈추면 안 된다).
-// - sfx.update(dt, 듣는 사람, 공간 id) 를 매 프레임 부르면 모닥불 소리가 소각로와의 거리에 따라 커졌다 작아진다(배경음·앰비언스는 없다: 반복음은 모닥불 하나뿐).
+// - sfx.update(dt, 듣는 사람, 공간 id) 를 매 프레임 부르면 모닥불 소리가 소각로와의 거리에 따라 커졌다 작아진다(배경음악은 없다. 마당 자연 소리(새소리·풀벌레·바람결)는 audio/ambient.js 가 따로 아주 작게 낸다).
 import { createEngine } from './engine.js';
 import { RECIPES, LOOPS } from './recipes.js';
 import { fireSamples } from './fireSynth.js';

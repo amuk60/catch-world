@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { isMobileUA, multiplayerMode } from './env.js';
 import { createStage } from './stage.js';
 import { applyAtmosphere } from './atmosphere.js';
+import { skyAt, createSkyState, skyClockParams, skyMinutes, minutesOfDay } from './logic/skyCycle.js';
+import { createAmbient } from './audio/ambient.js';
 import { loadModels, loadGltf } from './assets.js';
 import { buildDecor } from './decor.js';
 import { buildGuidePaths } from './pathsVisual.js';
@@ -63,7 +65,7 @@ import {
   INCINERATOR, REDUCE_RANGE, ACTION_EFFECT_AT, ACTION_TARGET_SECONDS, ACTION_TURN_SECONDS, AUTO_GAP, PASSIVE, MARSHMALLOW, FIRST_PERSON,
   FIRE_RANGE, SHREDDER_RANGE, WASHER_RANGE, CLOTHESLINE_RANGE, FIRE_ZONE_RADIUS, GA_MEASUREMENT_ID, WEAR_SECONDS, WEAR_SWAP_AT,
   INTERVIEW, INTERVIEW_ROUND, INTERVIEW_BONUS_RANGE, INTERVIEW_ZONE_RADIUS, INTERVIEW_ANSWER_SECONDS, INTERVIEW_IMPROV_SECONDS, INTERVIEW_FINALE_SECONDS, SPEECH_SECONDS,
-  MULTIPLAYER, SUPABASE_URL, SUPABASE_ANON_KEY, CLOTHESLINE_SLOTS, QUICK_CHAT, LAUNDRY_ITEMS, LAUNDRY_FX, TUTORIAL, WISH,
+  SKY_CYCLE, MULTIPLAYER, SUPABASE_URL, SUPABASE_ANON_KEY, CLOTHESLINE_SLOTS, QUICK_CHAT, LAUNDRY_ITEMS, LAUNDRY_FX, TUTORIAL, WISH,
 } from './config.js';
 import { wishCooldownLeft, nextStoneCount, pickCheer, wishEventParams } from './logic/wish.js';
 import { createWishCard } from './wishCard.js';
@@ -140,7 +142,7 @@ if (isMobileUA(navigator.userAgent)) {
   const yardRoot = new THREE.Group();
   yardRoot.name = 'yard';
   scene.add(yardRoot);
-  const { fog: yardFog } = applyAtmosphere(scene, renderer, yardRoot);
+  const { fog: yardFog, setSky } = applyAtmosphere(scene, renderer, yardRoot);
   const ground = buildGround(yardRoot);
   buildCity(yardRoot, layout);
   buildBuildings(yardRoot, layout);
@@ -158,6 +160,19 @@ if (isMobileUA(navigator.userAgent)) {
   if (treeCount < 5) buildBoundary(yardRoot);
   // 소각로 곁의 상시 소품: 불, 파쇄기.
   const fire = createFire(yardRoot, FURNACE);
+  // 마당 하늘 시간대(새벽 -> 아침 -> 노을 -> 밤): 방문자 PC 의 현지 시각을 따른다(서버·동기화 없음). 확인용: ?sky=18:00 고정, ?skyspeed=60 빨리 감기.
+  const skyState = createSkyState();
+  const skyClock = skyClockParams(location.search);
+  let skyElapsed = 0;
+  const updateSky = (dt) => {
+    if (!SKY_CYCLE.enabled) return;
+    skyElapsed += dt;
+    skyAt(skyMinutes(skyClock, minutesOfDay(new Date()), skyElapsed), SKY_CYCLE, skyState);
+    if (spaceId !== 'yard') return; // 실내는 자기 조명(마당 값은 마당에 돌아오면 다시 맞춘다)
+    setSky(skyState);
+    fire.setLightBoost(skyState.fire);
+  };
+  const ambient = createAmbient(sfx.engine); // 마당 자연 소리(새소리·풀벌레·바람결, 아주 작게)
   const shredder = buildShredder(yardRoot, layout.shredder);
   // 소원 조각상 발치의 소원 돌탑(돌 개수는 이 브라우저에 기억한다)과 소원을 빌 때의 반짝임.
   const wishStones = layout.wishStones ? createWishStones(yardRoot, layout.wishStones, { max: WISH.maxStones, count: loadStoneCount(WISH.storageKey, WISH.maxStones) }) : null;
@@ -1709,6 +1724,7 @@ if (isMobileUA(navigator.userAgent)) {
     updateWear(dt);
     updateSootHint();
     updateActions(dt);
+    updateSky(dt);
     fire.update(dt, time);
     fortuneStall.update(time);
     if (mode === 'fortune' && hud.fortune.stage() === 'crack') hud.fortune.setProgress(crack.update()); // 멈추면 줄어드는 게이지
@@ -1781,6 +1797,7 @@ if (isMobileUA(navigator.userAgent)) {
     listenerPos.rx = camRight[0];
     listenerPos.rz = camRight[2];
     sfx.update(dt, listenerPos, spaceId);
+    ambient.update(dt, { space: spaceId, listener: listenerPos, firePos: FURNACE, meditating: fireMeditating() || fireView.on, sky: skyState }); // 실내·불멍·소리 끔이면 꺼진다
 
     const k = 1 - Math.exp(-ORBIT.followSpeed * dt);
     desired.set(player.position.x, ORBIT.targetHeight, player.position.z);
