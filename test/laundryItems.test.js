@@ -18,7 +18,7 @@ test('LAUNDRY_ITEMS: 5종, 표 검사에 문제가 없다(id 유일, 3~4멘트, 
     for (const l of [...item.lines, item.done]) assert.ok([...l].length <= MAX_LINE_LENGTH, l);
     assert.ok(item.display && item.label && ICON_KINDS.includes(item.icon.kind));
   }
-  assert.deepEqual(LAUNDRY_ITEMS.map((i) => i.label), ['월요일 냄새', '밤샘작업 찌든 때', '면접 긴장 얼룩', '자소서 잉크 얼룩', '새벽 감성 먼지']);
+  assert.deepEqual(LAUNDRY_ITEMS.map((i) => i.label), ['불장난 그을음', '월요일 냄새', '밤샘작업 찌든 때', '면접 긴장 얼룩', '자소서 잉크 얼룩']);
 });
 
 test('validateLaundryItems: 잘못된 표를 잡아낸다', () => {
@@ -79,12 +79,12 @@ test('선택 창 모드 전환: free -> item-choice(1 누름) -> 고르면 free(
 });
 
 test('laundryGuide: 고른 빨 것 이름이 세탁 중 안내에 들어가고, 없으면 기본 문구', () => {
-  assert.equal(laundryGuide('tank', { washing: true, stain: LAUNDRY_ITEMS[0] }), '월요일 냄새 세탁 중… 다 빨리면 빨랫줄에 널어요');
+  assert.equal(laundryGuide('tank', { washing: true, stain: LAUNDRY_ITEMS[1] }), '월요일 냄새 세탁 중… 다 빨리면 빨랫줄에 널어요');
   assert.equal(laundryGuide('tank', { washing: true }), LAUNDRY_GUIDE.washing);
   assert.equal(laundryGuide('tank', { washing: false, stain: LAUNDRY_ITEMS[0] }), LAUNDRY_GUIDE.tank);
   assert.equal(laundryGuide('clean', { stain: LAUNDRY_ITEMS[0] }), null);
   assert.equal(laundryGuide('tank', { washing: true, spaceId: 'yard', stain: LAUNDRY_ITEMS[0] }), null);
-  assert.equal(stainName(LAUNDRY_ITEMS[1]), '밤샘작업 찌든 때');
+  assert.equal(stainName(LAUNDRY_ITEMS[2]), '밤샘작업 찌든 때');
   assert.equal(stainName(null), null);
 });
 
