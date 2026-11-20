@@ -161,7 +161,7 @@ if (isMobileUA(navigator.userAgent)) {
   if (treeCount < 5) buildBoundary(yardRoot);
   // 소각로 곁의 상시 소품: 불, 파쇄기.
   const fire = createFire(yardRoot, FURNACE);
-  const lanternLights = buildLanternLights(yardRoot, layout.lanterns); // 광장 가로등 기둥에 조명(모델은 그대로)
+  const lanternLights = buildLanternLights(yardRoot, layout.lanterns, layout.interactables.filter((i) => i.kind === 'wish').map((i) => ({ x: i.x - 1.0, z: i.z - 0.9 }))); // 광장 가로등 기둥과 소원 조각상 발치(말뚝)에 조명(모델은 그대로)
   // 마당 하늘 시간대(새벽 -> 아침 -> 노을 -> 밤): 방문자 PC 의 현지 시각을 따른다(서버·동기화 없음). 확인용: ?sky=18:00 고정, ?skyspeed=60 빨리 감기.
   const skyState = createSkyState();
   const skyClock = skyClockParams(location.search);
@@ -1554,6 +1554,7 @@ if (isMobileUA(navigator.userAgent)) {
       return;
     }
     if (e.code === 'KeyE') {
+      e.preventDefault(); // 이 키로 입력 창(소원 등)이 열려도 'e' 글자가 입력칸에 들어가지 않게
       if (!e.repeat) onInteractKey();
     } else if (e.code === 'Escape') {
       if (!fireView.off()) dispatch('close'); // 불멍 1인칭이면 먼저 시점만 되돌린다

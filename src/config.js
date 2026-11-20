@@ -147,7 +147,8 @@ export const FIRE_ZONE_RADIUS = 4.5;
 export const PASSIVE = { interval: 5, amount: 5 };
 
 // 광장 가로등 기둥의 불빛(lanternLights.js): 기둥마다 점광 1개 + 빛무리 + 바닥 빛 웅덩이. headY: 기둥 머리 높이(모델 높이 약 1.56), dayLevel: 낮에도 켜져 있는 비율(0~1), intensity: 가장 어두울 때 점광 세기.
-export const LANTERN_LIGHT = { color: 0xffc27a, headY: 1.42, intensity: 3.6, distance: 8, decay: 1.6, glowSize: 1.5, glowOpacity: 0.95, poolSize: 6, poolOpacity: 0.4, dayLevel: 0.22 };
+export const LANTERN_LIGHT = { color: 0xffc27a, headY: 1.42, intensity: 3.6, distance: 8, decay: 1.6, glowSize: 1.5, glowOpacity: 0.95, poolSize: 6, poolOpacity: 0.4, dayLevel: 0.22,
+  spot: { height: 0.32, intensity: 1.6, distance: 4.5, glowSize: 0.7, poolSize: 2.6 } }; // spot: 소원 조각상 발치 같은 바닥 조명(낮은 말뚝 + 작은 전구)
 // 마시멜로 굽기(소각로 옆 벤치에 앉아서 1번): 1인칭 시점으로 막대 끝 마시멜로를 불 위에 들고 굽는 미니게임. 판마다 타이밍이 다르다.
 // 굽는 정도(level 0 -> 1)는 색·모양으로만 읽는다(게이지는 황금 구간을 알려 주지 않는다). 지수 감소는 ACTION_REDUCE 가 아니라 결과별 rewards 표를 따른다(한 번만, 행동 횟수에 들어간다).
 //   takeSeconds: 막대를 꺼내 드는 시간, reachSeconds: 팔을 뻗어 불 위에 대는 시간(이 둘 동안은 Esc/E 로 취소할 수 있다). burntAt: 이 level 에 닿으면 꺼내지 않아도 자동으로 빼낸다(탄 결과).

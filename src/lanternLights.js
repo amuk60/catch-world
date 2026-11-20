@@ -17,7 +17,8 @@ function radialTexture(size, stops) {
   return tex;
 }
 
-export function buildLanternLights(parent, lanterns) {
+// lanterns: 가로등 기둥 자리 [{x, z}], spots: 바닥 조명(작은 말뚝 등) 자리 [{x, z}] — 소원 조각상 발치 등.
+export function buildLanternLights(parent, lanterns, spots = []) {
   const cfg = LANTERN_LIGHT;
   const group = new THREE.Group();
   group.name = 'lantern-lights';
@@ -39,6 +40,27 @@ export function buildLanternLights(parent, lanterns) {
     group.add(light, glow, pool);
     return { light, glow, pool };
   });
+  // 바닥 조명: 낮은 말뚝 + 작은 전구 + 약한 점광과 작은 빛 웅덩이(기둥보다 작고 은은하다).
+  const sp = cfg.spot;
+  const stakeMat = new THREE.MeshStandardMaterial({ color: 0x3a3d46, roughness: 0.7 });
+  const bulbMat = new THREE.MeshBasicMaterial({ color: 0xffd9a0 });
+  const spotLamps = spots.map((s) => {
+    const stake = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, sp.height, 8), stakeMat);
+    stake.position.set(s.x, sp.height / 2, s.z);
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), bulbMat);
+    bulb.position.set(s.x, sp.height + 0.06, s.z);
+    const light = new THREE.PointLight(cfg.color, 0, sp.distance, cfg.decay);
+    light.position.set(s.x, sp.height + 0.2, s.z);
+    const glow = new THREE.Sprite(glowMat);
+    glow.position.copy(bulb.position);
+    glow.scale.setScalar(sp.glowSize);
+    const pool = new THREE.Mesh(poolGeo, poolMat);
+    pool.position.set(s.x, 0.06, s.z);
+    pool.scale.setScalar(sp.poolSize);
+    pool.renderOrder = 2;
+    group.add(stake, bulb, light, glow, pool);
+    return { light };
+  });
   parent.add(group);
   let last = -1;
   return {
@@ -49,7 +71,8 @@ export function buildLanternLights(parent, lanterns) {
       if (Math.abs(d - last) < 0.004) return;
       last = d;
       const k = cfg.dayLevel + (1 - cfg.dayLevel) * d;
-      for (const { light, glow } of lamps) { light.intensity = cfg.intensity * k; }
+      for (const { light } of lamps) light.intensity = cfg.intensity * k;
+      for (const { light } of spotLamps) light.intensity = sp.intensity * k;
       glowMat.opacity = cfg.glowOpacity * k;
       poolMat.opacity = cfg.poolOpacity * d; // 바닥 웅덩이는 어두울 때만(낮에는 보이지 않는다)
     },
