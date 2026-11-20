@@ -411,8 +411,8 @@ test('모드: seated -> roasting -> seated, 굽는 동안은 앉은 것으로 �
 });
 
 // ---- 불멍(자동 감소): 굽는 동안에도 같이 줄어든다 ----
-test('불멍: PASSIVE 설정(5초에 -2)과 소각로 옆 벤치 판정(앉은 채·굽는 중 모두, 마당만, 반경 안만)', () => {
-  assert.deepEqual(PASSIVE, { interval: 5, amount: 2 });
+test('불멍: PASSIVE 설정(5초에 -5)과 소각로 옆 벤치 판정(앉은 채·굽는 중 모두, 마당만, 반경 안만)', () => {
+  assert.deepEqual(PASSIVE, { interval: 5, amount: 5 });
   const near = benches.find((b) => dist(b) <= FIRE_ZONE_RADIUS);
   const base = { spaceId: 'yard', seatDistance: dist(near) };
   assert.equal(isMeditating({ ...base, mode: 'seated' }, FIRE_ZONE_RADIUS), true);

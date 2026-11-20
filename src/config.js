@@ -143,8 +143,8 @@ export const REDUCE_RANGE = { min: 7, max: 12 };
 export const ACTION_REDUCE = 5; // 더는 쓰지 않는다(옛 고정 감소량, 호환용). 실제 감소는 REDUCE_RANGE 의 무작위 값.
 export const AUTO_GAP = 1;
 export const FIRE_ZONE_RADIUS = 4.5;
-// 불멍: 소각로 옆 벤치에 앉아 있기만 해도(마시멜로를 굽는 중에도 같이) interval 초마다 amount 씩 지수가 천천히 자동으로 줄어든다(행동 하나보다 약하게, 행동 횟수에는 넣지 않는다).
-export const PASSIVE = { interval: 5, amount: 2 };
+// 불멍: 소각로 옆 벤치에 앉아 있기만 해도(마시멜로를 굽는 중에도 같이) interval 초마다 amount 씩 지수가 자동으로 줄어든다(팀 결정: 5초에 -5. 행동 횟수에는 넣지 않는다).
+export const PASSIVE = { interval: 5, amount: 5 };
 // 마시멜로 굽기(소각로 옆 벤치에 앉아서 1번): 1인칭 시점으로 막대 끝 마시멜로를 불 위에 들고 굽는 미니게임. 판마다 타이밍이 다르다.
 // 굽는 정도(level 0 -> 1)는 색·모양으로만 읽는다(게이지는 황금 구간을 알려 주지 않는다). 지수 감소는 ACTION_REDUCE 가 아니라 결과별 rewards 표를 따른다(한 번만, 행동 횟수에 들어간다).
 //   takeSeconds: 막대를 꺼내 드는 시간, reachSeconds: 팔을 뻗어 불 위에 대는 시간(이 둘 동안은 Esc/E 로 취소할 수 있다). burntAt: 이 level 에 닿으면 꺼내지 않아도 자동으로 빼낸다(탄 결과).
