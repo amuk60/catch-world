@@ -2,6 +2,7 @@
 import { SPACES } from './spaces.js';
 import { validateNick } from './nick.js';
 import { MOVE_MIN } from './netMotion.js';
+import { parseTowerCount } from './wishTower.js';
 
 export const SPACE_IDS = Object.keys(SPACES);
 // 다른 방문자가 보낼 수 있는 동작 이름(플레이어 모델의 기본 상태 + 행동 클립). 이 밖의 값은 idle 로 본다.
@@ -71,6 +72,7 @@ export function nickOrFallback(raw, id, adjectives = [], nouns = []) {
 // ---- 상태 메시지 ----
 // 보낼 때: 필드를 모아 소수 둘째 자리로 줄인다. local: { space, x, z, y, rotY, anim, outfit, seat }.
 // vx, vz: 지금 걷는 속도(단위/초, 월드 좌표). 받는 쪽이 이 속도로 위치를 이어서 그린다(전송이 드물어도 부드럽게). 거의 안 움직이면 0.
+// ws: (선택) 내 소원 탑의 돌 개수. 1 이상일 때만 숫자 하나로 싣는다(메시지 수는 늘지 않는다: 새로 들어온 사람도 다음 상태 메시지로 탑을 맞춘다).
 export function buildState(self, local, t) {
   const slow = Math.hypot(local.vx ?? 0, local.vz ?? 0) < MOVE_MIN;
   return {
@@ -78,6 +80,7 @@ export function buildState(self, local, t) {
     x: round(local.x), z: round(local.z), y: round(local.y ?? 0), rotY: round(wrapAngle(local.rotY ?? 0)),
     vx: slow ? 0 : round(clamp(local.vx, -MAX_SPEED, MAX_SPEED)), vz: slow ? 0 : round(clamp(local.vz, -MAX_SPEED, MAX_SPEED)),
     anim: local.anim, outfit: local.outfit, seat: Boolean(local.seat), t,
+    ...(parseTowerCount(local.ws) ? { ws: local.ws } : {}),
   };
 }
 
@@ -85,7 +88,7 @@ export function buildState(self, local, t) {
 // 숫자는 유한해야 하고 범위로 자른다. 동작·옷은 목록에 없으면 기본값. 닉네임은 validateNick 로 다시 검사해 통과하지 못하면 id 로 만든 이름.
 export function validateState(raw, { adjectives = [], nouns = [] } = {}) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-  const { id, nick, space, x, z, y, rotY, anim, outfit, seat, t, vx, vz } = raw;
+  const { id, nick, space, x, z, y, rotY, anim, outfit, seat, t, vx, vz, ws } = raw;
   if (typeof id !== 'string' || !ID_RE.test(id)) return null;
   if (typeof space !== 'string' || !SPACE_IDS.includes(space)) return null;
   if (!isNum(x) || !isNum(z) || !isNum(rotY) || !isNum(t)) return null;
@@ -105,6 +108,7 @@ export function validateState(raw, { adjectives = [], nouns = [] } = {}) {
     outfit: OUTFITS.includes(outfit) ? outfit : 'clean',
     seat: seat === true,
     t: clamp(t, 0, 1e15),
+    ...(parseTowerCount(ws) ? { ws } : {}), // 소원 탑 개수: 이상한 값이면 메시지는 받고 이 필드만 버린다
   };
 }
 
@@ -277,4 +281,21 @@ export function validateChat(raw, limits) {
   if (typeof space !== 'string' || !SPACE_IDS.includes(space)) return null;
   if (!Number.isInteger(i) || i < 0 || i >= limits.count) return null;
   return { id, space, i };
+}
+
+// ---- 모두의 소원 탑: "돌 얹음" 알림 ----
+// 소원 글은 절대 보내지 않는다: 서버가 돌려준 새 개수(정수) n 만 보낸다. 받는 쪽은 자기 탑에 돌이 내려앉는 연출을 한다.
+//   { k:'wish', id, space, n }
+export function buildWishMsg(self, space, n) {
+  return { k: 'wish', id: self.id, space, n };
+}
+
+// limits: { max(개수 상한) }. 받은 값을 검사해 깨끗한 { id, space, n } 로. 틀리면 null. 모르는 필드는 복사하지 않는다.
+export function validateWishMsg(raw, limits) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || raw.k !== 'wish' || !limits) return null;
+  const { id, space, n } = raw;
+  if (typeof id !== 'string' || !ID_RE.test(id)) return null;
+  if (typeof space !== 'string' || !SPACE_IDS.includes(space)) return null;
+  if (!Number.isInteger(n) || n < 1 || n > limits.max) return null;
+  return { id, space, n };
 }

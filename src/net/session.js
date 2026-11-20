@@ -1,7 +1,7 @@
 // 멀티플레이 세션(THREE 없음, 시험 가능): 전송(transport)을 감싸 공간별 방에 들어가고, 내 상태를 정책에 맞춰 보내고,
 // 받은 메시지를 검사·보간 버퍼에 쌓고, 오래 소식 없는 방문자를 지운다. 게임 루프로는 절대 예외를 던지지 않는다.
 import {
-  buildState, validateState, createSendPolicy, createInterpBuffer, createDeadReckoner, createVelocityEstimator, isStale, nearestN, buildSay, validateSay, createSayLimiter, buildRoomMsg, validateRoomMsg, buildChat, validateChat,
+  buildState, validateState, createSendPolicy, createInterpBuffer, createDeadReckoner, createVelocityEstimator, isStale, nearestN, buildSay, validateSay, createSayLimiter, buildRoomMsg, validateRoomMsg, buildChat, validateChat, buildWishMsg, validateWishMsg,
 } from '../logic/net.js';
 import { createChatLimiter } from '../logic/quickChat.js';
 import { shardRoom, nextShard } from '../logic/shards.js';
@@ -9,8 +9,9 @@ import { shardRoom, nextShard } from '../logic/shards.js';
 // transport: net/transport.js 의 인터페이스. self: { id, nick }. cfg: config 의 MULTIPLAYER. now: () => ms.
 // roomLimits: 세탁소 빨랫줄·세탁기 효과 메시지(k: 'line' | 'lines' | 'fx')를 받을 때의 허용 범위 { slots, shared, washers }. 없으면 보내지도 받지도 않는다.
 // chatLimits: 인사·응원말 프리셋(k: 'chat')을 받을 때의 허용 범위 { count }. 없으면 보내지도 받지도 않는다.
+// wishLimits: 함께 쌓는 소원 탑 "돌 얹음" 알림(k: 'wish')을 받을 때의 허용 범위 { max(개수 상한), gapMs(보낸 사람마다 간격) }. 없으면 보내지도 받지도 않는다.
 // sayLimits: 면접 답변·돌발행동 한마디(k: 'say')를 받을 때의 허용 범위 { questions, answers, improvs }. 없으면 한마디는 보내지도 받지도 않는다.
-export function createSession({ transport, self, cfg, now = () => performance.now(), clock = () => Date.now(), sayLimits = null, roomLimits = null, chatLimits = null }) {
+export function createSession({ transport, self, cfg, now = () => performance.now(), clock = () => Date.now(), sayLimits = null, roomLimits = null, chatLimits = null, wishLimits = null }) {
   const remotes = new Map(); // id -> { id, nick, buffer, lastSeen, lastT, lastRecv }
   const peers = new Set(); // 지금 방에 있는 다른 방문자 id(전송 쪽 presence)
   const policy = createSendPolicy({
@@ -43,6 +44,9 @@ export function createSession({ transport, self, cfg, now = () => performance.no
   const chatIn = createChatLimiter({ perSenderMs: cfg.chatGapMs ?? 2000, globalMax: cfg.chatGlobalMax ?? 6, windowMs: cfg.chatGlobalWindowMs ?? 3000 });
   const chatOut = createSayLimiter(cfg.chatGapMs ?? 2000);
   const roomListeners = new Set();
+  const wishListeners = new Set();
+  const wishIn = createChatLimiter({ perSenderMs: wishLimits?.gapMs ?? 3000, globalMax: 4, windowMs: 3000 }); // 보낸 사람마다 간격 + 모두 합쳐 3초에 4번까지
+  const wishOut = createSayLimiter(1000);
   const ROOM_GAP = { line: cfg.lineGapMs ?? 150, lines: cfg.linesGapMs ?? 1500, fx: cfg.fxGapMs ?? 700 }; // 종류별 최소 간격(ms): 보낸 사람마다 받고, 나도 이 간격으로만 보낸다
   const roomIn = Object.fromEntries(Object.entries(ROOM_GAP).map(([k, gap]) => [k, createSayLimiter(gap)]));
   const roomOut = Object.fromEntries(Object.entries(ROOM_GAP).map(([k, gap]) => [k, createSayLimiter(gap)]));
@@ -142,6 +146,7 @@ export function createSession({ transport, self, cfg, now = () => performance.no
     if (disposed || phase !== 'joined') return false;
     if (raw && typeof raw === 'object' && raw.k === 'say') return ingestSay(raw, at);
     if (raw && typeof raw === 'object' && raw.k === 'chat') return ingestChat(raw, at);
+    if (raw && typeof raw === 'object' && raw.k === 'wish') return ingestWish(raw, at);
     if (raw && typeof raw === 'object' && (raw.k === 'line' || raw.k === 'lines' || raw.k === 'fx')) return ingestRoom(raw, at);
     const s = validateState(raw, validateOpts);
     if (!s) { rejected++; return false; }
@@ -166,6 +171,10 @@ export function createSession({ transport, self, cfg, now = () => performance.no
     r.legacy = s.vx === undefined; // 속도가 없으면 옛 클라이언트(주기 전송): 보간 버퍼로 그린다
     if (r.legacy) r.buffer.push(s, at); else r.dr.push(s, at);
     received++;
+    if (s.ws !== undefined && s.ws !== r.ws && wishLimits && s.ws <= wishLimits.max) { // 상태 메시지에 실린 소원 탑 개수: 바뀌었을 때만 알린다(연출 없이 큰 쪽으로 맞춘다)
+      r.ws = s.ws;
+      for (const fn of wishListeners) { try { fn({ id: s.id, n: s.ws, quiet: true }); } catch { /* 표시 쪽 오류는 무시 */ } }
+    }
     notify();
     return true;
   }
@@ -207,6 +216,35 @@ export function createSession({ transport, self, cfg, now = () => performance.no
       const out = buildChat(self, space, i);
       if (!validateChat(out, chatLimits)) return false;
       if (!chatOut.allow(self.id, nowMs)) return false;
+      transport.send(out);
+      sent++;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // 받은 "돌 얹음" 알림(새 개수 n 만)을 검사해 구독자에게 알린다. 내 공간에서 상태를 보낸 적이 있는 방문자의 것만, 보낸 사람마다 간격·전체 상한을 두고 받는다.
+  // (지금 탑보다 큰지는 받는 쪽이 logic/wishTower.js 의 mergeTowerCount 로 본다.)
+  function ingestWish(raw, at) {
+    if (!wishLimits || wishListeners.size === 0) return false;
+    const m = validateWishMsg(raw, wishLimits);
+    if (!m) { rejected++; return false; }
+    if (m.id === self.id || m.space !== space || !remotes.has(m.id)) return false;
+    if (!wishIn.allow(m.id, at)) return false;
+    const ev = { id: m.id, n: m.n, quiet: false };
+    for (const fn of wishListeners) { try { fn(ev); } catch { /* 표시 쪽 오류는 무시 */ } }
+    return true;
+  }
+
+  // 내 "돌 얹음" 알림(소원을 빌어 바뀐 새 개수)을 한 번 보낸다. 연결·방 상태가 안 되었거나 듣는 사람이 없거나 1초 안에 또 보내면 보내지 않는다. 반환: 보냈는가.
+  function wish(n, nowMs = now()) {
+    try {
+      if (disposed || !wishLimits || !space || status !== 'ready' || !transport.isReady || !active) return false;
+      if (peers.size === 0 && remotes.size === 0) return false;
+      const out = buildWishMsg(self, space, n);
+      if (!validateWishMsg(out, wishLimits)) return false;
+      if (!wishOut.allow(self.id, nowMs)) return false;
       transport.send(out);
       sent++;
       return true;
@@ -302,10 +340,11 @@ export function createSession({ transport, self, cfg, now = () => performance.no
   }
 
   const api = {
-    update, sample, ingest, dispose, say, sendRoom, chat,
+    update, sample, ingest, dispose, say, sendRoom, chat, wish,
     // 닉네임을 바꿨을 때 곧바로 알린다(self.nick 은 바꾼 뒤에 부른다: 다음 update 가 상태를 보낸다).
     announce() { policy.force(); },
     onChat(fn) { chatListeners.add(fn); return () => chatListeners.delete(fn); },
+    onWish(fn) { wishListeners.add(fn); return () => wishListeners.delete(fn); },
     onRoom(fn) { roomListeners.add(fn); return () => roomListeners.delete(fn); },
     onSay(fn) { sayListeners.add(fn); return () => sayListeners.delete(fn); },
     get status() { return status; },

@@ -33,7 +33,10 @@ export function parseStoneCount(raw, max = WISH.maxStones) {
 
 // 돌 하나(i 번째, 0 부터)의 놓임새: 아래 돌이 넓고 위로 갈수록 작아지는 돌탑. 높이는 아래 돌들 두께의 합이다.
 // 돌려주는 값: { y(바닥 높이), radius(가로 반지름), height(두께), rotY, dx, dz(가운데에서 살짝 어긋남) } (월드 단위, 결정적).
-export function stoneAt(i, { base = 0.26, top = 0.12, thickness = 0.08, levels = WISH.maxStones } = {}) {
+// 돌이 많아도 탑 높이가 maxHeight(조각상 약 2.0 단위의 어깨 아래)를 넘지 않게 두께를 줄인다(돌 평균 두께는 약 0.86 × thickness). 적으면 최대 0.08.
+export const STONE_MAX_HEIGHT = 1.5;
+export const stoneThickness = (levels, maxHeight = STONE_MAX_HEIGHT) => Math.min(0.08, maxHeight / (Math.max(1, levels) * 0.86));
+export function stoneAt(i, { base = 0.27, top = 0.1, levels = WISH.maxStones, thickness = stoneThickness(levels) } = {}) {
   const shape = (k) => {
     const t = levels > 1 ? Math.min(1, k / (levels - 1)) : 0;
     const wobble = Math.sin(k * 2.3 + 0.7);

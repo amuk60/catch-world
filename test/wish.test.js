@@ -10,7 +10,7 @@ import { RECIPES } from '../src/audio/recipes.js';
 test('설정: 최대 40자, 쿨다운 10초, 돌은 최대 개수에서 멈추고, 응원 문구 5~6개(말풍선 길이 이하)', () => {
   assert.equal(WISH.maxLength, 40);
   assert.equal(WISH.cooldownSeconds, 10);
-  assert.ok(WISH.maxStones >= 5 && WISH.maxStones <= 20);
+  assert.ok(WISH.maxStones >= 25 && WISH.maxStones <= 40, '함께 쌓는 탑이라 30개 안팎');
   assert.ok(WISH.cheers.length >= 5 && WISH.cheers.length <= 6);
   for (const c of WISH.cheers) assert.ok(c.trim() && [...c].length <= MAX_LINE_LENGTH, c);
   assert.equal(new Set(WISH.cheers).size, WISH.cheers.length);
@@ -55,12 +55,15 @@ test('돌 놓임새: 아래 돌이 넓고 위로 갈수록 작아지며, 각 돌
   for (let i = 0; i < WISH.maxStones; i++) {
     const s = stoneAt(i);
     assert.ok(Math.abs(s.y - prevTop) < 1e-9, `${i}: 바로 아래 돌 위`);
-    assert.ok(s.radius > 0.05 && s.radius < 0.3 && s.height > 0.03 && s.height < 0.1, `${i}`);
+    assert.ok(s.radius > 0.05 && s.radius < 0.3 && s.height > 0.025 && s.height < 0.1, `${i}`);
     assert.ok(Math.abs(s.dx) < 0.03 && Math.abs(s.dz) < 0.03);
     prevTop = s.y + s.height;
   }
   assert.ok(stoneAt(0).radius > stoneAt(WISH.maxStones - 1).radius + 0.05, '위가 더 작다');
-  assert.ok(prevTop < 1.0, `돌탑 높이 ${prevTop}`);
+  assert.ok(prevTop > 1.2 && prevTop <= 1.6, `돌탑 높이 ${prevTop}: 조각상(약 2.0) 어깨 아래`);
+  for (let i = 1; i < WISH.maxStones; i++) assert.ok(stoneAt(i).y > stoneAt(i - 1).y, '위로 쌓인다');
+  const s12 = stoneAt(11, { levels: 12 });
+  assert.ok(s12.y + s12.height < 1.0, '돌이 적으면 예전처럼 두툼한 돌(두께 0.08)');
   assert.deepEqual(stoneAt(3), stoneAt(3));
 });
 
