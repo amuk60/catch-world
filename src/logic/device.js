@@ -39,10 +39,11 @@ export function readDeviceEnv(win) {
   return { ua: nav.userAgent ?? '', maxTouchPoints: Number(nav.maxTouchPoints) || 0, platform: nav.platform ?? '', coarse };
 }
 
-// 세로 화면 안내("가로로 돌려 주세요")를 보일까: 터치 기기이고 화면이 가로보다 세로가 길 때만.
-// 크기를 모르면(0) 보이지 않는다(잘못 막지 않게).
-export function shouldShowRotate({ touch, width, height }) {
+// 세로 화면 배치(<html class="touch portrait">)를 쓸까: 터치 기기이고 화면이 가로보다 세로가 길 때만. 가로·세로 모두 플레이할 수 있고, 이 값은 배치(CSS)만 바꾼다.
+// 크기를 모르면(0) 가로로 본다. 키보드가 올라와 있으면(keyboardOpen) 높이가 줄어 가로처럼 보일 수 있어 이전 값(prev)을 그대로 둔다.
+export function isPortraitView({ touch, width, height, keyboardOpen = false, prev = false }) {
   if (!touch) return false;
+  if (keyboardOpen) return Boolean(prev);
   const w = Number(width) || 0;
   const h = Number(height) || 0;
   if (w <= 0 || h <= 0) return false;

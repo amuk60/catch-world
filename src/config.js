@@ -134,9 +134,11 @@ export const MOBILE = {
     fortunePick: '쿠키를 눌러 고르세요 · ✕ 로 닫기',
     fortuneCrack: '쿠키를 마구 눌러 깨 보세요! (멈추면 다시 단단해져요)',
     fortuneCard: '✕ 로 닫기',
-    rotate: '가로로 돌려서 플레이해 주세요',
-    rotateSub: '화면 자동 회전이 켜져 있어야 해요',
   },
+  // 세로 화면(가로보다 세로가 긴 폰 화면) 카메라 보정(logic/camera.js 의 viewFit). maxFov: 세로 화각 상한(도), distanceScale: 궤도 거리 배율(좁은 가로 폭을 되찾는다),
+  // offsetFrac: 캐릭터를 화면 가운데에서 아래로 내리는 비율(화면 높이 대비, 앞쪽 월드가 위에 펼쳐진다), fpFov: 1인칭(불멍·굽기) 화각, fullAt: 이 비율(가로/세로) 이하에서 보정을 다 쓴다.
+  // indoorDistanceScale·indoorOffsetFrac: 실내(세탁소·면접장)는 방 전체가 가운데에 들어오게 조금 더 멀리, 덜 내린다. sheetOffsetFrac: 아래쪽 선택 창(면접 답변·태울 물건 고르기)이 떠 있으면 캐릭터를 그 위로 올린다(음수).
+  portrait: { maxFov: 64, distanceScale: 1.22, offsetFrac: 0.13, indoorDistanceScale: 1.35, indoorOffsetFrac: 0.03, sheetOffsetFrac: -0.2, fpFov: 80, fullAt: 0.6 },
 };
 
 // 임시 소각로(장애물).

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isTouchDevice, mobileOverride, decideTouch, readDeviceEnv, shouldShowRotate } from '../src/logic/device.js';
+import { isTouchDevice, mobileOverride, decideTouch, readDeviceEnv, isPortraitView } from '../src/logic/device.js';
 
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/126.0 Mobile/15E148 Safari/604.1';
 const ANDROID = 'Mozilla/5.0 (Linux; Android 14; SM-S918N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36';
@@ -55,11 +55,18 @@ test('readDeviceEnv: 창이 없거나 matchMedia 가 던져도 빈 값', () => {
   assert.equal(readDeviceEnv(win2).coarse, true);
 });
 
-test('shouldShowRotate: 터치 기기의 세로 화면에서만', () => {
-  assert.equal(shouldShowRotate({ touch: true, width: 390, height: 844 }), true);
-  assert.equal(shouldShowRotate({ touch: true, width: 844, height: 390 }), false);
-  assert.equal(shouldShowRotate({ touch: true, width: 500, height: 500 }), false); // 정사각형은 막지 않는다
-  assert.equal(shouldShowRotate({ touch: false, width: 390, height: 844 }), false); // PC 의 좁은 창은 막지 않는다
-  assert.equal(shouldShowRotate({ touch: true, width: 0, height: 844 }), false);
-  assert.equal(shouldShowRotate({ touch: true }), false);
+test('isPortraitView: 터치 기기의 세로 화면에서만 세로 배치(PC 의 좁은 창은 그대로)', () => {
+  assert.equal(isPortraitView({ touch: true, width: 390, height: 844 }), true);
+  assert.equal(isPortraitView({ touch: true, width: 375, height: 667 }), true);
+  assert.equal(isPortraitView({ touch: true, width: 844, height: 390 }), false);
+  assert.equal(isPortraitView({ touch: true, width: 500, height: 500 }), false); // 정사각형은 가로 배치
+  assert.equal(isPortraitView({ touch: false, width: 390, height: 844 }), false); // PC 의 좁은 창은 바꾸지 않는다
+  assert.equal(isPortraitView({ touch: true, width: 0, height: 844 }), false);
+  assert.equal(isPortraitView({ touch: true }), false);
+});
+
+test('isPortraitView: 키보드가 올라와 있으면 이전 판정을 유지한다(세로 + 키보드로 높이가 줄어도 가로로 뒤집지 않는다)', () => {
+  assert.equal(isPortraitView({ touch: true, width: 390, height: 300, keyboardOpen: true, prev: true }), true);
+  assert.equal(isPortraitView({ touch: true, width: 844, height: 200, keyboardOpen: true, prev: false }), false);
+  assert.equal(isPortraitView({ touch: false, width: 390, height: 844, keyboardOpen: true, prev: true }), false);
 });

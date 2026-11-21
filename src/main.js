@@ -52,7 +52,7 @@ import { createRoastStick, createConfetti } from './marshmallowProps.js';
 import { createPassive, isMeditating } from './logic/passive.js';
 import { createFireView, isFireViewKey, seatPromptKeys } from './logic/fireView.js';
 import { createFpBlend, blendPose, lookFromPointer, followLook, lookDirection, sway, shouldHideBody } from './logic/fpCamera.js';
-import { computeFov } from './logic/camera.js';
+import { viewFit } from './logic/camera.js';
 import { createOnce } from './logic/once.js';
 import { shareUrl, resultPlan, goalMessage, emptyMessage, readyMessage } from './logic/cta.js';
 import { createOutfit, outfitPrompt, laundryGuide } from './logic/outfit.js';
@@ -1695,6 +1695,7 @@ const touchPage = TOUCH ? installTouchPage({ sfx, text: MOBILE.text }) : null;
     ],
     legal: document.querySelector('footer')?.textContent ?? '',
   }) : null;
+  touchPage?.onOrientation(() => { touchUi?.release(); controls.reset?.(); }); // 가로 <-> 세로로 돌리면 잡고 있던 조이스틱·카메라 손가락을 놓는다(배치가 바뀌어 좌표가 어긋나므로)
 
   // 멀티플레이(다른 방문자 아바타 보기, config 의 MULTIPLAYER): 켜져 있을 때만 관련 모듈을 불러온다. 꺼져 있거나 Supabase 키가 비어 있으면 아무것도 불러오지 않는다.
   // 인사·응원말(T 키·우하단 💬): 면접·전환·옷 갈아입기·포춘·종료 화면 중에는 열리지 않는다. 멀티플레이가 꺼져 있어도 내 말풍선은 보인다(아무것도 보내지 않는다).
@@ -1727,6 +1728,22 @@ const touchPage = TOUCH ? installTouchPage({ sfx, text: MOBILE.text }) : null;
 
   sfx.setRemoteGate(() => Boolean(net?.enabled)); // 다른 방문자 보기를 끄면 그들의 효과음도 모두 꺼진다
   const stepper = createFootstepper(FOOTSTEP_STRIDE, { jitter: FOOTSTEP_JITTER });
+  const VIEW_FIT_OPT = { baseFov: ORBIT.baseFov, minAspect: ORBIT.minAspect, fpFov: FIRST_PERSON.fov };
+  let viewOffsetPx = 0; // 터치 세로 화면: 화면을 위로 밀어 캐릭터를 아래쪽에 두는 양(px). 0 이면 오프셋 없음(PC 는 부르지 않는다)
+  let viewOffsetFrac = null; // 부드럽게 따라가는 현재 내림 비율(선택 창이 뜨고 닫힐 때 화면이 튀지 않게)
+  function applyViewOffset(target, dt) {
+    viewOffsetFrac = viewOffsetFrac === null ? target : viewOffsetFrac + (target - viewOffsetFrac) * (1 - Math.exp(-6 * dt));
+    if (Math.abs(viewOffsetFrac - target) < 0.001) viewOffsetFrac = target;
+    const w = renderer.domElement.clientWidth;
+    const h = renderer.domElement.clientHeight;
+    const px = w > 0 && h > 0 ? Math.round(h * viewOffsetFrac) : 0;
+    const size = camera.view ? camera.view.fullWidth * 10000 + camera.view.fullHeight : 0;
+    if (px === viewOffsetPx && (px === 0 || size === w * 10000 + h)) return;
+    viewOffsetPx = px;
+    if (px === 0) camera.clearViewOffset();
+    else camera.setViewOffset(w, h, 0, -px, w, h); // 보이는 창을 위로 옮긴다: 타깃(캐릭터)이 가운데보다 px 만큼 아래에 그려진다(레이캐스트·말풍선 투영도 같은 행렬이라 그대로 맞다)
+    camera.updateProjectionMatrix();
+  }
   const listenerPos = { x: 0, z: 0, rx: 1, rz: 0 };
   let time = 0;
   onFrame((rawDt) => {
@@ -1868,11 +1885,14 @@ const touchPage = TOUCH ? installTouchPage({ sfx, text: MOBILE.text }) : null;
       allowed: spaceId === 'yard' && mode === 'free' && !transition.active && !controls.isDown(),
       target: targetPos.toArray(), orbit, boxes: clearBoxes,
     }).azimuthDeg };
-    const orbitPos = orbitPosition(targetPos.toArray(), orbit);
-    const baseFov = computeFov(ORBIT.baseFov, camera.aspect, ORBIT.minAspect);
+    // 터치 기기의 세로 화면만: 화각을 묶고 조금 멀리서, 캐릭터를 화면 아래쪽으로(logic/camera.js 의 viewFit). PC·가로 화면은 보정이 없어 computeFov 그대로다.
+    const fit = viewFit(camera.aspect, VIEW_FIT_OPT, TOUCH ? MOBILE.portrait : null, TOUCH ? { indoor: spaceId !== 'yard', sheet: mode === 'interview-choice' || mode === 'item-choice' } : undefined);
+    const orbitPos = orbitPosition(targetPos.toArray(), fit.distanceScale === 1 ? orbit : { ...orbit, distance: orbit.distance * fit.distanceScale });
+    const baseFov = fit.fov;
     const fpK = fpBlend.value;
+    if (TOUCH) applyViewOffset(fit.offsetFrac * (1 - fpK), dt); // 1인칭으로 들어가면 내림을 풀어 불이 가운데 오게
     if (fpK > 0 && fpEyeReady) { // 1인칭: 궤도 자세와 눈 자세를 섞는다(fpK=1 이 완전한 1인칭)
-      const pose = blendPose({ position: orbitPos, target: targetPos.toArray(), fov: baseFov }, { position: fpEye.toArray(), target: [fpEye.x + fpDir.x * 4, fpEye.y + fpDir.y * 4, fpEye.z + fpDir.z * 4], fov: FIRST_PERSON.fov }, fpK);
+      const pose = blendPose({ position: orbitPos, target: targetPos.toArray(), fov: baseFov }, { position: fpEye.toArray(), target: [fpEye.x + fpDir.x * 4, fpEye.y + fpDir.y * 4, fpEye.z + fpDir.z * 4], fov: fit.fpFov }, fpK);
       camera.position.set(...pose.position);
       camera.lookAt(...pose.target);
       camera.fov = pose.fov;
@@ -1881,7 +1901,7 @@ const touchPage = TOUCH ? installTouchPage({ sfx, text: MOBILE.text }) : null;
     } else {
       camera.position.set(...orbitPos);
       camera.lookAt(targetPos);
-      if (fpFovDirty) { camera.fov = baseFov; camera.updateProjectionMatrix(); fpFovDirty = false; }
+      if (fpFovDirty || (TOUCH && camera.fov !== baseFov)) { camera.fov = baseFov; camera.updateProjectionMatrix(); fpFovDirty = false; } // 터치: 회전·창 크기 변화로 stage 가 fov 를 다시 정하면 세로 보정값으로 되돌린다
     }
     camera.updateMatrixWorld();
     tutorialUi.update(dt, {
