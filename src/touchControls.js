@@ -1,10 +1,71 @@
 // 브라우저 전용: 모바일(터치 기기) 조작 화면. PC 에서는 아무것도 부르지 않는다(main.js 가 logic/device.js 로 판정한 뒤에만 쓴다. 이 파일은 불러오기만 해서는 아무 일도 하지 않는다).
-// - installTouchPage: <html class="touch">, 터치용 스타일, 세로 화면 안내, 확대·당겨서 새로고침·길게 눌러 선택 막기, 첫 터치에서 소리 풀기, 키보드가 올라왔을 때 입력 카드 위치, 화면 크기 변화 대응.
+// - installTouchPage: <html class="touch">, 터치용 스타일(가로 배치 + 세로 화면이면 <html class="portrait"> 배치), 확대·당겨서 새로고침·길게 눌러 선택 막기, 첫 터치에서 소리 풀기, 키보드가 올라왔을 때 입력 카드 위치, 화면 크기 변화 대응.
 // - createTouchUi: 왼쪽 아래 가상 조이스틱, 오른쪽 아래 E 버튼(가까운 대상 문구가 버튼 글자)·V 버튼·취소 버튼, 오른쪽 위 ⋯ 메뉴.
 // - createTouchCamera: 캔버스 위 손가락 입력(한 손가락 끌기 = 회전, 탭 = 땅 탭 이동, 두 손가락 = 확대·축소). 포인터마다 따로 처리해서 조이스틱과 동시에 쓸 수 있다.
 // 버튼은 키보드 이벤트를 흉내 낸다(pressKey): 게임 규칙(모드별로 받는 키)은 PC 와 똑같은 코드가 그대로 맡는다.
 import { clampKnob, stickVector, stickDirection, isTap, passedDragSlop, gapOf } from './logic/touchInput.js';
-import { shouldShowRotate } from './logic/device.js';
+import { isPortraitView } from './logic/device.js';
+
+// 세로 화면(<html class="touch portrait">) 배치. 가로 배치(CSS) 뒤에 붙어 같은 요소를 덮어쓴다.
+// 위쪽 세 줄: 1) 스트레스 막대(폭 전체) 2) 힐링 코스(왼쪽) · ⋯ 메뉴/소리(오른쪽) 3) 접속 칩(왼쪽) · 캐치 칩(오른쪽). 그 아래에 안내 글(토스트·불멍).
+// 아래쪽: 조이스틱(왼쪽), E·V·취소 버튼과 그 위 행동 막대(오른쪽, 조이스틱 오른쪽 폭 안). 카드·팝업은 폭 전체 시트나 가운데 카드.
+const PORTRAIT_CSS = `
+html.touch.portrait { --p-row2: calc(50px + var(--st)); --p-row3: calc(98px + var(--st)); --p-below: calc(160px + var(--st)); --p-side: calc(8px + var(--sl)); --p-side-r: calc(8px + var(--sr)); }
+html.touch.portrait #stress { left: var(--p-side); right: var(--p-side-r); top: calc(6px + var(--st)); transform: none; flex-direction: row; align-items: center; gap: 10px; padding: 7px 14px; border-radius: 999px; box-sizing: border-box; }
+html.touch.portrait .stress-label { flex: none; font-size: 13px; white-space: nowrap; }
+html.touch.portrait .stress-label b { font-size: 15px; }
+html.touch.portrait .stress-bar { flex: 1; width: auto; min-width: 60px; }
+html.touch.portrait #sound-btn { top: var(--p-row2); right: var(--p-side-r); }
+html.touch.portrait .tc-menu-btn { top: var(--p-row2); right: calc(56px + var(--sr)); }
+html.touch.portrait .tc-menu { top: var(--p-row3); right: var(--p-side-r); width: min(280px, calc(100% - 16px)); max-height: calc(100dvh - 120px - var(--st) - var(--sb)); }
+html.touch.portrait .tc-menu button { font-size: 15px; }
+html.touch.portrait .tc-menu .tc-legal { font-size: 12px; }
+html.touch.portrait #tut-course { left: var(--p-side); top: var(--p-row2); width: auto; min-width: 0; max-width: calc(100% - 124px - var(--sl) - var(--sr)); font-size: 13px; }
+html.touch.portrait #tut-course:not(.collapsed) { z-index: 4; }
+html.touch.portrait #tut-course .tut-body { max-height: calc(100dvh - 330px - var(--st) - var(--sb)); }
+html.touch.portrait #tut-course .tut-hint { font-size: 12px; }
+html.touch.portrait #cta-chip { top: var(--p-row3); right: var(--p-side-r); padding: 7px 12px; font-size: 13px; }
+html.touch.portrait #mp-chip { left: var(--p-side); right: auto; top: var(--p-row3); bottom: auto; transform: none; min-width: 0; max-width: calc(100% - 150px - var(--sl) - var(--sr)); justify-content: flex-start;
+  padding: 4px 8px; font-size: 11px; opacity: 0.88; z-index: 1; } /* ⋯ 메뉴·힐링 코스 목록이 칩 위로 펼쳐지게 */
+html.touch.portrait #tut-course .tut-body { background: rgba(18, 18, 31, 0.95); }
+html.touch.portrait .mp-nick { max-width: 120px; }
+html.touch.portrait #tut-toast { top: var(--p-below); max-width: calc(100% - 24px); min-width: 0; width: max-content; box-sizing: border-box; font-size: 14px; }
+html.touch.portrait #meditate, html.touch.portrait #meditate.fp.visible { top: var(--p-below); width: max-content; max-width: calc(100% - 24px); min-width: 0; box-sizing: border-box; }
+html.touch.portrait #tut-hint { left: var(--p-side); top: var(--p-below); max-width: calc(100% - 16px); font-size: 13px; }
+html.touch.portrait #guide { top: var(--p-row3); left: var(--p-side); right: var(--p-side-r); width: auto; max-height: calc(100dvh - 300px - var(--st) - var(--sb)); font-size: 13px; z-index: 4; }
+html.touch.portrait #tut-intro { max-width: calc(100% - 24px); }
+html.touch.portrait #tut-intro p { font-size: 14px; }
+/* 아래쪽 */
+html.touch.portrait .tc-row { max-width: calc(100% - 184px - var(--sl) - var(--sr)); }
+html.touch.portrait .tc-e { max-width: 100%; }
+html.touch.portrait #action-bar { max-width: calc(100% - 184px - var(--sl) - var(--sr)); bottom: calc(80px + var(--sb)); }
+html.touch.portrait.tc-v-on #action-bar { bottom: calc(142px + var(--sb)); }
+html.touch.portrait #action-bar button { padding: 6px 14px; }
+html.touch.portrait #roast-panel { bottom: calc(84px + var(--sb)); max-width: calc(100% - 16px); box-sizing: border-box; }
+html.touch.portrait .roast-gauge { width: min(220px, 60vw); }
+/* 카드·팝업 */
+html.touch.portrait #side-popup { top: auto; bottom: calc(8px + var(--sb)); left: var(--p-side); right: var(--p-side-r); width: auto; max-width: none; max-height: 62vh; max-height: 62dvh;
+  transform: translate(0, calc(100% + 40px)); }
+html.touch.portrait #side-popup.open { transform: translate(0, 0); }
+html.touch.portrait .side-message { font-size: 14px; }
+html.touch.portrait .result-card { width: calc(100% - 32px); max-width: 440px; box-sizing: border-box; padding: 22px 18px 12px; }
+html.touch.portrait .result-message { font-size: 15px; }
+html.touch.portrait #choice { padding-bottom: calc(10px + var(--sb)); }
+html.touch.portrait .choice-card { max-height: calc(100dvh - 160px - var(--st) - var(--sb)); }
+html.touch.portrait .choice-list button { min-height: 48px; font-size: 15px; text-align: left; white-space: normal; }
+html.touch.portrait .picker-card { bottom: calc(16px + var(--sb)); width: calc(100% - 16px); max-height: calc(100dvh - 180px - var(--st) - var(--sb)); }
+html.touch.portrait .fortune-stage { max-width: calc(100% - 24px); }
+html.touch.portrait .pick-cookie { width: 30vw; max-width: 124px; }
+html.touch.portrait .pick-cookie svg { width: 22vw; max-width: 86px; }
+html.touch.portrait .crack-cookie { width: min(240px, 70vw); height: min(168px, 49vw); }
+html.touch.portrait .fortune-card { max-width: calc(100% - 8px); box-sizing: border-box; }
+html.touch.portrait #nick-card, html.touch.portrait #wish-card { width: calc(100% - 24px); max-width: 380px; }
+html.touch.portrait #qc-picker { top: var(--p-row3); right: var(--p-side-r); max-height: calc(100dvh - 120px - var(--st) - var(--sb)); }
+html.touch.portrait #qc-picker button { font-size: 15px; min-height: 40px; }
+html.touch.portrait #bubble { max-width: min(260px, 80vw); }
+html.touch.portrait .speech { max-width: min(240px, 80vw); }
+html.touch.portrait .speech.big { max-width: min(280px, 80vw); font-size: 22px; }
+`;
 
 const CSS = `
 html.touch { --sl: env(safe-area-inset-left, 0px); --sr: env(safe-area-inset-right, 0px); --st: env(safe-area-inset-top, 0px); --sb: env(safe-area-inset-bottom, 0px); }
@@ -131,16 +192,8 @@ html.touch.tc-v-on #action-bar { bottom: calc(146px + var(--sb)); } /* V 버튼(
   font: inherit; font-size: 15px; text-align: left; cursor: pointer; }
 .tc-menu button:active { background: #f0e1b8; }
 .tc-menu .tc-legal { margin: 4px 6px 2px; font-size: 11px; line-height: 1.45; color: #6b5d44; word-break: keep-all; }
-/* 세로 화면 안내 */
-#rotate-notice { display: none; position: fixed; inset: 0; z-index: 30; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px;
-  background: rgba(27, 27, 47, 0.96); color: #fff; text-align: center; font-size: 18px; font-weight: 700; line-height: 1.5; touch-action: none; word-break: keep-all; }
-html.touch.portrait #rotate-notice { display: flex; }
-#rotate-notice small { display: block; font-size: 13px; font-weight: 400; color: #cfcfe6; }
-#rotate-notice svg { width: 86px; height: 86px; animation: tc-rot 2.4s ease-in-out infinite; }
-@keyframes tc-rot { 0%, 20% { transform: rotate(0deg); } 50%, 80% { transform: rotate(-90deg); } 100% { transform: rotate(0deg); } }
+${PORTRAIT_CSS}
 `;
-
-const ROTATE_SVG = '<svg viewBox="0 0 64 64" aria-hidden="true" fill="none" stroke="#ffd9a8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="20" y="6" width="24" height="44" rx="4" fill="rgba(255,255,255,0.08)"/><path d="M29 44h6"/><path d="M50 20a20 20 0 0 1 4 18" stroke="#e8833a"/><path d="M56 32l-2 6-6-2" stroke="#e8833a"/></svg>';
 
 // 게임 키를 누른 것처럼 키 이벤트를 보낸다(keydown 뒤 keyup). 게임의 모드별 키 규칙을 그대로 쓰려는 것: 터치 버튼은 이것만 부른다.
 // 사용자 제스처(click) 안에서 바로 부르므로, 이 키로 열린 입력창(소원 카드)의 focus() 도 제스처 안에서 일어나 iOS 가 키보드를 띄운다.
@@ -171,23 +224,18 @@ export function installTouchPage({ sfx = null, text = {} } = {}) {
   style.textContent = CSS;
   document.head.append(style);
 
-  // 세로 화면 안내
-  const notice = document.createElement('div');
-  notice.id = 'rotate-notice';
-  notice.setAttribute('role', 'alert');
-  notice.innerHTML = `${ROTATE_SVG}<div><span class="rn-main"></span><small class="rn-sub"></small></div>`;
-  notice.querySelector('.rn-main').textContent = text.rotate ?? '가로로 돌려서 플레이해 주세요';
-  notice.querySelector('.rn-sub').textContent = text.rotateSub ?? '';
-  document.body.append(notice);
-
   let resizeFn = null;
+  const orientationFns = [];
   const vv = window.visualViewport;
+  // 가로·세로 모두 플레이한다. 세로면 <html class="touch portrait"> 로 배치(CSS)만 바꾼다. 바뀌는 순간 잡고 있던 조이스틱·카메라 손가락을 놓는다(위치가 옮겨져 어긋나지 않게).
   function syncOrientation() {
     const w = window.innerWidth || document.documentElement.clientWidth || 0;
     const h = window.innerHeight || document.documentElement.clientHeight || 0;
-    // 키보드가 떠 있으면(입력 중) 가로 화면이 세로처럼 보일 수 있어 판정을 미룬다.
-    if (root.classList.contains('kb-open')) return;
-    root.classList.toggle('portrait', shouldShowRotate({ touch: true, width: w, height: h }));
+    const prev = root.classList.contains('portrait');
+    const next = isPortraitView({ touch: true, width: w, height: h, keyboardOpen: root.classList.contains('kb-open'), prev }); // 키보드가 떠 있으면 높이가 줄어도 그대로
+    if (next === prev) return;
+    root.classList.toggle('portrait', next);
+    for (const fn of orientationFns) { try { fn(next); } catch { /* 무시 */ } }
   }
   function syncKeyboard() {
     const el = document.activeElement;
@@ -248,7 +296,11 @@ export function installTouchPage({ sfx = null, text = {} } = {}) {
   };
   for (const type of ['touchend', 'pointerup', 'click']) window.addEventListener(type, unlock, { capture: true, passive: true });
 
-  return { setResize(fn) { resizeFn = fn; } };
+  return {
+    setResize(fn) { resizeFn = fn; },
+    onOrientation(fn) { orientationFns.push(fn); }, // 가로 <-> 세로가 바뀔 때 fn(portrait)
+    get portrait() { return root.classList.contains('portrait'); },
+  };
 }
 
 // 터치 조작 화면. opts: { container(#game), stick(MOBILE.stick), onStickStart(), menu: [{ label, onClick }], legal(작은 안내 글) }
@@ -379,6 +431,7 @@ export function createTouchUi({ container, stick: stickCfg, onStickStart = () =>
       if (next !== 'free' && next !== 'seated') setMenu(false);
     },
     closeMenu: () => setMenu(false),
+    release, // 화면이 돌아갈 때: 잡고 있던 조이스틱을 놓는다(조이스틱 위치가 바뀌므로)
   };
 }
 
@@ -442,12 +495,17 @@ export function createTouchCamera(el, { onDrag, onClick, onPinch, onWheel }, { t
   el.addEventListener('wheel', (e) => { e.preventDefault(); if (enabled) onWheel?.(e.deltaY); }, { passive: false });
   el.addEventListener('contextmenu', (e) => e.preventDefault());
 
+  const reset = () => {
+    for (const id of pts.keys()) { try { el.releasePointerCapture?.(id); } catch { /* 무시 */ } }
+    pts.clear(); tapId = null; gap = 0; dragging = false;
+  };
   return {
     isDown: () => pts.size > 0,
     setEnabled(value) {
       enabled = value;
-      if (!value) { pts.clear(); tapId = null; gap = 0; dragging = false; }
+      if (!value) reset();
     },
+    reset, // 화면이 돌아갈 때: 누르고 있던 손가락을 모두 잊는다(돌아간 뒤 첫 끌기가 튀거나 탭으로 잘못 읽히지 않게)
   };
 }
 
