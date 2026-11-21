@@ -116,6 +116,29 @@ export const OCCLUSION = { radius: 2.0, minT: 0.08, maxT: 0.97, minScale: 0.2 };
 // 클릭 판정: 이동 px와 시간(ms)이 모두 이하면 클릭, 넘으면 드래그.
 export const CLICK = { maxMovePx: 6, maxMs: 350 };
 
+// 모바일(터치 기기: 폰·태블릿, 주소 ?mobile=1 로 강제·?mobile=0 으로 끄기)에서만 쓰는 값. PC 에는 아무 영향이 없다(logic/device.js 가 판정).
+// 화질: maxPixelRatio(픽셀 비율 상한), antialias, shadowMapSize(마당 해 그림자 맵 크기, 0 이면 그림자 끔), lanternPointLights(가로등 점광 개수 상한: 빛무리·바닥 빛은 모두 유지), wishSpotLight(소원 조각상 가운데 약한 점광).
+// stick: 가상 조이스틱(radius: 손잡이가 움직이는 반지름 px, deadZone: 이 비율 안은 멈춤, minSpeed: 살짝 밀 때의 속도 배율). tap: 땅 탭 이동 판정(손가락은 마우스보다 흔들린다).
+// dragScale: 한 손가락 드래그 회전 배율(ORBIT.rotateSpeed 에 곱한다). text: 터치용 안내 문구(튜토리얼·체크리스트·포춘쿠키).
+export const MOBILE = {
+  maxPixelRatio: 1.5, antialias: true, shadowMapSize: 1024, lanternPointLights: 2, wishSpotLight: false,
+  stick: { radius: 46, deadZone: 0.18, minSpeed: 0.45 },
+  tap: { maxMovePx: 12, maxMs: 400 },
+  dragScale: 1.25,
+  text: {
+    tutorial: {
+      intro: { lines: [undefined, undefined, '발밑 돌길을 따라 걸으면\n곳곳에서 E 버튼이 떠요.'] },
+      steps: { move: '왼쪽 아래 조이스틱을 끌거나 바닥을 눌러 움직여 보세요', burn: '오른쪽 아래 "태우기" 버튼을 눌러 태울 물건을 골라 보세요' },
+      courseHints: { burn: '모닥불 앞에서 태우기 버튼으로 서류 태우기', interview: '문 앞에서 E 버튼으로 입장', fortune: '노점 앞에서 E 버튼으로 쿠키 깨기' },
+    },
+    fortunePick: '쿠키를 눌러 고르세요 · ✕ 로 닫기',
+    fortuneCrack: '쿠키를 마구 눌러 깨 보세요! (멈추면 다시 단단해져요)',
+    fortuneCard: '✕ 로 닫기',
+    rotate: '가로로 돌려서 플레이해 주세요',
+    rotateSub: '화면 자동 회전이 켜져 있어야 해요',
+  },
+};
+
 // 임시 소각로(장애물).
 export const FURNACE = { x: -6.5, z: -1.5, radius: 1.6 };
 

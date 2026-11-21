@@ -46,7 +46,8 @@ function buildSkyDome() {
 
 // 돌려주는 fog 는 마당용 안개이고(공간을 바꿀 때 scene.fog 에 다시 넣는다), 지금은 scene 에 이미 설정돼 있다.
 // setSky(sky): sky 는 logic/skyCycle.js 의 skyAt 결과(색은 sRGB [r, g, b]).
-export function applyAtmosphere(scene, renderer, root = scene) {
+// opts.shadowMapSize: 해 그림자 맵 크기(기본 2048, 모바일 저사양 모드는 더 작게).
+export function applyAtmosphere(scene, renderer, root = scene, { shadowMapSize = 2048 } = {}) {
   scene.background = null;
   const sky = buildSkyDome();
   root.add(sky.dome);
@@ -56,7 +57,7 @@ export function applyAtmosphere(scene, renderer, root = scene) {
   const sun = new THREE.DirectionalLight(COLORS.sun, LIGHT.sun);
   sun.position.set(...LIGHT.sunPosition);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(shadowMapSize, shadowMapSize);
   const e = LIGHT.shadowExtent;
   Object.assign(sun.shadow.camera, { left: -e, right: e, top: e, bottom: -e, near: 1, far: SUN_DISTANCE + 50 });
   sun.shadow.camera.updateProjectionMatrix();

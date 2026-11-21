@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
   <title>캐치 월드 - 번아웃 소각장</title>
   <meta name="description" content="취업 준비로 쌓인 번아웃을 태우고 빨고 받아치는 3D 힐링 마당. 학사 과제용 비공식 프로젝트입니다.">
   <meta property="og:type" content="website">
@@ -342,9 +342,6 @@
     #loading.hidden { opacity: 0; visibility: hidden; pointer-events: none; animation: none;
       transition: opacity 0.4s, visibility 0s 0.4s; }
     @keyframes pulse { from { color: #8a8aa8; } to { color: #ffffff; } }
-    #mobile-notice { display: none; position: fixed; inset: 0; background: #1b1b2f;
-      align-items: center; justify-content: center; text-align: center;
-      padding: 24px; font-size: 18px; z-index: 10; }
   </style>
 </head>
 <body>
@@ -353,7 +350,6 @@
     <footer>※ 학사 과제용 비공식 프로젝트입니다. '캐치(Catch)'와 무관하며 비상업적 목적으로만 제작되었습니다. 방문 통계(Google Analytics)를 수집합니다.</footer>
   </div>
   <div id="loading">불러오는 중…</div>
-  <div id="mobile-notice">이 체험은 PC 브라우저(키보드·마우스)에서 이용해 주세요.</div>
   <script type="importmap">
   {
     "imports": {

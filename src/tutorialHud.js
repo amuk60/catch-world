@@ -81,7 +81,8 @@ const MARGIN_TOAST = { ...MARGIN, top: 200 }; // 위쪽 토스트가 떠 있을 
 const MAX_STEP_PER_FRAME = 1.5; // 한 프레임에 이만큼 넘게 옮겨졌으면 이동이 아니라 순간이동(공간 전환 등)
 
 // opts: { storage, track, config(TUTORIAL), places, exits, onStart(), onEnd({ replay, how }) }
-export function createTutorialUi(container, { storage = null, track = () => {}, config, places, exits, onStart = () => {}, onEnd = () => {} }) {
+// touch: 터치 기기(좁고 낮은 가로 화면)면 체크리스트를 접힌 채로 시작하고, 튜토리얼을 끝내도 저절로 펼치지 않는다(조이스틱을 가리지 않게).
+export function createTutorialUi(container, { storage = null, track = () => {}, config, places, exits, onStart = () => {}, onEnd = () => {}, touch = false }) {
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.append(style);
@@ -89,6 +90,7 @@ export function createTutorialUi(container, { storage = null, track = () => {}, 
   const tutorial = createTutorial({ storage, track, moveDistance: config.moveDistance, congratsSeconds: config.congratsSeconds });
   const course = createCourse({ storage, items: config.course.items, track });
   if (course.complete && !course.hidden) course.setHidden(true); // 완주 뒤 탭을 닫았다면 다음 방문에는 축하 없이 접어 둔다
+  if (touch && !course.collapsed) course.setCollapsed(true);
   let autoPending = tutorial.shouldAutoStart(); // 이번 방문에 자동으로 시작할 차례인가(건너뛰면 칩은 접힌 채로)
   let isReplay = false;
   let readyFor = 0; // 가려지지 않은 시간(초): 막 열린 직후에는 잠깐 두었다가 소개를 띄운다
@@ -197,7 +199,7 @@ export function createTutorialUi(container, { storage = null, track = () => {}, 
     onStart({ replay });
   }
   function ended(how) {
-    if (how === 'complete') course.setCollapsed(false); // 끝까지 하면 펼쳐서 다음 목표를 보여 준다
+    if (how === 'complete') course.setCollapsed(touch); // 끝까지 하면 펼쳐서 다음 목표를 보여 준다(터치 기기는 접힌 채로: 눌러서 펼친다)
     else if (!isReplay) course.setCollapsed(true); // 처음 방문에 건너뛰면 접힌 채로
     course.setHidden(false);
     renderChip();

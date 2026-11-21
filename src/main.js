@@ -1,5 +1,8 @@
 import * as THREE from 'three';
-import { isMobileUA, multiplayerMode } from './env.js';
+import { multiplayerMode } from './env.js';
+import { decideTouch, readDeviceEnv } from './logic/device.js';
+import { pinchDistance, touchTutorial } from './logic/touchInput.js';
+import { installTouchPage, createTouchUi, createTouchCamera, patchFortuneForTouch, pressKey } from './touchControls.js';
 import { createStage } from './stage.js';
 import { applyAtmosphere } from './atmosphere.js';
 import { skyAt, createSkyState, skyClockParams, skyMinutes, minutesOfDay } from './logic/skyCycle.js';
@@ -66,7 +69,7 @@ import {
   INCINERATOR, REDUCE_RANGE, ACTION_EFFECT_AT, ACTION_TARGET_SECONDS, ACTION_TURN_SECONDS, AUTO_GAP, PASSIVE, MARSHMALLOW, FIRST_PERSON,
   FIRE_RANGE, SHREDDER_RANGE, WASHER_RANGE, CLOTHESLINE_RANGE, FIRE_ZONE_RADIUS, GA_MEASUREMENT_ID, WEAR_SECONDS, WEAR_SWAP_AT,
   INTERVIEW, INTERVIEW_ROUND, INTERVIEW_BONUS_RANGE, INTERVIEW_ZONE_RADIUS, INTERVIEW_ANSWER_SECONDS, INTERVIEW_IMPROV_SECONDS, INTERVIEW_FINALE_SECONDS, SPEECH_SECONDS,
-  SKY_CYCLE, LANTERN_LIGHT, MULTIPLAYER, SUPABASE_URL, SUPABASE_ANON_KEY, CLOTHESLINE_SLOTS, QUICK_CHAT, LAUNDRY_ITEMS, LAUNDRY_FX, TUTORIAL, WISH,
+  SKY_CYCLE, LANTERN_LIGHT, MULTIPLAYER, SUPABASE_URL, SUPABASE_ANON_KEY, CLOTHESLINE_SLOTS, QUICK_CHAT, LAUNDRY_ITEMS, LAUNDRY_FX, TUTORIAL, WISH, MOBILE,
 } from './config.js';
 import { wishCooldownLeft, nextStoneCount, pickCheer, wishEventParams } from './logic/wish.js';
 import { mergeTowerCount, towerLine } from './logic/wishTower.js';
@@ -117,12 +120,14 @@ const CRUMPLE_SPIN = 18; // 구길 때 도는 속도(라디안/초)
 // 손에 든 소품(종이·셔츠)의 위치(손 뼈 기준, 단위는 월드 단위). 화면으로 보며 맞춘 값이다. 방향은 소품마다 userData.rot(주머니에서도 같은 방향).
 const PAPER_HAND = { pos: [-0.38, 0, 0.05] };
 
-if (isMobileUA(navigator.userAgent)) {
-  document.getElementById('mobile-notice').style.display = 'flex';
-} else {
+// 터치 기기(폰·태블릿, ?mobile=1 로 강제·?mobile=0 으로 끄기)면 터치 조작 화면(조이스틱·버튼·손가락 카메라)과 저사양 설정(config 의 MOBILE)을 켠다. PC 는 그대로다.
+const TOUCH = decideTouch(location.search, readDeviceEnv(window));
+const touchPage = TOUCH ? installTouchPage({ sfx, text: MOBILE.text }) : null;
+{
   // 내 컴퓨터(localhost)에서 개발·시험하는 접속은 통계에 섞이지 않게 분석을 켜지 않는다.
   if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) initAnalytics(GA_MEASUREMENT_ID);
-  const { scene, camera, renderer, onFrame } = createStage(document.getElementById('game'));
+  const { scene, camera, renderer, onFrame, resize: resizeStage } = createStage(document.getElementById('game'), TOUCH ? { maxPixelRatio: MOBILE.maxPixelRatio, antialias: MOBILE.antialias, shadows: MOBILE.shadowMapSize > 0 } : undefined);
+  touchPage?.setResize(resizeStage); // 회전·주소창 높이 변화 때 렌더러 크기를 다시 맞춘다
   loadSignFonts(); // 간판 글꼴(구글 폰트 부분 집합)은 기다리지 않는다: 준비되면 간판이 다시 그려지고, 실패하면 시스템 글꼴 그대로
   renderer.localClippingEnabled = true; // 파쇄: 투입구로 들어간 종이의 아랫부분을 클리핑 평면으로 가린다
   const layout = buildLayout(SEED);
@@ -144,7 +149,7 @@ if (isMobileUA(navigator.userAgent)) {
   const yardRoot = new THREE.Group();
   yardRoot.name = 'yard';
   scene.add(yardRoot);
-  const { fog: yardFog, setSky } = applyAtmosphere(scene, renderer, yardRoot);
+  const { fog: yardFog, setSky } = applyAtmosphere(scene, renderer, yardRoot, TOUCH ? { shadowMapSize: Math.max(256, MOBILE.shadowMapSize) } : undefined);
   const ground = buildGround(yardRoot);
   buildCity(yardRoot, layout);
   buildBuildings(yardRoot, layout);
@@ -162,7 +167,7 @@ if (isMobileUA(navigator.userAgent)) {
   if (treeCount < 5) buildBoundary(yardRoot);
   // 소각로 곁의 상시 소품: 불, 파쇄기.
   const fire = createFire(yardRoot, FURNACE);
-  const lanternLights = buildLanternLights(yardRoot, layout.lanterns, layout.interactables.filter((i) => i.kind === 'wish').flatMap((i) => [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sz]) => ({ x: i.x + sx * LANTERN_LIGHT.spot.half, z: i.z + sz * LANTERN_LIGHT.spot.half })))); // 광장 가로등 기둥에 조명(모델은 그대로) + 소원 조각상 둘레 바닥 매립등 4개
+  const lanternLights = buildLanternLights(yardRoot, layout.lanterns, layout.interactables.filter((i) => i.kind === 'wish').flatMap((i) => [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sz]) => ({ x: i.x + sx * LANTERN_LIGHT.spot.half, z: i.z + sz * LANTERN_LIGHT.spot.half }))), TOUCH ? { maxPointLights: MOBILE.lanternPointLights, spotLight: MOBILE.wishSpotLight } : undefined); // 광장 가로등 기둥에 조명(모델은 그대로) + 소원 조각상 둘레 바닥 매립등 4개
   // 마당 하늘 시간대(새벽 -> 아침 -> 노을 -> 밤): 방문자 PC 의 현지 시각을 따른다(서버·동기화 없음). 확인용: ?sky=18:00 고정, ?skyspeed=60 빨리 감기.
   const skyState = createSkyState();
   const skyClock = skyClockParams(location.search);
@@ -202,19 +207,20 @@ if (isMobileUA(navigator.userAgent)) {
     },
     onClose: () => dispatch('close'),
   });
+  if (TOUCH) patchFortuneForTouch(document.getElementById('game'), MOBILE.text); // 포춘쿠키: 고르기·깨기에도 닫기 버튼, 손가락 안내 글
   // 소원 적기 카드(소원 조각상에서 E). 적은 글은 makeWish 로만 넘어오고 저장·전송·말풍선에 쓰지 않는다.
   const wishCard = createWishCard(document.getElementById('game'), { maxLength: WISH.maxLength, onSubmit: (wish) => makeWish(wish), onCancel: () => dispatch('wish:close') });
   createSoundButton(document.getElementById('game'), sfx); // 우상단 효과음 켜기/끄기(M 키도 같다). 소리는 첫 입력 뒤에야 난다
   let guideStorage = null;
   try { guideStorage = window.localStorage; } catch { /* 저장소 접근 불가: 안내는 매번 처음처럼 */ }
   // 조작 안내 카드와 "?" 버튼(H 키). 처음 방문에는 튜토리얼이 먼저라 튜토리얼 중에는 열리지 않고, 끝난 뒤에 보인다("튜토리얼 다시 보기" 버튼 포함).
-  const helpGuide = createGuideHud(document.getElementById('game'), { storage: guideStorage, autoShow: isTutorialSeen(guideStorage), onReplay: () => tutorialUi?.replay(), suppressed: () => Boolean(tutorialUi?.active) });
+  const helpGuide = createGuideHud(document.getElementById('game'), { storage: guideStorage, autoShow: isTutorialSeen(guideStorage), onReplay: () => tutorialUi?.replay(), suppressed: () => Boolean(tutorialUi?.active), touch: TOUCH });
   // 첫 접속 튜토리얼(소개 -> 움직이기 -> 모닥불 -> 태우기)과 "오늘의 힐링 코스" 체크리스트, 길안내 화살표(logic/tutorial.js 가 상태 기계).
   const tPt = (i) => ({ x: i.x, z: i.z });
   const tDoor = (list, to) => tPt(list.find((i) => i.kind === 'door' && i.to === to));
   const tLog = layout.interactables.filter((i) => i.kind === 'seat' && Math.hypot(i.x - FURNACE.x, i.z - FURNACE.z) <= FIRE_ZONE_RADIUS).sort((a, b) => Math.hypot(a.x - SPAWN.x, a.z - SPAWN.z) - Math.hypot(b.x - SPAWN.x, b.z - SPAWN.z))[0];
   tutorialUi = createTutorialUi(document.getElementById('game'), {
-    storage: guideStorage, track: gaTrack, config: TUTORIAL,
+    storage: guideStorage, track: gaTrack, config: TOUCH ? touchTutorial(TUTORIAL, MOBILE.text.tutorial) : TUTORIAL, touch: TOUCH, // 터치 기기는 키보드 대신 조이스틱·버튼 문구, 체크리스트는 접힌 채로
     places: {
       burn: { yard: { x: FURNACE.x, z: FURNACE.z } },
       laundry: { yard: tDoor(layout.interactables, 'laundry'), laundry: zones.find((z) => z.id === 'laundry').center },
@@ -1616,7 +1622,7 @@ if (isMobileUA(navigator.userAgent)) {
     return hit ? here().interactables.find((i) => i.id === hit.object.userData.interactId) : null;
   }
 
-  const controls = createControls(renderer.domElement, {
+  const pointerHandlers = {
     onDrag: (dx, dy) => {
       if (mode === 'transition' || fpBlend.active) return; // 1인칭(전환 포함)에는 궤도 조작을 잠가 돌아올 때 원래 시점이 그대로다
       cameraClear.touch();
@@ -1661,7 +1667,34 @@ if (isMobileUA(navigator.userAgent)) {
         hud.hideTooltip();
       }
     },
-  });
+  };
+  // 터치 기기: 손가락 카메라(한 손가락 끌기 회전·탭 이동·두 손가락 확대)와 조작 화면(조이스틱·E 버튼·메뉴). PC 는 원래 마우스 조작 그대로.
+  const controls = TOUCH ? createTouchCamera(renderer.domElement, {
+    ...pointerHandlers,
+    onPinch: (prevGap, gap) => {
+      if (mode === 'transition' || fpBlend.active) return;
+      cameraClear.touch();
+      orbit = { ...orbit, distance: pinchDistance(orbit.distance, prevGap, gap, ORBIT) };
+    },
+  }, { tap: MOBILE.tap, dragScale: MOBILE.dragScale }) : createControls(renderer.domElement, pointerHandlers);
+  const touchUi = TOUCH ? createTouchUi({
+    container: document.getElementById('game'), stick: MOBILE.stick,
+    // 조이스틱을 잡으면 키보드 이동 키를 누른 것과 같다: 자동을 끄고, 앉아 있으면 일어나고, 탭 이동 목표는 취소한다.
+    onStickStart: () => {
+      if ((mode !== 'free' && mode !== 'seated') || transition.active || runner.isBusy()) return;
+      runner.cancelAuto();
+      if (mode === 'seated') dispatch('move');
+      if (mode === 'free') stopWalking();
+    },
+    menu: [
+      { label: '🔥 불멍 시점 (불 옆에 앉아서)', onClick: () => pressKey('KeyV', 'v') },
+      { label: '💬 인사·응원말', onClick: () => pressKey('KeyT', 't') },
+      { label: '🔊 소리 켜기/끄기', onClick: () => pressKey('KeyM', 'm') },
+      { label: '❔ 조작 안내', onClick: () => pressKey('KeyH', 'h') },
+      { label: '🌿 튜토리얼 다시 보기', onClick: () => tutorialUi?.replay() },
+    ],
+    legal: document.querySelector('footer')?.textContent ?? '',
+  }) : null;
 
   // 멀티플레이(다른 방문자 아바타 보기, config 의 MULTIPLAYER): 켜져 있을 때만 관련 모듈을 불러온다. 꺼져 있거나 Supabase 키가 비어 있으면 아무것도 불러오지 않는다.
   // 인사·응원말(T 키·우하단 💬): 면접·전환·옷 갈아입기·포춘·종료 화면 중에는 열리지 않는다. 멀티플레이가 꺼져 있어도 내 말풍선은 보인다(아무것도 보내지 않는다).
@@ -1706,7 +1739,14 @@ if (isMobileUA(navigator.userAgent)) {
       }
       hud.setPortal(transition.radius());
     }
-    const keyDir = mode === 'free' && !transition.active && !runner.isBusy() ? keys.direction(orbit.azimuthDeg) : null;
+    let keyDir = mode === 'free' && !transition.active && !runner.isBusy() ? keys.direction(orbit.azimuthDeg) : null;
+    if (touchUi) { // 터치: 조이스틱 이동(키보드 이동과 같은 경로, 길이가 속도 배율). 움직이는 동안은 탭 이동 목표와 자동을 끈다.
+      touchUi.setMode(mode);
+      if (!keyDir && mode === 'free' && !transition.active && !runner.isBusy()) {
+        keyDir = touchUi.moveDirection(orbit.azimuthDeg);
+        if (keyDir) { runner.cancelAuto(); if (moveTarget) stopWalking(); }
+      }
+    }
     if (keyDir) {
       // 키보드 이동: 카메라 기준 방향으로 PLAYER.speed, 클릭 이동과 같은 경계·장애물 처리.
       const cur = { x: player.position.x, z: player.position.z };
@@ -1795,6 +1835,7 @@ if (isMobileUA(navigator.userAgent)) {
       promptText = promptKey;
       if (nextPrompt) hud.showPrompt(nextPrompt, actionable, promptExtra);
       else hud.hidePrompt();
+      touchUi?.setPrompt(nextPrompt, actionable, promptExtra); // 터치: E 키 안내가 오른쪽 아래 E 버튼의 글자가 된다
     }
     character?.update(dt);
     updateFirstPerson(dt);

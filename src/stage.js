@@ -2,10 +2,11 @@ import * as THREE from 'three';
 import { ORBIT } from './config.js';
 import { computeFov } from './logic/camera.js';
 
-export function createStage(container) {
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.shadowMap.enabled = true;
+// opts(모바일 저사양 모드만 넘긴다, PC 는 기본값): { maxPixelRatio(기본 2), antialias(기본 true), shadows(기본 true) }
+export function createStage(container, { maxPixelRatio = 2, antialias = true, shadows = true } = {}) {
+  const renderer = new THREE.WebGLRenderer({ antialias });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxPixelRatio));
+  renderer.shadowMap.enabled = shadows;
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -35,5 +36,5 @@ export function createStage(container) {
   }
   loop();
 
-  return { renderer, scene, camera, onFrame: (fn) => callbacks.push(fn) };
+  return { renderer, scene, camera, onFrame: (fn) => callbacks.push(fn), resize };
 }

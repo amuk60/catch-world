@@ -45,8 +45,20 @@ function rows(spaceId) {
   ].join('');
 }
 
-// opts: { storage, autoShow(처음 방문에 자동으로 띄울까: 튜토리얼이 먼저 할 때는 false), onReplay(튜토리얼 다시 보기 버튼), suppressed()(true 면 카드를 열지 않는다: 튜토리얼 중) }
-export function createGuideHud(container, { storage = null, autoShow = true, onReplay = null, suppressed = () => false } = {}) {
+// 터치 기기(모바일)용 안내: 키보드 대신 조이스틱·버튼·손가락 동작.
+function touchRows(spaceId) {
+  return [
+    '<li><b>이동</b> 왼쪽 아래 조이스틱을 끌거나 바닥을 톡 누르기</li>',
+    '<li><b>시점</b> 빈 화면을 끌어 회전, 두 손가락으로 확대·축소</li>',
+    '<li><b>E 버튼</b> 가까이 가면 오른쪽 아래에 떠요 (앉기·들어가기)</li>',
+    `<li>${spaceId === 'interview' ? '의자에 앉아 오른쪽 아래 버튼으로 면접 보기·돌발행동' : '오른쪽 아래 행동 버튼 · 자동 버튼'}</li>`,
+    ...(spaceId === 'yard' ? ['<li>통나무에 앉아 마시멜로 굽기 · 불멍</li>', '<li>굽는 중: 화면이나 "돌리기"를 누른 채 돌리기 · "꺼내기"</li>', '<li>소원 조각상에서 E 버튼으로 소원 빌기</li>'] : []),
+    '<li>오른쪽 위 ⋯ 메뉴: 불멍 시점·인사말·소리·튜토리얼</li>',
+  ].join('');
+}
+
+// opts: { storage, autoShow(처음 방문에 자동으로 띄울까: 튜토리얼이 먼저 할 때는 false), onReplay(튜토리얼 다시 보기 버튼), suppressed()(true 면 카드를 열지 않는다: 튜토리얼 중), touch(터치 기기 안내로) }
+export function createGuideHud(container, { storage = null, autoShow = true, onReplay = null, suppressed = () => false, touch = false } = {}) {
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.append(style);
@@ -86,7 +98,7 @@ export function createGuideHud(container, { storage = null, autoShow = true, onR
   const timer = createGuideTimer();
   let isOpen = false;
   let space = 'yard';
-  const render = () => { list.innerHTML = rows(space); };
+  const render = () => { list.innerHTML = touch ? touchRows(space) : rows(space); };
   const show = () => { if (suppressed()) return; isOpen = true; timer.reset(); render(); card.classList.add('open'); btn.classList.add('on'); btn.setAttribute('aria-pressed', 'true'); };
   const hide = () => { isOpen = false; card.classList.remove('open'); btn.classList.remove('on'); btn.setAttribute('aria-pressed', 'false'); };
   const toggle = () => (isOpen ? hide() : show());
